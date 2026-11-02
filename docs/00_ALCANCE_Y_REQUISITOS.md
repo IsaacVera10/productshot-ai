@@ -1,0 +1,88 @@
+# 00 — Alcance, requisitos y exclusiones
+
+## Obligatorio según enunciado del Proyecto 2
+
+1. **Una imagen** cargada por la persona usuaria como entrada de la generación.
+2. **Exactamente cinco variaciones visuales** por ejecución exitosa.
+3. **Interfaz gráfica** para visualizar las cinco imágenes y aceptar/rechazar **cada una**.
+4. **Registro estructurado** de las cinco decisiones.
+5. **Agente basado en LLM** que genera un resumen indicando explícitamente cuáles fueron aceptadas y rechazadas; el resumen debe ser coherente con el registro.
+6. **Implementar dos de los tres enfoques** definidos en la sección 2.3, como alternativas de respaldo o elección por el usuario.
+7. **Seleccionar, justificar y preparar un dataset**; considerar calidad de datos, ética y restricciones.
+8. **Evaluar** calidad visual, diversidad, coherencia del resumen, usabilidad y limitaciones éticas.
+9. Código reproducible, evidencias/diagramas, informe técnico de **máximo 10 páginas**, video de **máximo 3 minutos** y presentación de **máximo 6 minutos**. El video requiere docente UTEC o estudiante pregrado de carrera distinta de CC/DS, con presentación y consentimiento al comienzo (~10 s).
+
+### No obligatorio en el enunciado
+
+- Comparación experimental A/B de los dos enfoques (la haremos porque aporta evidencia).
+- Dos bases de datos operacionales o dos datasets obligatorios (son elecciones técnicas, no mandatos).
+- Generación repetida ilimitada, aprendizaje online, reconstrucción 3D, multiagente, Kubernetes.
+- Usar más de un LLM: **se sugiere**, no se exige.
+
+## Objetivo
+
+Generar, a partir de una foto casera de un producto, cinco propuestas de ambientación para catálogo o redes sociales, priorizando la conservación de sus rasgos visibles, para que la persona acepte o rechace cada una y reciba un resumen fiel de sus decisiones.
+
+La aplicación no es una herramienta de identidad de marca: no crea logotipos ni aprende la marca del usuario. Un logotipo presente en el producto se trata como un rasgo visible a conservar.
+
+## Caso escogido: ProductShot AI
+
+Personas emprendedoras suben una foto casera de un artículo pequeño y obtienen cinco **ambientaciones**: `studio`, `natural`, `warm`, `lifestyle`, `minimal`. Son cinco presets **propuestos**, no impuestos por el curso. El sistema conserva orientación/perspectiva y características visibles; puede cambiar principalmente fondo y composición circundante. Para un producto con logotipo, texto o estampado, evitar editar esas regiones.
+
+`minimal` debe distinguirse de `studio` por rasgos observables de fondo, espacio negativo y utilería. Los presets describen principalmente el entorno: preservar los píxeles del producto impide cambiar físicamente su iluminación.
+
+### Input v1
+
+- 1 archivo JPG/PNG RGB, máximo configurable (valor preliminar: **10 MB**).
+- Un solo producto principal, completo y no obstruido; se advierte que fotos borrosas, transparentes, reflectantes o múltiples objetos pueden fallar.
+- Redimensionamiento de trabajo con proporción conservada y padding si se necesita; preservar archivo original.
+- La máscara se define **blanca para área editable (fondo), negra para región protegida (producto)** al comunicarse con el pipeline de inpainting; documentar transformaciones y revisar semántica de cada biblioteca.
+
+## Modos planteados
+
+| Modo de UI | Descripción | Trabajo propio |
+|---|---|---|
+| `intermediate` | Inpainting preentrenado con máscara que preserva el producto | Integración, segmentación, control y posprocesamiento |
+| `advanced` | Inpainting con modelo de difusión adaptado con LoRA especializado en estética comercial | Dataset curado, entrenamiento LoRA, integración y análisis del cambio |
+
+**Niveles elegidos:** intermedio y avanzado. El modo `advanced` se presenta como modalidad utilizable y como experimento con pregunta propia: ¿entrenar un LoRA con estética comercial mejora las imágenes frente al modo intermedio?
+
+**Plan B:** si la docente no acepta el LoRA como nivel avanzado o este no resulta viable técnicamente, implementar básico + intermedio, que también cumple la regla de dos de tres enfoques. Que el LoRA no mejore los resultados no activa el plan B: es un resultado negativo que se reporta como evidencia.
+
+## Objetivo de adaptación del LoRA
+
+Se busca adaptar el modelo a la estética de escena comercial: fondos, superficies y composición. No aprende la identidad del producto subido, las preferencias del usuario ni iluminación físicamente correcta, y puede aprender asociaciones indeseadas con productos o marcas. Si logra adaptarse y generalizar es una hipótesis a evaluar.
+
+Se entrena un solo LoRA condicionado por captions que nombran el estilo, porque reduce la gestión de entrenamientos separados. Exige cobertura por estilo, captions consistentes y evaluación individual, para comprobar que responde a cada estilo sin mezclarlos ni colapsar hacia el dominante.
+
+## Datos
+
+| Conjunto | Contenido | Condiciones |
+|---|---|---|
+| Entrenamiento y validación estética | BG60k, candidato principal condicionado a auditoría | Piloto de 100–200 imágenes revisadas por estilo; solo se amplía si la validación lo justifica |
+| Complemento | CommonCatalog CC-BY | Solo si se demuestra un déficit de cobertura; conserva licencia y atribución por imagen |
+| Evaluación de segmentación | Finegrain Product Masks Lite | No se usa para entrenar |
+| Prueba | Fotos caseras más los casos obligatorios de `04_ROADMAP_Y_TESTS.md` | Autorización que cubra las fotografías, no solo la propiedad del objeto |
+
+Si los permisos o el acceso a BG60k no se confirman, la alternativa es ABO + CommonCatalog, con más trabajo de curación. La selección se decidió por consenso del equipo (ADR-006).
+
+Los conjuntos no comparten productos, y las variantes casi duplicadas de un producto se agrupan en la misma partición. El análisis exploratorio se realiza en cualquier caso, porque el dataset es obligatorio. Si un estilo no tiene datos suficientes, el aprendizaje se limita a los estilos cubiertos: los demás se siguen generando con las capacidades del modelo preentrenado, y esa diferencia se declara.
+
+## Alcance funcional de v1
+
+- Una sesión contiene **una imagen, un modo y una generación** de cinco alternativas; una segunda generación requiere **otra sesión** (evita ambigüedad de decisiones). Cada variación tiene ID, índice 1..5, estilo, URI, seed, parámetros y estado de evaluación.
+- El usuario debe decidir `accepted` o `rejected` para las cinco. `reason` es opcional.
+- Se permite **0 aceptadas** y **5 rechazadas**; la sesión se puede resumir igualmente.
+- No atribuir motivaciones si no hay motivos explícitos. Se puede informar una asociación descriptiva entre estilos y decisiones, sin afirmar causas psicológicas.
+- El agente consulta los registros con herramientas de **solo lectura** y produce un resumen estructurado con referencias a variaciones y motivos. Python verifica cobertura, decisiones y citas asociadas al registro correcto, y renderiza la enumeración. La narrativa libre es opcional y su revisión automática es parcial.
+- Si la segmentación falla, la persona puede reintentarla o subir una máscara manual en PNG antes de generar. No se incluye editor de máscaras.
+
+## Excluido inicialmente
+
+- Voltear producto, cambiar su forma o proyectar lados no visibles.
+- Reentrenamiento por feedback tras cada usuario, edición libre de texto/logotipo, comercio público/multi-tenant, pagos, intervención manual sofisticada para máscaras, app móvil, live streaming y Kubernetes.
+- Despliegue GCP en el primer PR.
+
+## Requisito pedagógico y ética
+
+Cumplir los requisitos de autoría, reproducción y evaluación establecidos por el enunciado y el sílabo.
