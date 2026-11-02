@@ -1,5 +1,7 @@
 # 01 — Arquitectura y diagramas
 
+Las versiones editables en draw.io y exportadas en PNG están en [`diagrams/`](diagrams/README.md).
+
 ## Criterios de diseño
 
 Separar dominio/servicios de implementaciones de infraestructura. El mismo orquestador invoca backends intercambiables: `mock`, `pretrained_inpainting`, `lora_inpainting`. **`mock` es solo para desarrollo y pruebas y no cuenta como enfoque académico.** El procesamiento de GPU debe ser independiente de la API/web. En local usar persistencia SQLite + carpetas; en nube Firestore + Cloud Storage mediante adaptadores.
@@ -102,6 +104,7 @@ stateDiagram-v2
 ```mermaid
 erDiagram
     SESSION ||--|| INPUT_IMAGE : contains
+    SESSION ||--|| MASK : uses
     SESSION ||--|| GENERATION_JOB : starts
     GENERATION_JOB ||--|{ VARIATION : produces
     VARIATION ||--o| DECISION : receives
@@ -120,10 +123,17 @@ erDiagram
       int width
       int height
     }
+    MASK {
+      string id PK
+      string source
+      string storage_key
+      string sha256
+    }
     GENERATION_JOB {
       string id PK
       string backend
       string status
+      string idempotency_key
       string config_json
       datetime created_at
     }
@@ -133,6 +143,8 @@ erDiagram
       string style
       string storage_key
       int seed
+      string model_revision
+      string prompt_version
     }
     DECISION {
       string variation_id PK
