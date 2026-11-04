@@ -240,7 +240,7 @@ def _mount_ui(app: FastAPI, settings: Settings) -> None:
 
         from productshot_ui.app import build_ui
     except ImportError:
-        log.warning("Gradio no está instalado: la UI no se monta (instala el extra [ui]).")
+        log.warning("Gradio no está instalado: la UI no se monta (ejecuta `uv sync`).")
         return
     host = "127.0.0.1" if settings.app_host in ("0.0.0.0", "::") else settings.app_host
     api_base = f"http://{host}:{settings.app_port}{API_PREFIX}"

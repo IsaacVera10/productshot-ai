@@ -62,16 +62,17 @@ GCP es el despliegue principal y la arquitectura local su respaldo; el mapeo de 
 
 ## Ejecución local (Hito 1)
 
-Requisitos: Python 3.11 o superior. No necesita GPU, red ni credenciales.
+El proyecto se gestiona con [uv](https://docs.astral.sh/uv/). No necesita GPU, red (salvo para instalar) ni credenciales.
 
 ```bash
-python -m venv .venv
-# Windows: .venv\Scripts\activate    ·    Linux/macOS: source .venv/bin/activate
-pip install -e ".[ui,dev]"
-
-productshot            # API + UI en http://127.0.0.1:8000  (UI en /ui, OpenAPI en /docs)
-pytest                 # pruebas T01–T14 y complementarias
+uv sync                # crea .venv con Python 3.12 e instala las versiones exactas de uv.lock
+uv run productshot     # API + UI en http://127.0.0.1:8000  (UI en /ui, OpenAPI en /docs)
+uv run pytest          # pruebas T01–T14 y complementarias
 ```
+
+`uv run` usa siempre el `.venv` del proyecto, así que no hace falta activarlo. Para añadir una dependencia: `uv add <paquete>` (o `uv add --dev <paquete>` si solo es para desarrollo); después versionar `pyproject.toml` y `uv.lock` juntos.
+
+Sin uv (alternativa): crear y activar un entorno con `python -m venv .venv`, luego `pip install -e .` y `pip install pytest`. Así no se respetan las versiones exactas del lockfile.
 
 La configuración se lee de variables de entorno o de un `.env` (copiar `.env.example`). Los datos se guardan en `data/`, que Git ignora.
 

@@ -1,7 +1,7 @@
 # Pruebas
 
 ```bash
-pytest
+uv run pytest
 ```
 
 Cada prueba usa una base de datos y un directorio de artefactos temporales; no hay red ni GPU. La generación corre en línea (`InlineJobRunner`) para que el resultado sea determinista, salvo una prueba que usa el ejecutor en hilo real.
@@ -13,4 +13,4 @@ Cada prueba usa una base de datos y un directorio de artefactos temporales; no h
 
 Última ejecución: 39 pruebas pasadas (2026-11-04, Windows 11, Python 3.12.10).
 
-> En Windows con permisos restringidos sobre `%TEMP%`, usar `pytest --basetemp=.pytest_tmp`.
+> En Windows con permisos restringidos sobre `%TEMP%`, usar `uv run pytest --basetemp=.pytest_tmp`.
