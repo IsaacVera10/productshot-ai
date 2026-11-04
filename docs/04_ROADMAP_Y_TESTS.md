@@ -28,17 +28,19 @@ Los Hitos 2 y 3 pueden avanzar en paralelo. El Hito 7 depende de los modelos rea
 
 Objetivo: **demostración local offline** con cinco imágenes simuladas y resumen determinista; *no afirmar generación real ni agente LLM*.
 
-- [ ] `pyproject.toml` con dependencias ligeras y versiones fijables; separar extras pesados `gpu` y `training` para después.
-- [ ] FastAPI + Pydantic, rutas de `02_API_Y_MODELO_DE_DATOS.md`.
-- [ ] SQLite + almacenamiento local; acceso por adaptadores/repositorios.
-- [ ] Gradio para imagen, selector de modo y visualización de cinco tarjetas.
-- [ ] Segmentador `MockSegmentationService` (resultado marcado como simulado).
-- [ ] `MockGenerationBackend`: cinco imágenes **claramente identificadas como MOCK**, distintas por estilo, con IDs y seeds registrados.
-- [ ] Flujo de estado sin éxito parcial de generación y protección de duplicados.
-- [ ] Decisiones individuales, motivos opcionales y bloqueo del resumen hasta tener cinco.
-- [ ] `DeterministicSummaryService`: no usar ni fingir LLM en este hito.
-- [ ] Tests `pytest` con base de datos temporal y sin red.
-- [ ] README local: instalación, ejecución, pruebas y límites conocidos.
+**Estado (2026-11-04):** implementado en la rama `feat/hito-1-mock`; `pytest` pasa con 39 pruebas en local (Windows, Python 3.12). Falta la revisión por otro integrante.
+
+- [x] `pyproject.toml` con dependencias ligeras y versiones fijables; separar extras pesados `gpu` y `training` para después.
+- [x] FastAPI + Pydantic, rutas de `02_API_Y_MODELO_DE_DATOS.md` (salvo `POST /mask`, que es del Hito 2).
+- [x] SQLite + almacenamiento local; acceso por adaptadores/repositorios.
+- [x] Gradio para imagen, selector de modo y visualización de cinco tarjetas.
+- [x] Segmentador `MockSegmentationService` (resultado marcado como simulado).
+- [x] `MockGenerationBackend`: cinco imágenes **claramente identificadas como MOCK**, distintas por estilo, con IDs y seeds registrados.
+- [x] Flujo de estado sin éxito parcial de generación y protección de duplicados.
+- [x] Decisiones individuales, motivos opcionales y bloqueo del resumen hasta tener cinco.
+- [x] `DeterministicSummaryService`: no usar ni fingir LLM en este hito.
+- [x] Tests `pytest` con base de datos temporal y sin red.
+- [x] README local: instalación, ejecución, pruebas y límites conocidos.
 
 ### Pruebas mínimas automatizadas
 
@@ -76,6 +78,8 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 - [ ] Generar cinco estilos por sesión; guardar checkpoint/revisión/seeds/prompts.
 - [ ] Probar fallos en tazas, recipientes y decorativos; registrar errores.
 - [ ] Casos obligatorios: taza con logotipo (hueco del asa, brillo y logo curvo), producto mate sencillo, producto blanco sobre fondo claro y producto con texto pequeño visible. Evaluar el logotipo contra la foto original, sin exigir reconstruir su parte oculta.
+- [ ] *(Propuesto, ADR-008, pendiente de revisión)* Guardrails G2, G3, G7 y G8: clasificador NSFW en entrada y salida, detector de rostros y verificación de fidelidad de la región protegida.
+- [ ] *(Propuesto, ADR-007, pendiente de revisión)* Rondas siguientes con planificador determinista y vocabulario cerrado de ajustes por reglas.
 
 ## Hito 3 — Agente con Gemini en Vertex AI
 
@@ -84,6 +88,8 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 - [ ] LLM produce salida estructurada con referencias a variaciones y motivos citados literalmente.
 - [ ] Python verifica cobertura, decisiones y citas, y renderiza la enumeración; `generated_by` y `validation_status` reflejan el resultado. Fallback explícito ante timeout/error, sin disfrazar fallback como agente.
 - [ ] IAM mínimo, sin secretos en `.env` versionado, pruebas con respuestas Gemini simuladas.
+- [ ] Reutilizar `validate_structured` y `render_summary` de `backend/productshot/services/summary.py` (ya probados en el Hito 1).
+- [ ] *(Propuesto, ADR-007)* Extracción de ajustes desde los motivos con salida estructurada y resumen de la cadena de rondas.
 
 ## Hito 4 — Dataset y análisis exploratorio
 
