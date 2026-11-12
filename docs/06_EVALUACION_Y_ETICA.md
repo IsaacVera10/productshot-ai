@@ -32,7 +32,7 @@
 | Consistencia del agente | Exactitud de los cinco labels (objetivo 5/5), cobertura, razones no inventadas | Validar con datos de la DB |
 | Usabilidad | SUS, éxito por tarea, tiempo por tarea, errores y SEQ (ver sección «Usabilidad») | No confundir juicio de la imagen con calidad UX |
 | Operación | Segundos por lote, VRAM pico, errores, cold starts | Fundamental para presupuesto GCP |
-| Guardrails | Veces que se activa cada guardrail y fallos que no detectó | Registrar desde los logs (ver `01_ARQUITECTURA.md`, sección G) |
+| Guardrails | Veces que se activa cada guardrail y fallos que no detectó | Registrar desde los logs (ver `08_ITERACIONES_Y_GUARDRAILS.md`, parte B) |
 
 ## Usabilidad
 

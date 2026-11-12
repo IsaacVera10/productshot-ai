@@ -19,7 +19,7 @@ Además del enunciado, el docente pidió en clase:
 | Lineamiento | Dónde se cubre |
 |---|---|
 | Encontrar un nicho para el proyecto | Sección «Nicho» de este documento |
-| Guardrails para manejar fallos | `01_ARQUITECTURA.md`, sección G |
+| Guardrails para manejar fallos | `08_ITERACIONES_Y_GUARDRAILS.md`, parte B (ADR-008) |
 | Métricas de usabilidad | `06_EVALUACION_Y_ETICA.md`, sección «Usabilidad» |
 | Probar con un mínimo de 10 usuarios ajenos a la carrera (familiares o conocidos) | `06_EVALUACION_Y_ETICA.md`, sección «Prueba con usuarios» |
 

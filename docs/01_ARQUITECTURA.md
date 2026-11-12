@@ -255,24 +255,6 @@ flowchart TD
 
 ## G. Guardrails ante fallos
 
-Principio: ningún fallo deja la sesión en un estado ambiguo ni muestra un resultado parcial como éxito, y cada fallo visible para la persona usuaria trae un mensaje en español con la acción siguiente (reintentar, subir otra foto, subir una máscara o volver más tarde). La columna «Estado» distingue lo que ya estaba en el diseño de lo que se agrega por el lineamiento de clase.
+La lista completa de guardrails (G1 a G14), su estado por hito y las decisiones tomadas están en [`08_ITERACIONES_Y_GUARDRAILS.md`](08_ITERACIONES_Y_GUARDRAILS.md), parte B, registrada como ADR-008. Esta sección no la duplica.
 
-| Etapa | Fallo o riesgo | Guardrail | Respuesta al usuario | Estado |
-|---|---|---|---|---|
-| Entrada | Archivo que no es JPG/PNG, corrupto o mayor al límite | Validación de tipo real (no solo extensión), decodificación y tamaño | 413 o 422 con «Sube una foto JPG o PNG de hasta 10 MB» | En diseño |
-| Entrada | Foto sin un producto principal, con varios objetos o recortada | Heurística sobre la máscara: área fuera de un rango configurable o varios componentes grandes | Advertencia y opción de reintentar, subir máscara o continuar bajo su responsabilidad | Nuevo |
-| Entrada | Foto con personas o rostros | Detector de rostros ligero antes de segmentar | 422 «Esta herramienta es para fotos de productos, sin personas» | Nuevo |
-| Entrada | Foto muy oscura o borrosa | Umbrales de brillo y nitidez (varianza del laplaciano) | Advertencia, sin bloquear | Nuevo |
-| Segmentación | Máscara vacía, incompleta o que invade el fondo | Reintento y carga de máscara PNG (ADR-005) | Vista previa de la máscara antes de generar | En diseño |
-| Generación | El usuario intenta guiar el modelo con texto | No hay prompt libre: solo cinco presets fijos | No aplica | En diseño |
-| Generación | Lote con menos o más de cinco imágenes, o error a mitad | Lote atómico: `FAILED`, limpieza de transitorios | «No se pudo generar; inténtalo con una nueva sesión» | En diseño |
-| Generación | Producto alterado tras la recomposición | Comparar los píxeles de la región protegida con el original; si difieren más de una tolerancia, la variación se descarta | Invisible si se recupera; si no, el lote falla | Nuevo |
-| Generación | Contenido inapropiado en el fondo generado | Clasificador NSFW sobre cada variación; se regenera esa variación con otra seed hasta un máximo de intentos, y si no se logra el lote falla | Igual que el lote fallido | Nuevo |
-| Generación | Inferencia que no termina o GPU caída | Timeout configurable por lote; trabajo interrumpido pasa a `FAILED` | 503 o estado `FAILED` con «El servicio está ocupado, inténtalo más tarde» | Parcial: el timeout es nuevo |
-| Generación | Abuso o gasto excesivo de GPU | Límite de generaciones por cliente y por hora; en GCP, instancias máximas y presupuesto | 429 «Alcanzaste el límite, inténtalo más tarde» | Nuevo |
-| Decisiones | Decisión sobre una variación ajena, sesión congelada o resumen con menos de cinco decisiones | Validación de pertenencia y de estado | 404 o 409 con la decisión que falta | En diseño |
-| Agente | Resumen que contradice el registro, motivo inventado o prompt injection en los motivos | Herramientas de solo lectura, salida estructurada verificada por Python y motivos tratados como datos | Resumen verificado; si se corrige, `hybrid` | En diseño |
-| Agente | LLM caído o con timeout | `deterministic_fallback`, marcado como tal | Resumen igual de fiel, rotulado como no generado por el agente | En diseño |
-| Salida | Imagen confundida con una foto real | Rótulo de imagen generada con IA en la UI y en la descarga | Visible siempre | Parcial: el rótulo en la descarga es nuevo |
-
-Los umbrales (área de máscara, brillo, nitidez, tolerancia de píxeles, intentos y límites por hora) son configurables y se calibran con los casos obligatorios del Hito 2; no se fijan antes de medir. Cada guardrail registra un evento en los logs para contar cuántas veces se activa en la evaluación.
+Las garantías de arquitectura que los sostienen ya están descritas arriba: lote atómico de cinco, idempotencia, recuperación de trabajos interrumpidos, máscara bloqueada tras generar y agente con herramientas de solo lectura y salida verificada.

@@ -55,7 +55,7 @@ GCP es el despliegue principal y la arquitectura local su respaldo; el mapeo de 
 - [05 — Colab y GCP](docs/05_COLAB_Y_GCP.md)
 - [06 — Evaluación y ética](docs/06_EVALUACION_Y_ETICA.md)
 - [07 — Enunciado Proyecto 2](docs/07_ENUNCIADO_PROYECTO_2.md)
-- [08 — Propuesta: iteraciones y guardrails](docs/08_ITERACIONES_Y_GUARDRAILS.md) (pendiente de revisión)
+- [08 — Propuesta: iteraciones y guardrails](docs/08_ITERACIONES_Y_GUARDRAILS.md) (guardrails aceptados; iteraciones pendientes de consulta docente)
 - [Rúbrica de evaluación](docs/Evaluación_Rúbrica_Proyecto2.md)
 
 **Fuente primaria:** `Evaluación_Enunciado Proyecto2.pdf`. El archivo `docs/07_ENUNCIADO_PROYECTO_2.md` reproduce el contenido textual del documento original en Markdown para consulta. Ante discrepancias prevalece el PDF oficial.

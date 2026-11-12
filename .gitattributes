@@ -1,0 +1,9 @@
+# El equipo trabaja en Windows y Linux: el repositorio guarda siempre finales de línea LF.
+* text=auto eol=lf
+
+# Binarios: nunca convertir.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+*.sqlite3 binary

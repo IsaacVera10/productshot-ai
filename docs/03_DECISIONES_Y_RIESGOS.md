@@ -15,10 +15,10 @@
 | D-07 | GCP para despliegue; Cloud Run CPU/GPU + Storage/Firestore | Separación web/inferencia y portabilidad | Elegido como principal, con respaldo local (ADR-003) |
 | D-08 | Gemini mediante Vertex AI para agente LLM | Consumo gestionado, sin alojar LLM en nuestra GPU | Elegido |
 | D-09 | MVP local offline con adaptador mock y resumen determinista | Probar el flujo sin costosos modelos ni credenciales | Elegido para primer PR |
-| D-10 | Una sesión = imagen + modo + generación de cinco; sin iteraciones | Evita estado ambiguo y repetición de costes | Decisión v1 revisable |
-| D-11 | Nicho: emprendedores en Perú que venden productos pequeños y rígidos por redes sociales (ver `00_ALCANCE_Y_REQUISITOS.md`) | Lineamiento de clase; acota los productos a los que el pipeline maneja mejor y da acceso a usuarios de prueba | Propuesta, pendiente de validar con el equipo |
-| D-12 | Guardrails por etapa del flujo, con mensaje y acción siguiente para cada fallo (ver `01_ARQUITECTURA.md`, sección G) | Lineamiento de clase; ningún fallo deja la sesión en un estado ambiguo | Propuesta |
-| D-13 | Prueba de usabilidad con 10 o más personas ajenas a CC/DS, con SUS, éxito y tiempo por tarea (ver `06_EVALUACION_Y_ETICA.md`) | Lineamiento de clase | Propuesta |
+| D-10 | Una sesión = imagen + modo + generación de cinco; sin iteraciones | Evita estado ambiguo y repetición de costes | Vigente; las rondas de ADR-007 la mantendrían por ronda (P9) |
+| D-11 | Nicho: emprendedores en Perú que venden productos pequeños y rígidos por redes sociales (ver `00_ALCANCE_Y_REQUISITOS.md`) | Lineamiento de clase; acota los productos a los que el pipeline maneja mejor y da acceso a usuarios de prueba | Elegida (2026-11-12) |
+| D-12 | Guardrails por capas G1 a G14, con mensaje y acción siguiente para cada fallo (ADR-008, `08_ITERACIONES_Y_GUARDRAILS.md`) | Lineamiento de clase y rúbrica de ética | Elegida (2026-11-12) |
+| D-13 | Prueba de usabilidad con 10 o más personas ajenas a CC/DS, con SUS, éxito y tiempo por tarea (ver `06_EVALUACION_Y_ETICA.md`) | Lineamiento de clase | Elegida (2026-11-12) |
 
 ## Pendientes que NO bloquean el primer PR
 
@@ -34,7 +34,11 @@
 
 **P7 — Preservación de producto:** una máscara protege los rasgos visibles, pero la integración de sombras/reflejos puede fallar. Medir fallos. No prometer preservación perfecta ni cambios físicos de iluminación sobre toda la superficie.
 
-**P8 — Hosting / autenticación:** escoger región, cuota de GPU, acceso de prueba (IAM/autenticación), política de retención y límites de consumo antes de desplegar. No desplegar públicamente por defecto.
+**P8 — Hosting / autenticación:** escoger región, cuota de GPU, acceso de prueba (IAM/autenticación) y límites de consumo antes de desplegar. No desplegar públicamente por defecto. La retención ya está decidida en `08_ITERACIONES_Y_GUARDRAILS.md`.
+
+**P9: iteraciones (ADR-007) y consulta docente.** Confirmar si la docente entiende «iteraciones» como rondas de cinco variaciones derivadas de las decisiones previas (la propuesta) o como regenerar imágenes sueltas. No bloquea el Hito 2: el planificador de rondas se construye sobre la generación real, cuando ya exista. Si la docente lo confirma, ADR-007 pasa a aceptada y se implementa al final del Hito 2.
+
+**P10: trabajos en curso con varias instancias (Hito 6).** Al arrancar, `fail_interrupted_jobs` marca FAILED cualquier trabajo en `GENERATING`. Con un solo proceso local es correcto; con varias instancias o con Cloud Tasks hará falta registrar quién ejecuta cada trabajo y un heartbeat, y recuperar solo los trabajos vencidos.
 
 ## Decisiones que deben salir de pruebas (no de preferencias)
 
@@ -147,7 +151,7 @@ Evidencia: revisión de papers, páginas y términos oficiales. Sin descarga: si
 ```text
 ADR-007 — Iteraciones guiadas por las decisiones del usuario
 Fecha: 2026-11-04
-Estado: propuesta (pendiente de revisión del equipo)
+Estado: propuesta, pendiente de consulta docente (P9)
 Contexto: la rúbrica pide «correspondencia entre las decisiones del usuario y las iteraciones» y D-10 impide que las decisiones influyan en una generación posterior.
 Opciones: regenerar las rechazadas dentro de la misma sesión; que el LLM reescriba los prompts; nueva ronda como sesión hija con un planificador determinista.
 Decisión propuesta: ronda siguiente = sesión hija (misma imagen y máscara, cinco variaciones) cuyo plan deriva de las decisiones previas mediante un planificador determinista y un vocabulario cerrado de ajustes. D-10 se mantiene por ronda.
@@ -158,10 +162,10 @@ Evidencia: lectura de la rúbrica; sin implementación ni validación docente.
 ```text
 ADR-008 — Guardrails ejecutables
 Fecha: 2026-11-04
-Estado: propuesta (pendiente de revisión del equipo); G1, G4, G10 (validador) y el rótulo mock de G9 ya están en el Hito 1
+Estado: aceptada (2026-11-12); G1, G4, G10 (validador) y el rótulo mock de G9 ya están en el Hito 1. Se agregan G12 a G14 y se resuelven las preguntas abiertas (rostro: rechazar; NSFW y umbrales: se eligen y calibran en el Hito 2; retención: siete días en GCP)
 Contexto: la rúbrica de ética (2 pts) exige guardrails implementados y visibles en la demo, no solo reflexión.
 Opciones: solo reflexión; filtros externos de contenido; guardrails por capas (entrada, texto, generación, salida, fidelidad, transparencia, agente, operación).
-Decisión propuesta: guardrails por capas G1–G11, priorizando fidelidad del producto (G8), clasificador NSFW en entrada y salida (G2, G7) y detector de rostros (G3).
+Decisión: guardrails por capas G1–G14, priorizando fidelidad del producto (G8), clasificador NSFW en entrada y salida (G2, G7) y detector de rostros (G3).
 Consecuencias: más VRAM y latencia en el worker (clasificadores), umbrales que calibrar y casos de demo preparados. Detalle en 08_ITERACIONES_Y_GUARDRAILS.md.
 Evidencia: lectura de la rúbrica; sin mediciones todavía.
 ```
