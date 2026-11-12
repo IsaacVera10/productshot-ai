@@ -56,6 +56,8 @@ CANONICAL_STYLES: tuple[Style, ...] = (
     Style.MINIMAL,
 )
 VARIATIONS_PER_BATCH = len(CANONICAL_STYLES)
+# Única fuente del límite del motivo: la usan el esquema HTTP y el servicio.
+REASON_MAX_CHARS = 500
 
 # Estados en los que todavía se puede reemplazar la máscara.
 MASK_EDITABLE_STATES = frozenset({SessionStatus.UPLOADED, SessionStatus.SEGMENTED})

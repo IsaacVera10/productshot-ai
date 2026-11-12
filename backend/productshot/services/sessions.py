@@ -7,6 +7,7 @@ import io
 import json
 import logging
 import random
+import unicodedata
 import uuid
 
 from PIL import Image
@@ -15,6 +16,7 @@ from productshot.config import Settings
 from productshot.domain import (
     CANONICAL_STYLES,
     MASK_EDITABLE_STATES,
+    REASON_MAX_CHARS,
     VARIATIONS_PER_BATCH,
     Decision,
     DecisionValue,
@@ -57,6 +59,27 @@ class BatchError(Exception):
 
 def _new_id() -> str:
     return str(uuid.uuid4())
+
+
+def normalize_reason(reason: str) -> str | None:
+    """Deja el motivo en una sola línea, sin caracteres de control ni separadores de línea.
+
+    El motivo es un DATO: se cita literalmente en el resumen y nunca se interpreta. Si
+    conservara saltos de línea, podría imitar líneas del resumen (por ejemplo «Se aceptaron
+    5 de 5») y contradecir el registro aunque la validación estructurada pase.
+    """
+    flat = "".join(
+        "" if ch in _BIDI_CONTROLS else " " if unicodedata.category(ch) in _BREAKING_CATEGORIES else ch
+        for ch in reason
+    )
+    return " ".join(flat.split()) or None
+
+
+# Control (incluye \n, \r, \t, NUL) y separadores de línea o párrafo Unicode.
+_BREAKING_CATEGORIES = frozenset({"Cc", "Zl", "Zp"})
+# Controles bidireccionales que reordenan visualmente el texto. Otros caracteres de formato,
+# como el ZWJ de los emojis compuestos, se conservan.
+_BIDI_CONTROLS = frozenset("‪‫‬‭‮⁦⁧⁨⁩")
 
 
 class SessionService:
@@ -289,10 +312,9 @@ class SessionService:
 
     def decide(self, session_id: str, variation_id: str, value: DecisionValue, reason: str | None) -> Decision:
         if reason is not None:
-            # El motivo es un DATO: solo se normaliza, nunca se interpreta.
-            reason = reason.replace("\x00", "").strip() or None
-            if reason and len(reason) > self.settings.reason_max_chars:
-                raise InvalidInput(f"El motivo supera {self.settings.reason_max_chars} caracteres.")
+            reason = normalize_reason(reason)
+            if reason and len(reason) > REASON_MAX_CHARS:
+                raise InvalidInput(f"El motivo supera {REASON_MAX_CHARS} caracteres.")
         return self.repo.upsert_decision(session_id, variation_id, value, reason)
 
     # --- 5. resumen ---
@@ -318,8 +340,8 @@ class SessionService:
             validated_decisions_hash=decisions_hash(variations),
             created_at=utcnow(),
         )
-        self.repo.save_summary(record)
-        return record
+        # Si otra solicitud ya guardó el resumen de estas mismas decisiones, se devuelve ese.
+        return self.repo.save_summary(record)
 
     # --- utilidades ---
 

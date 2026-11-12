@@ -61,8 +61,12 @@ class Api:
         return r.json()
 
     def image(self, url: str) -> Image.Image:
-        r = self.http.get(url)
-        r.raise_for_status()
+        try:
+            r = self.http.get(url)
+        except httpx.HTTPError as exc:
+            raise ApiError(f"No se pudo descargar la imagen: {exc}") from exc
+        if r.status_code >= 400:
+            raise ApiError(f"No se pudo descargar la imagen (HTTP {r.status_code})")
         return Image.open(io.BytesIO(r.content))
 
     def create_session(self, path: str, mode: str) -> dict:
@@ -143,9 +147,9 @@ def build_ui(api_base: str) -> gr.Blocks:
             try:
                 session = api.create_session(path, mode)
                 seg = api.segment(session["id"])
+                mask = api.image(seg["mask"]["preview_url"])
             except ApiError as exc:
                 return None, None, f"**Error:** {exc}", *_empty_cards(), ""
-            mask = api.image(seg["mask"]["preview_url"])
             note = " (máscara simulada)" if seg["mask"]["simulated"] else ""
             return (session["id"], mask, f"Sesión creada en modo `{mode}`. Máscara lista{note}.",
                     *_empty_cards(), "")
@@ -155,9 +159,10 @@ def build_ui(api_base: str) -> gr.Blocks:
                 return None, "No hay sesión activa."
             try:
                 seg = api.segment(sid)
+                mask = api.image(seg["mask"]["preview_url"])
             except ApiError as exc:
                 return gr.update(), f"**Error:** {exc}"
-            return api.image(seg["mask"]["preview_url"]), "Máscara recalculada."
+            return mask, "Máscara recalculada."
 
         def generate(sid):
             if not sid:
@@ -176,16 +181,19 @@ def build_ui(api_base: str) -> gr.Blocks:
             if session["status"] == "FAILED":
                 return f"**La generación falló:** {session.get('failure_reason')}", *_empty_cards()
             cards = []
-            for v in session["variations"]:
-                label = f"{v['position']}. {STYLE_LABELS.get(v['style'], v['style'])}"
-                if session["simulated"]:
-                    label += " · SIMULADA"
-                d = v["decision"]
-                cards += [
-                    gr.update(value=api.image(v["image_url"]), label=label),
-                    gr.update(value=d["decision"] if d else None),
-                    gr.update(value=(d["reason"] or "") if d else ""),
-                ]
+            try:
+                for v in session["variations"]:
+                    label = f"{v['position']}. {STYLE_LABELS.get(v['style'], v['style'])}"
+                    if session["simulated"]:
+                        label += " · SIMULADA"
+                    d = v["decision"]
+                    cards += [
+                        gr.update(value=api.image(v["image_url"]), label=label),
+                        gr.update(value=d["decision"] if d else None),
+                        gr.update(value=(d["reason"] or "") if d else ""),
+                    ]
+            except ApiError as exc:
+                return f"**Error:** {exc}", *_empty_cards()
             return "Cinco variaciones listas. Revisa cada una.", *cards
 
         def save(sid, *values):

@@ -402,10 +402,18 @@ class SqliteRepository:
 
     # --- resumen ---
 
-    def save_summary(self, record: SummaryRecord) -> None:
-        """Guarda el resumen solo si las decisiones no cambiaron desde que se calculó."""
+    def save_summary(self, record: SummaryRecord) -> SummaryRecord:
+        """Guarda el resumen solo si las decisiones no cambiaron desde que se calculó.
+
+        Devuelve el resumen persistido. Si una solicitud concurrente ya resumió las mismas
+        decisiones, devuelve ese resumen en lugar de fallar (POST idempotente).
+        """
         with self._tx() as conn:
             status = self._status(conn, record.session_id)
+            if status == SessionStatus.SUMMARIZED:
+                existing = self._summary_row(conn, record.session_id)
+                if existing is not None and existing.validated_decisions_hash == record.validated_decisions_hash:
+                    return existing
             if status != SessionStatus.REVIEWED:
                 raise StateConflict(f"No se puede resumir en estado {status}.")
             current = decisions_hash(self._variations(conn, record.session_id))
@@ -420,15 +428,20 @@ class SqliteRepository:
                 ),
             )
             self._set_status(conn, record.session_id, SessionStatus.SUMMARIZED)
+        return record
 
-    def get_summary(self, session_id: str) -> SummaryRecord | None:
-        with self._connect() as conn:
-            row = conn.execute("SELECT * FROM summaries WHERE session_id = ?", (session_id,)).fetchone()
+    @staticmethod
+    def _summary_row(conn: sqlite3.Connection, session_id: str) -> SummaryRecord | None:
+        row = conn.execute("SELECT * FROM summaries WHERE session_id = ?", (session_id,)).fetchone()
         if row is None:
             return None
         data = dict(row)
         data["created_at"] = _dt(data["created_at"])
         return SummaryRecord(**data)
+
+    def get_summary(self, session_id: str) -> SummaryRecord | None:
+        with self._connect() as conn:
+            return self._summary_row(conn, session_id)
 
     # --- control de acceso a artefactos ---
 

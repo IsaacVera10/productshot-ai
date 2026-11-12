@@ -118,13 +118,16 @@ def _build_router() -> APIRouter:
         return {"status": "ok"}
 
     @router.post("/sessions", status_code=201, response_model=SessionOut)
-    async def create_session(
+    def create_session(
         request: Request,
         image: Annotated[UploadFile, File(description="Foto JPG o PNG del producto")],
         mode: Annotated[Mode, Form()],
     ) -> SessionOut:
+        # Ruta síncrona a propósito: FastAPI la ejecuta en el pool de hilos, de modo que
+        # decodificar la imagen, escribir archivos y esperar el bloqueo de SQLite no
+        # detiene el event loop ni las demás solicitudes (como el sondeo de la UI).
         limit = svc(request).settings.max_upload_bytes
-        data = await image.read(limit + 1)  # leer uno de más basta para detectar el exceso
+        data = image.file.read(limit + 1)  # leer uno de más basta para detectar el exceso
         view = svc(request).create_session(data, mode)
         return _session_out(view, simulated(request))
 

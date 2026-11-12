@@ -6,10 +6,9 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from productshot.domain import DecisionValue, JobStatus, Mode, SessionStatus, Style
+from productshot.domain import REASON_MAX_CHARS, DecisionValue, JobStatus, Mode, SessionStatus, Style
 
 API_PREFIX = "/api/v1"
-REASON_MAX_CHARS = 500
 
 
 def asset_url(key: str) -> str:

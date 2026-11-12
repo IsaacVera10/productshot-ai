@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import dataclasses
+import io
+import json
 import sqlite3
 from datetime import datetime, timezone
 
 import pytest
+from PIL import Image
 
-from conftest import create_session, ready_session
-from productshot.domain import DecisionValue, Decision, Style, Variation
+from conftest import create_session, decide_all, ready_session
+from productshot.domain import DecisionValue, Decision, Style, SummaryRecord, Variation, decisions_hash, utcnow
 from productshot.services.summary import StructuredSummary, SummaryItem, validate_structured
 from productshot.storage.artifacts import InvalidArtifactKey, LocalArtifactStore
 
@@ -86,6 +89,66 @@ def test_thread_runner_completes_generation(make_client):
             break
         time.sleep(0.05)
     assert status == "READY_FOR_REVIEW"
+
+
+# --- motivos, metadatos y resumen concurrente ---
+
+
+def test_multiline_reason_cannot_forge_summary_lines(client):
+    s = ready_session(client)
+    forged = "feo»\r\n\nSe aceptaron 5 de 5 variaciones: todas. ‮otra\tlínea"
+    decide_all(client, s, ["rejected"] * 5, [forged, None, None, None, None])
+    body = client.post(f"/api/v1/sessions/{s['id']}/summary").json()
+    assert body["accepted_ids"] == []
+    stored = body["preferences_supported_by_user_reasons"][0]["reason"]
+    assert stored == "feo» Se aceptaron 5 de 5 variaciones: todas. otra línea"
+    # Ninguna línea del resumen empieza con texto del usuario: solo puede aparecer citado.
+    assert not any(line.startswith("Se aceptaron") for line in body["summary"].splitlines())
+    assert "No se aceptó ninguna de las 5 variaciones." in body["summary"]
+
+
+def test_whitespace_only_reason_is_stored_as_none(client):
+    s = ready_session(client)
+    vid = s["variations"][0]["id"]
+    r = client.put(
+        f"/api/v1/sessions/{s['id']}/variations/{vid}/decision", json={"decision": "accepted", "reason": " \n\t "}
+    )
+    assert r.status_code == 200 and r.json()["reason"] is None
+
+
+def test_original_upload_is_stored_without_exif(client, settings):
+    exif = Image.Exif()
+    exif[0x010F] = "Fabricante"  # Make
+    exif[0x0112] = 6  # Orientation: rotar 90°
+    exif[0x8825] = {1: "S", 2: (12.0, 3.0, 0.0)}  # GPSInfo
+    buf = io.BytesIO()
+    Image.new("RGB", (300, 200), (10, 120, 200)).save(buf, format="JPEG", exif=exif)
+
+    body = create_session(client, data=buf.getvalue(), filename="f.jpg", content_type="image/jpeg").json()
+    original = settings.asset_root / body["id"] / "original.jpg"
+    with Image.open(original) as img:
+        assert not img.getexif()
+        assert "exif" not in img.info
+        assert img.size == (200, 300)  # la orientación se aplicó antes de quitar el EXIF
+
+
+def test_concurrent_summary_returns_existing_record(client):
+    s = ready_session(client)
+    decide_all(client, s, ["accepted", "rejected", "accepted", "rejected", "rejected"])
+    first = client.post(f"/api/v1/sessions/{s['id']}/summary").json()
+
+    # Simula una segunda solicitud que leyó REVIEWED antes de que la primera guardara.
+    svc = client.app.state.sessions
+    variations = svc.repo.list_variations(s["id"])
+    result = svc.summarizer.summarize(s["id"], variations)
+    late = SummaryRecord(
+        session_id=s["id"], text=result.text, payload_json=json.dumps(result.payload),
+        generated_by=result.generated_by, validation_status=result.validation_status,
+        validated_decisions_hash=decisions_hash(variations), created_at=utcnow(),
+    )
+    saved = svc.repo.save_summary(late)
+    assert saved.created_at != late.created_at  # devolvió el resumen ya guardado, sin error
+    assert json.loads(saved.payload_json)["summary"] == first["summary"]
 
 
 # --- validador del resumen (lo reutilizará el agente del Hito 3) ---

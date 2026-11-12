@@ -16,17 +16,34 @@ ALLOWED_FORMATS = {"JPEG", "PNG"}
 
 @dataclass(frozen=True)
 class PreparedImage:
-    original_bytes: bytes
+    original_bytes: bytes  # original sin metadatos (EXIF, GPS, texto PNG), con la orientación ya aplicada
     original_format: str
     original_size: tuple[int, int]
     working: Image.Image  # RGB, lado mayor <= work_max_side, proporción conservada
     working_png: bytes
-    sha256: str  # del archivo original
+    sha256: str  # del archivo tal como se subió, para trazabilidad
 
 
 def to_png(image: Image.Image) -> bytes:
     buf = io.BytesIO()
     image.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _without_metadata(image: Image.Image, fmt: str) -> bytes:
+    """Reescribe la imagen sin EXIF ni bloques de texto: las fotos de celular traen la ubicación GPS.
+
+    PNG se reescribe sin pérdida. JPEG se recodifica con calidad alta (95, sin submuestreo de
+    color), porque quitar metadatos sin recodificar exigiría editar los segmentos del archivo.
+    Solo se conserva el perfil ICC, que afecta al color y no identifica a la persona.
+    """
+    buf = io.BytesIO()
+    icc = image.info.get("icc_profile")
+    extra = {"icc_profile": icc} if icc else {}
+    if fmt == "JPEG":
+        image.save(buf, format="JPEG", quality=95, subsampling=0, **extra)
+    else:
+        image.save(buf, format="PNG", **extra)
     return buf.getvalue()
 
 
@@ -52,6 +69,7 @@ def prepare_upload(data: bytes, *, max_bytes: int, max_pixels: int, work_max_sid
                 img.load()
                 img = ImageOps.exif_transpose(img)
                 original_size = img.size
+                original_clean = _without_metadata(img, fmt)
                 rgb = img.convert("RGB")
     except InvalidInput:
         raise
@@ -62,7 +80,7 @@ def prepare_upload(data: bytes, *, max_bytes: int, max_pixels: int, work_max_sid
     working = rgb.copy()
     working.thumbnail((work_max_side, work_max_side), Image.Resampling.LANCZOS)
     return PreparedImage(
-        original_bytes=data,
+        original_bytes=original_clean,
         original_format=fmt,
         original_size=original_size,
         working=working,

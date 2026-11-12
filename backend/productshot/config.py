@@ -28,7 +28,6 @@ class Settings(BaseSettings):
     work_max_side: int = 1024
     # Límite de píxeles al decodificar (protección contra "decompression bombs").
     max_image_pixels: int = 40_000_000
-    reason_max_chars: int = 500
 
     @property
     def max_upload_bytes(self) -> int:
