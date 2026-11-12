@@ -80,7 +80,7 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 - [ ] Casos obligatorios: taza con logotipo (hueco del asa, brillo y logo curvo), producto mate sencillo, producto blanco sobre fondo claro y producto con texto pequeño visible. Evaluar el logotipo contra la foto original, sin exigir reconstruir su parte oculta.
 - [ ] Guardrails del Hito 2 (ADR-008, `08_ITERACIONES_Y_GUARDRAILS.md`): G2 y G7 (clasificador NSFW en entrada y salida), G3 (rostros: rechazar), G8 (fidelidad de la región protegida), G12 (brillo y nitidez), G13 (heurística de máscara) y G14 (timeout por lote). Calibrar sus umbrales con los casos obligatorios.
 - [ ] `DELETE /sessions/{id}` para el borrado de fotos (G11).
-- [ ] *(Condicionado a P9, ADR-007)* Rondas siguientes con planificador determinista y vocabulario cerrado de ajustes por reglas.
+- [ ] Iteraciones (ADR-007), al cerrar el Hito 2: `POST /sessions/{id}/next-round`, sesiones hijas (máximo 3 rondas), planificador determinista y vocabulario cerrado de ajustes por reglas.
 
 ## Hito 3 — Agente con Gemini en Vertex AI
 
@@ -90,7 +90,7 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 - [ ] Python verifica cobertura, decisiones y citas, y renderiza la enumeración; `generated_by` y `validation_status` reflejan el resultado. Fallback explícito ante timeout/error, sin disfrazar fallback como agente.
 - [ ] IAM mínimo, sin secretos en `.env` versionado, pruebas con respuestas Gemini simuladas.
 - [ ] Reutilizar `validate_structured` y `render_summary` de `backend/productshot/services/summary.py` (ya probados en el Hito 1).
-- [ ] *(Propuesto, ADR-007)* Extracción de ajustes desde los motivos con salida estructurada y resumen de la cadena de rondas.
+- [ ] *(ADR-007)* Extracción de ajustes desde los motivos con salida estructurada y resumen de la cadena de rondas.
 
 ## Hito 4 — Dataset y análisis exploratorio
 

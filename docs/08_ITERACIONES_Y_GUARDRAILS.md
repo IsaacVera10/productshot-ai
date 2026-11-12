@@ -1,6 +1,6 @@
 # 08 — Propuesta: iteraciones guiadas por feedback y guardrails
 
-**Fecha:** 2026-11-04, actualizado el 2026-11-12. **Estado:** la parte B (guardrails) está aceptada; la parte A (iteraciones) sigue como propuesta hasta confirmar con la docente cómo entiende «iteraciones» (P9 en `03`). Nada de este documento está implementado salvo lo marcado como *Hito 1*. Registro formal en ADR-007 y ADR-008 ([03 — Decisiones](03_DECISIONES_Y_RIESGOS.md)).
+**Fecha:** 2026-11-04, actualizado el 2026-11-12. **Estado:** las partes A (iteraciones) y B (guardrails) están aceptadas desde el 2026-11-12. Nada de este documento está implementado salvo lo marcado como *Hito 1*. Registro formal en ADR-007 y ADR-008 ([03 — Decisiones](03_DECISIONES_Y_RIESGOS.md)).
 
 ## Por qué
 
@@ -81,12 +81,14 @@ Esto también cubre «instrucciones escritas por el usuario»: la persona escrib
 - Rondas hasta la primera aceptación.
 - Exactitud de las citas `because` en el resumen de cadena (objetivo: 100 %).
 
-### Preguntas para el equipo
+### Decisiones (2026-11-12)
 
-1. ¿Máximo de 3 rondas por cadena (costo de GPU)?
-2. ¿Se exige `SUMMARIZED` antes de la ronda siguiente, o basta `REVIEWED`?
-3. ¿Hito: 2 (con generación real) o 3 (cuando el agente ya extrae ajustes)? Propuesta: el planificador por reglas en el Hito 2 y la extracción con Gemini en el Hito 3.
-4. ¿Confirmar con la docente que «iteración» se entiende así (rondas de cinco, no regeneración individual)?
+**Interpretación de «iteraciones».** La rúbrica usa la palabra en tres criterios. En Modelo generativo y en Explicabilidad aparece unida a las decisiones y preferencias del usuario, y el nivel más bajo de Modelo generativo castiga que no haya «coherencia entre lo indicado por el usuario y las imágenes generadas». Se adopta la lectura más exigente: una iteración es una **nueva ronda de cinco imágenes derivada de las decisiones de la ronda anterior**. Las otras lecturas posibles (cada una de las cinco variaciones, o cada ciclo de una sesión) quedan cubiertas por esta, así que no se arriesgan puntos si la docente pensaba en otra.
+
+1. **Máximo de rondas:** 3 por cadena, por costo de GPU y tiempo de demo.
+2. **Requisito para la siguiente ronda:** la madre debe estar `SUMMARIZED`, para que cada ronda tenga su resumen verificado antes de derivar la siguiente.
+3. **Hitos:** el planificador por reglas y `POST /sessions/{id}/next-round`, al final del Hito 2, sobre la generación real; la extracción de ajustes con Gemini y el resumen de cadena, en el Hito 3.
+4. **Docente:** se le informa esta interpretación en la próxima entrega de avance (P9), pero no se espera su respuesta para avanzar.
 
 ---
 
