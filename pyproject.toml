@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "productshot-ai"
+version = "0.1.0"
+description = "ProductShot AI — Hito 1: vertical slice offline con backends simulados (mock)."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "uvicorn>=0.30,<1.0",
+    "pydantic>=2.7,<3.0",
+    "pydantic-settings>=2.3,<3.0",
+    "python-multipart>=0.0.9",
+    "pillow>=10.3,<13.0",
+    "httpx>=0.27,<1.0",
+    "gradio>=6.0,<7.0",
+]
+
+# Reservados para hitos posteriores; no se instalan en el Hito 1.
+# [project.optional-dependencies]
+# gpu = ["torch", "diffusers", "transformers", "accelerate", "rembg"]
+# training = ["peft", "datasets"]
+
+[dependency-groups]
+# `uv sync` instala este grupo por defecto.
+dev = ["pytest>=8.0,<10.0"]
+
+[project.scripts]
+productshot = "productshot.main:run"
+
+[tool.setuptools.packages.find]
+where = ["backend", "ui"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

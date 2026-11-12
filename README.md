@@ -1,7 +1,7 @@
 # ProductShot AI
 
 **Proyecto 2 — Planificación y Toma de Decisiones en IA (CS5363, UTEC, 2026-2)**  
-**Estado actual:** especificación técnica y estructura inicial de repositorio; los servicios aún no están implementados.
+**Estado actual:** Hito 1 (vertical slice offline) implementado: API, UI, persistencia y pruebas con segmentación, generación y resumen **simulados**. Todavía no hay generación con IA ni agente LLM.
 
 ## Objetivo
 
@@ -55,12 +55,45 @@ GCP es el despliegue principal y la arquitectura local su respaldo; el mapeo de 
 - [05 — Colab y GCP](docs/05_COLAB_Y_GCP.md)
 - [06 — Evaluación y ética](docs/06_EVALUACION_Y_ETICA.md)
 - [07 — Enunciado Proyecto 2](docs/07_ENUNCIADO_PROYECTO_2.md)
+- [08 — Propuesta: iteraciones y guardrails](docs/08_ITERACIONES_Y_GUARDRAILS.md) (pendiente de revisión)
+- [Rúbrica de evaluación](docs/Evaluación_Rúbrica_Proyecto2.md)
 
 **Fuente primaria:** `Evaluación_Enunciado Proyecto2.pdf`. El archivo `docs/07_ENUNCIADO_PROYECTO_2.md` reproduce el contenido textual del documento original en Markdown para consulta. Ante discrepancias prevalece el PDF oficial.
 
-## Primer hito: prototipo offline
+## Ejecución local (Hito 1)
 
-Construir un flujo verificable sin modelos pesados: una foto, dos modos simulados identificados como tales, cinco imágenes de demostración, cinco decisiones persistidas y resumen determinista. No se debe confundir este hito con el sistema generativo final.
+El proyecto se gestiona con [uv](https://docs.astral.sh/uv/). No necesita GPU, red (salvo para instalar) ni credenciales.
+
+```bash
+uv sync                # crea .venv con Python 3.12 e instala las versiones exactas de uv.lock
+uv run productshot     # API + UI en http://127.0.0.1:8000  (UI en /ui, OpenAPI en /docs)
+uv run pytest          # pruebas T01–T14 y complementarias
+```
+
+`uv run` usa siempre el `.venv` del proyecto, así que no hace falta activarlo. Para añadir una dependencia: `uv add <paquete>` (o `uv add --dev <paquete>` si solo es para desarrollo); después versionar `pyproject.toml` y `uv.lock` juntos.
+
+Sin uv (alternativa): crear y activar un entorno con `python -m venv .venv`, luego `pip install -e .` y `pip install pytest`. Así no se respetan las versiones exactas del lockfile.
+
+La configuración se lee de variables de entorno o de un `.env` (copiar `.env.example`). Los datos se guardan en `data/`, que Git ignora.
+
+Estructura:
+
+| Ruta | Contenido |
+|---|---|
+| `backend/productshot/domain.py` | Estados, estilos, entidades y errores de dominio |
+| `backend/productshot/storage/` | Repositorio SQLite y almacenamiento de artefactos (adaptadores) |
+| `backend/productshot/services/` | Orquestador de sesión, segmentación, generación, resumen y validador |
+| `backend/productshot/api/` | FastAPI: rutas `/api/v1` y esquemas |
+| `ui/productshot_ui/` | Gradio; consume la API por HTTP |
+| `tests/` | Pruebas `pytest` sin red ni GPU |
+
+### Límites conocidos del Hito 1
+
+- La máscara es una elipse fija y las cinco imágenes son fondos planos con el producto recortado. Todo lleva la franja «SIMULACIÓN (MOCK) - NO GENERADO POR IA»; **no son resultados de IA**.
+- El resumen lo compone Python (`generated_by: deterministic_fallback`); no hay agente LLM todavía.
+- `POST /sessions/{id}/mask` (máscara manual) queda para el Hito 2.
+- Sin autenticación: cualquiera con el ID de sesión puede ver sus imágenes. Solo para uso local.
+- El ejecutor de trabajos es un hilo del mismo proceso; un reinicio marca como `FAILED` las generaciones en curso.
 
 Consultar [roadmap y casos de prueba](docs/04_ROADMAP_Y_TESTS.md) antes de desarrollar. La ejecución de pruebas y la disponibilidad de GPU deben verificarse antes de declarar una función como operativa.
 

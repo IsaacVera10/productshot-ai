@@ -140,3 +140,25 @@ Consecuencias: BG60k solo permite uso académico, sin licencia con nombre; debe 
 Descartes: Pexels por términos que restringen la extracción para machine learning y la copia masiva; Products-10K por estar orientado a reconocimiento y ser no comercial; PxHere por ser general, sin captions declarados y con contenido adulto aparente; Getty por su tamaño y sus términos con acceso condicionado. Unsplash Lite queda en reserva, porque sus términos restringen publicar partes de los datos.
 Evidencia: revisión de papers, páginas y términos oficiales. Sin descarga: siguen sin comprobar el acceso, la integridad, las máscaras, los duplicados, la cobertura y el rendimiento.
 ```
+
+```text
+ADR-007 — Iteraciones guiadas por las decisiones del usuario
+Fecha: 2026-11-04
+Estado: propuesta (pendiente de revisión del equipo)
+Contexto: la rúbrica pide «correspondencia entre las decisiones del usuario y las iteraciones» y D-10 impide que las decisiones influyan en una generación posterior.
+Opciones: regenerar las rechazadas dentro de la misma sesión; que el LLM reescriba los prompts; nueva ronda como sesión hija con un planificador determinista.
+Decisión propuesta: ronda siguiente = sesión hija (misma imagen y máscara, cinco variaciones) cuyo plan deriva de las decisiones previas mediante un planificador determinista y un vocabulario cerrado de ajustes. D-10 se mantiene por ronda.
+Consecuencias: campos parent_session_id, round_index y round_plan_json; la invariante de lote pasa a cinco (style, variant) distintos; nueva ruta POST /sessions/{id}/next-round; resumen de cadena con citas verificables. Detalle en 08_ITERACIONES_Y_GUARDRAILS.md.
+Evidencia: lectura de la rúbrica; sin implementación ni validación docente.
+```
+
+```text
+ADR-008 — Guardrails ejecutables
+Fecha: 2026-11-04
+Estado: propuesta (pendiente de revisión del equipo); G1, G4, G10 (validador) y el rótulo mock de G9 ya están en el Hito 1
+Contexto: la rúbrica de ética (2 pts) exige guardrails implementados y visibles en la demo, no solo reflexión.
+Opciones: solo reflexión; filtros externos de contenido; guardrails por capas (entrada, texto, generación, salida, fidelidad, transparencia, agente, operación).
+Decisión propuesta: guardrails por capas G1–G11, priorizando fidelidad del producto (G8), clasificador NSFW en entrada y salida (G2, G7) y detector de rostros (G3).
+Consecuencias: más VRAM y latencia en el worker (clasificadores), umbrales que calibrar y casos de demo preparados. Detalle en 08_ITERACIONES_Y_GUARDRAILS.md.
+Evidencia: lectura de la rúbrica; sin mediciones todavía.
+```
