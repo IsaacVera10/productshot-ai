@@ -93,6 +93,38 @@ class Api:
         return self._call("POST", f"/sessions/{sid}/summary")
 
 
+def _clean_reason(reason: str | None) -> str | None:
+    """Aproxima la normalización de la API (una línea, espacios colapsados) para comparar."""
+    return " ".join((reason or "").split()) or None
+
+
+def pending_decisions(variations: list[dict], decisions, reasons) -> tuple[list[tuple[str, str, str | None]], list[int]]:
+    """Compara el formulario con lo persistido.
+
+    Devuelve las decisiones que difieren del registro, como `(variation_id, decisión, motivo)`,
+    y las posiciones que aún no tienen decisión en el formulario.
+    """
+    to_save, missing = [], []
+    for v, d, r in zip(variations, decisions, reasons):
+        if not d:
+            missing.append(v["position"])
+            continue
+        reason = _clean_reason(r)
+        stored = v["decision"]
+        if stored is None or stored["decision"] != d or _clean_reason(stored["reason"]) != reason:
+            to_save.append((v["id"], d, reason))
+    return to_save, missing
+
+
+def _form_from(variations: list[dict]) -> list:
+    """Valores del formulario [decisión, motivo] × 5 tomados del registro."""
+    out = []
+    for v in variations:
+        d = v["decision"]
+        out += [gr.update(value=d["decision"] if d else None), gr.update(value=(d["reason"] or "") if d else "")]
+    return out
+
+
 def _empty_cards() -> list:
     out = []
     for i in range(N):
@@ -205,38 +237,56 @@ def build_ui(api_base: str) -> gr.Blocks:
                 return f"**Error:** {exc}"
             if not session["variations"]:
                 return "Todavía no hay variaciones para decidir."
-            decisions = values[0::2]
-            reasons = values[1::2]
-            missing = [str(i + 1) for i, d in enumerate(decisions) if not d]
-            saved = 0
+            to_save, missing = pending_decisions(session["variations"], values[0::2], values[1::2])
             try:
-                for v, d, r in zip(session["variations"], decisions, reasons):
-                    if d:
-                        api.decide(sid, v["id"], d, (r or "").strip() or None)
-                        saved += 1
+                for vid, d, r in to_save:
+                    api.decide(sid, vid, d, r)
             except ApiError as exc:
                 return f"**Error:** {exc}"
             if missing:
-                return f"Se guardaron {saved} decisiones. Faltan las variaciones {', '.join(missing)}."
+                return (f"Decisiones al día ({len(to_save)} cambios guardados). "
+                        f"Faltan las variaciones {', '.join(map(str, missing))}.")
             return "Se guardaron las cinco decisiones. Ya puedes generar el resumen."
 
-        def summarize(sid):
+        def summarize(sid, *values):
+            # El resumen congela lo PERSISTIDO. Para que coincida con lo que la persona ve,
+            # primero se guardan los cambios pendientes del formulario y, al final, el
+            # formulario se rellena desde el registro.
+            keep = [gr.update()] * (2 * N)
             if not sid:
-                return "No hay sesión activa.", ""
+                return "No hay sesión activa.", "", *keep
             try:
+                session = api.session(sid)
+                if not session["variations"]:
+                    return "Todavía no hay variaciones para resumir.", "", *keep
+                to_save, missing = pending_decisions(session["variations"], values[0::2], values[1::2])
+                note = ""
+                if session["summary_available"]:
+                    if to_save or missing:
+                        note = (" Los cambios del formulario no se aplicaron: la sesión ya estaba resumida"
+                                " y el resumen refleja las decisiones guardadas.")
+                else:
+                    if missing:
+                        return (f"Faltan decisiones en las variaciones {', '.join(map(str, missing))};"
+                                " complétalas antes de resumir.", "", *keep)
+                    for vid, d, r in to_save:
+                        api.decide(sid, vid, d, r)
                 s = api.summary(sid)
+                frozen = api.session(sid)
             except ApiError as exc:
-                return f"**Error:** {exc}", ""
+                return f"**Error:** {exc}", "", *keep
             meta = f"\n\n[generado por: {s['generated_by']} · validación: {s['validation_status']}]"
             if s["limitations"]:
                 meta += "\nLimitaciones:\n" + "\n".join(f"- {x}" for x in s["limitations"])
-            return "Resumen generado. Las decisiones de esta sesión quedan congeladas.", s["summary"] + meta
+            return ("Resumen generado. Las decisiones de esta sesión quedan congeladas." + note,
+                    s["summary"] + meta, *_form_from(frozen["variations"]))
 
         start_btn.click(start, [image_in, mode_in],
                         [session_state, mask_out, status_md, *card_components, summary_out])
         reseg_btn.click(resegment, [session_state], [mask_out, status_md])
         gen_btn.click(generate, [session_state], [status_md, *card_components])
         save_btn.click(save, [session_state, *decision_inputs], [status_md])
-        summary_btn.click(summarize, [session_state], [status_md, summary_out])
+        summary_btn.click(summarize, [session_state, *decision_inputs],
+                          [status_md, summary_out, *decision_inputs])
 
     return demo

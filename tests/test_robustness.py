@@ -132,6 +132,24 @@ def test_original_upload_is_stored_without_exif(client, settings):
         assert img.size == (200, 300)  # la orientación se aplicó antes de quitar el EXIF
 
 
+@pytest.mark.parametrize("hidden", [(0, 0, 0), (0, 255, 0)])
+def test_transparent_png_is_flattened_on_white(client, settings, hidden):
+    # Producto recortado con un removedor de fondo: el fondo es transparente y debajo hay
+    # un color oculto. El lienzo de trabajo no debe mostrar ese color, sino blanco.
+    img = Image.new("RGBA", (120, 100), (*hidden, 0))
+    img.paste((200, 40, 40, 255), (40, 30, 80, 70))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+
+    body = create_session(client, data=buf.getvalue()).json()
+    with Image.open(settings.asset_root / body["id"] / "input.png") as working:
+        assert working.mode == "RGB"
+        assert working.getpixel((2, 2)) == (255, 255, 255)
+        assert working.getpixel((60, 50)) == (200, 40, 40)
+    with Image.open(settings.asset_root / body["id"] / "original.png") as original:
+        assert original.mode == "RGBA"  # el original conserva la transparencia
+
+
 def test_concurrent_summary_returns_existing_record(client):
     s = ready_session(client)
     decide_all(client, s, ["accepted", "rejected", "accepted", "rejected", "rejected"])
