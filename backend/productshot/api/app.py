@@ -29,7 +29,7 @@ from productshot.config import Settings
 from productshot.domain import DomainError, GenerationJob, Mask, Mode, NotFound, SessionView
 from productshot.services.generation import GenerationBackend, MockGenerationBackend
 from productshot.services.jobs import JobRunner, ThreadJobRunner
-from productshot.services.segmentation import MockSegmentationService
+from productshot.services.segmentation import MockSegmentationService, SegmentationService
 from productshot.services.sessions import SessionService
 from productshot.services.summary import DeterministicSummaryService
 from productshot.storage.artifacts import InvalidArtifactKey, LocalArtifactStore
@@ -109,9 +109,8 @@ def _build_router() -> APIRouter:
     def svc(request: Request) -> SessionService:
         return request.app.state.sessions
 
-    def simulated(request: Request) -> bool:
-        s = svc(request)
-        return s.generator.simulated or s.segmenter.name == "mock"
+    def out(request: Request, view: SessionView) -> SessionOut:
+        return _session_out(view, svc(request).is_simulated(view))
 
     @router.get("/healthz")
     def healthz() -> dict:
@@ -128,12 +127,11 @@ def _build_router() -> APIRouter:
         # detiene el event loop ni las demás solicitudes (como el sondeo de la UI).
         limit = svc(request).settings.max_upload_bytes
         data = image.file.read(limit + 1)  # leer uno de más basta para detectar el exceso
-        view = svc(request).create_session(data, mode)
-        return _session_out(view, simulated(request))
+        return out(request, svc(request).create_session(data, mode))
 
     @router.get("/sessions/{session_id}", response_model=SessionOut)
     def get_session(request: Request, session_id: str) -> SessionOut:
-        return _session_out(svc(request).get_view(session_id), simulated(request))
+        return out(request, svc(request).get_view(session_id))
 
     @router.post("/sessions/{session_id}/segment", response_model=SegmentOut)
     def segment(request: Request, session_id: str) -> SegmentOut:
@@ -185,6 +183,7 @@ def create_app(
     *,
     runner: JobRunner | None = None,
     generator: GenerationBackend | None = None,
+    segmenter: SegmentationService | None = None,
     mount_ui: bool = True,
 ) -> FastAPI:
     settings = settings or Settings()
@@ -193,7 +192,7 @@ def create_app(
         settings=settings,
         repo=SqliteRepository(settings.sqlite_path),
         store=LocalArtifactStore(settings.asset_root),
-        segmenter=MockSegmentationService(),
+        segmenter=segmenter or MockSegmentationService(),
         generator=generator or MockGenerationBackend(),
         summarizer=DeterministicSummaryService(),
         runner=runner,

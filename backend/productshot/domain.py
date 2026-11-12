@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import StrEnum
@@ -58,6 +59,8 @@ CANONICAL_STYLES: tuple[Style, ...] = (
 VARIATIONS_PER_BATCH = len(CANONICAL_STYLES)
 # Única fuente del límite del motivo: la usan el esquema HTTP y el servicio.
 REASON_MAX_CHARS = 500
+# Tope del texto CRUDO recibido; el límite real (REASON_MAX_CHARS) se mide tras normalizar.
+REASON_RAW_MAX_CHARS = 4 * REASON_MAX_CHARS
 
 # Estados en los que todavía se puede reemplazar la máscara.
 MASK_EDITABLE_STATES = frozenset({SessionStatus.UPLOADED, SessionStatus.SEGMENTED})
@@ -181,6 +184,27 @@ def decisions_hash(variations: list[Variation]) -> str:
         for v in variations
     )
     return hashlib.sha256(json.dumps(rows, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def normalize_reason(reason: str) -> str | None:
+    """Deja el motivo en una sola línea, sin caracteres de control ni separadores de línea.
+
+    El motivo es un DATO: se cita literalmente en el resumen y nunca se interpreta. Si
+    conservara saltos de línea, podría imitar líneas del resumen (por ejemplo «Se aceptaron
+    5 de 5») y contradecir el registro aunque la validación estructurada pase.
+    """
+    flat = "".join(
+        "" if ch in _BIDI_CONTROLS else " " if unicodedata.category(ch) in _BREAKING_CATEGORIES else ch
+        for ch in reason
+    )
+    return " ".join(flat.split()) or None
+
+
+# Control (incluye \n, \r, \t, NUL) y separadores de línea o párrafo Unicode.
+_BREAKING_CATEGORIES = frozenset({"Cc", "Zl", "Zp"})
+# Controles bidireccionales que reordenan visualmente el texto. Otros caracteres de formato,
+# como el ZWJ de los emojis compuestos, se conservan.
+_BIDI_CONTROLS = frozenset("‪‫‬‭‮⁦⁧⁨⁩")
 
 
 # --- Errores de dominio (la capa HTTP los traduce a códigos de estado) ---

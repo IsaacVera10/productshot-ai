@@ -13,6 +13,8 @@ from PIL import Image
 
 from conftest import create_session, decide_all, ready_session
 from productshot.domain import DecisionValue, Decision, Style, SummaryRecord, Variation, decisions_hash, utcnow
+from productshot.services.generation import MockGenerationBackend
+from productshot.services.segmentation import MockSegmentationService
 from productshot.services.summary import StructuredSummary, SummaryItem, validate_structured
 from productshot.storage.artifacts import InvalidArtifactKey, LocalArtifactStore
 
@@ -229,3 +231,86 @@ def test_validator_rejects_missing_duplicate_or_unknown_items():
     assert any("Faltan" in e for e in result.errors)
     unknown = dataclasses.replace(items[0], variation_id="otra")
     assert not validate_structured(StructuredSummary(items=tuple(items[1:] + [unknown])), vs).ok
+
+
+# --- fallos de recuperación y rótulo de simulación ---
+
+
+class _RealishGenerator(MockGenerationBackend):
+    """Se declara no simulado para probar el rótulo; la imagen sigue siendo la del mock."""
+
+    name = "fake-real"
+    simulated = False
+
+
+class _RealishSegmenter(MockSegmentationService):
+    name = "fake-real"
+    simulated = False
+
+    def segment(self, image):
+        return dataclasses.replace(super().segment(image), simulated=False)
+
+
+def test_simulated_flag_comes_from_the_session_record(make_client):
+    mock_client = make_client()
+    old = ready_session(mock_client)
+    assert old["simulated"] is True
+
+    # Mismo almacenamiento, servidor reconfigurado con backends «reales».
+    real_client = make_client(generator=_RealishGenerator(), segmenter=_RealishSegmenter())
+    assert real_client.get(f"/api/v1/sessions/{old['id']}").json()["simulated"] is True
+    new = ready_session(real_client)
+    assert new["simulated"] is False
+
+
+def test_failed_preview_write_leaves_no_orphan_mask(client, settings, monkeypatch):
+    sid = create_session(client).json()["id"]
+    store = client.app.state.sessions.store
+    original_save = store.save
+
+    def flaky_save(data, key):
+        if key.endswith("_preview.png"):
+            raise OSError("disco lleno")
+        return original_save(data, key)
+
+    monkeypatch.setattr(store, "save", flaky_save)
+    # TestClient relanza la excepción del servidor (en producción sería un 500 internal_error).
+    with pytest.raises(OSError, match="disco lleno"):
+        client.post(f"/api/v1/sessions/{sid}/segment")
+    assert not list((settings.asset_root / sid).glob("mask_*"))
+    body = client.get(f"/api/v1/sessions/{sid}").json()
+    assert body["status"] == "UPLOADED" and body["mask"] is None
+
+
+class _RejectingRunner:
+    def submit(self, fn):
+        raise RuntimeError("cola llena")
+
+    def shutdown(self):
+        pass
+
+
+def test_submit_failure_marks_job_failed(make_client):
+    client = make_client(runner=_RejectingRunner())
+    sid = create_session(client).json()["id"]
+    client.post(f"/api/v1/sessions/{sid}/segment")
+    r = client.post(f"/api/v1/sessions/{sid}/generate")
+    assert r.status_code == 503
+    assert r.json()["error"]["code"] == "dependency_unavailable"
+    body = client.get(f"/api/v1/sessions/{sid}").json()
+    assert body["status"] == "FAILED"
+    assert body["job"]["status"] == "FAILED"
+    assert "no está disponible" in body["failure_reason"]
+
+
+def test_reason_limit_applies_after_normalization(client):
+    s = ready_session(client)
+    url = f"/api/v1/sessions/{s['id']}/variations/{s['variations'][0]['id']}/decision"
+    # 600 caracteres crudos que normalizados son «ok»: se acepta y se guarda normalizado.
+    r = client.put(url, json={"decision": "accepted", "reason": "ok" + " " * 598})
+    assert r.status_code == 200
+    assert r.json()["reason"] == "ok"
+    # 501 caracteres útiles: se rechaza aunque el tope crudo sea mayor.
+    assert client.put(url, json={"decision": "accepted", "reason": "x" * 501}).status_code == 422
+    # Por encima del tope crudo se rechaza sin normalizar.
+    assert client.put(url, json={"decision": "accepted", "reason": " " * 2001}).status_code == 422
