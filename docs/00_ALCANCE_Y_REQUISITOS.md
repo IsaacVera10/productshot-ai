@@ -12,6 +12,17 @@
 8. **Evaluar** calidad visual, diversidad, coherencia del resumen, usabilidad y limitaciones éticas.
 9. Código reproducible, evidencias/diagramas, informe técnico de **máximo 10 páginas**, video de **máximo 3 minutos** y presentación de **máximo 6 minutos**. El video requiere docente UTEC o estudiante pregrado de carrera distinta de CC/DS, con presentación y consentimiento al comienzo (~10 s).
 
+### Lineamientos adicionales indicados en clase
+
+Además del enunciado, el docente pidió en clase:
+
+| Lineamiento | Dónde se cubre |
+|---|---|
+| Encontrar un nicho para el proyecto | Sección «Nicho» de este documento |
+| Guardrails para manejar fallos | `01_ARQUITECTURA.md`, sección G |
+| Métricas de usabilidad | `06_EVALUACION_Y_ETICA.md`, sección «Usabilidad» |
+| Probar con un mínimo de 10 usuarios ajenos a la carrera (familiares o conocidos) | `06_EVALUACION_Y_ETICA.md`, sección «Prueba con usuarios» |
+
 ### No obligatorio en el enunciado
 
 - Comparación experimental A/B de los dos enfoques (la haremos porque aporta evidencia).
@@ -30,6 +41,26 @@ La aplicación no es una herramienta de identidad de marca: no crea logotipos ni
 Personas emprendedoras suben una foto casera de un artículo pequeño y obtienen cinco **ambientaciones**: `studio`, `natural`, `warm`, `lifestyle`, `minimal`. Son cinco presets **propuestos**, no impuestos por el curso. El sistema conserva orientación/perspectiva y características visibles; puede cambiar principalmente fondo y composición circundante. Para un producto con logotipo, texto o estampado, evitar editar esas regiones.
 
 `minimal` debe distinguirse de `studio` por rasgos observables de fondo, espacio negativo y utilería. Los presets describen principalmente el entorno: preservar los píxeles del producto impide cambiar físicamente su iluminación.
+
+### Nicho
+
+**Quiénes:** personas que emprenden en Perú y venden productos pequeños, hechos a mano o de reventa, por Instagram, TikTok, WhatsApp o Facebook Marketplace. Toman las fotos con el celular, en casa, y no contratan sesiones de fotografía.
+
+**Qué productos:** objetos pequeños, rígidos y de superficie mate o semimate que se fotografían sobre una mesa: tazas y vasos personalizados, velas, jabones artesanales, macetas, cerámica, artículos de decoración y papelería. Coinciden con los casos obligatorios de `04_ROADMAP_Y_TESTS.md`.
+
+**Problema:** una foto casera con fondo desordenado o luz pobre transmite poca confianza en una publicación de venta. Las alternativas al alcance tienen límites: un removedor de fondo deja el producto sobre un fondo plano y sin contexto, y un editor generativo general puede alterar el producto, su color o su logotipo.
+
+**Propuesta de valor:** en una sola sesión, cinco ambientaciones listas para catálogo o redes sociales, sin escribir prompts y conservando el producto tal como es.
+
+**Persona tipo:** vende tazas sublimadas por Instagram desde su casa, publica varias veces por semana, usa el celular para todo y no tiene experiencia con herramientas de diseño. Quiere fotos con aspecto profesional sin aprender a usar un editor.
+
+**Por qué este nicho:**
+
+- Los productos pequeños y rígidos son los que la segmentación y el inpainting manejan mejor; ropa, alimentos o joyería brillante fallarían más.
+- Las redes sociales piden varias imágenes distintas de un mismo producto, lo que da sentido a generar cinco ambientaciones.
+- Es un público al que el equipo tiene acceso entre familiares y conocidos, lo que hace viable la prueba con usuarios reales.
+
+**Fuera del nicho en v1:** ropa puesta en modelos, alimentos preparados, productos grandes como muebles, objetos transparentes o muy reflectantes y fotos de personas.
 
 ### Input v1
 

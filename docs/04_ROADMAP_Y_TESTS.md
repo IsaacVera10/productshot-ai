@@ -77,6 +77,7 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 - [ ] Integrar preservación del producto y manejo explícito de sombras/bordes.
 - [ ] Generar cinco estilos por sesión; guardar checkpoint/revisión/seeds/prompts.
 - [ ] Probar fallos en tazas, recipientes y decorativos; registrar errores.
+- [ ] Implementar los guardrails nuevos de `01_ARQUITECTURA.md` (sección G): heurística de máscara, detector de rostros, brillo y nitidez, verificación de píxeles del producto, clasificador NSFW, timeout por lote y límite de generaciones; calibrar sus umbrales con los casos obligatorios.
 - [ ] Casos obligatorios: taza con logotipo (hueco del asa, brillo y logo curvo), producto mate sencillo, producto blanco sobre fondo claro y producto con texto pequeño visible. Evaluar el logotipo contra la foto original, sin exigir reconstruir su parte oculta.
 - [ ] *(Propuesto, ADR-008, pendiente de revisión)* Guardrails G2, G3, G7 y G8: clasificador NSFW en entrada y salida, detector de rostros y verificación de fidelidad de la región protegida.
 - [ ] *(Propuesto, ADR-007, pendiente de revisión)* Rondas siguientes con planificador determinista y vocabulario cerrado de ajustes por reglas.
@@ -118,6 +119,9 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 ## Hito 7 — Evaluación, video e informe
 
 - [ ] Evaluación comparativa y análisis crítico en ejemplos reservados.
+- [ ] Prueba con usuarios según `06_EVALUACION_Y_ETICA.md`: reclutar 10 o más personas ajenas a CC/DS, preferentemente del nicho; puede empezar apenas termine el Hito 2.
+- [ ] Piloto del guion con una o dos personas y ajuste antes de las sesiones.
+- [ ] Sesiones con SUS, SEQ, éxito y tiempo por tarea; corregir los problemas que bloquean y reportar el resto.
 - [ ] Video y demostración e informe.
 
 ## Alcance técnico del primer hito

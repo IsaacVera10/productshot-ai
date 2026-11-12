@@ -103,7 +103,7 @@ Los IDs de arriba son **ilustrativos**, no UUID válidos; la implementación los
 - **Una sesión = una generación**; POST duplicados devuelven 409 salvo reintento idempotente de la misma operación.
 - Se permite cambiar las decisiones mientras no esté `SUMMARIZED`; tras resumen quedan congeladas.
 - Un resumen **no se solicita** hasta cinco decisiones registradas, incluyendo caso `0 accepted`.
-- En errores HTTP: 400 para contenido inválido no capturado por validación, 404 ID inexistente, 409 conflicto de estado, 413 archivo excesivo, 422 payload inválido, 503 dependencia LLM/GPU caída; usar estructura de error coherente.
+- En errores HTTP: 400 para contenido inválido no capturado por validación, 404 ID inexistente, 409 conflicto de estado, 413 archivo excesivo, 422 payload inválido o foto rechazada por los guardrails de entrada, 429 límite de generaciones alcanzado, 503 dependencia LLM/GPU caída; usar estructura de error coherente con un mensaje en español para la persona usuaria y la acción siguiente (ver `01_ARQUITECTURA.md`, sección G).
 
 ## Persistencia local
 

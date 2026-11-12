@@ -16,6 +16,9 @@
 | D-08 | Gemini mediante Vertex AI para agente LLM | Consumo gestionado, sin alojar LLM en nuestra GPU | Elegido |
 | D-09 | MVP local offline con adaptador mock y resumen determinista | Probar el flujo sin costosos modelos ni credenciales | Elegido para primer PR |
 | D-10 | Una sesión = imagen + modo + generación de cinco; sin iteraciones | Evita estado ambiguo y repetición de costes | Decisión v1 revisable |
+| D-11 | Nicho: emprendedores en Perú que venden productos pequeños y rígidos por redes sociales (ver `00_ALCANCE_Y_REQUISITOS.md`) | Lineamiento de clase; acota los productos a los que el pipeline maneja mejor y da acceso a usuarios de prueba | Propuesta, pendiente de validar con el equipo |
+| D-12 | Guardrails por etapa del flujo, con mensaje y acción siguiente para cada fallo (ver `01_ARQUITECTURA.md`, sección G) | Lineamiento de clase; ningún fallo deja la sesión en un estado ambiguo | Propuesta |
+| D-13 | Prueba de usabilidad con 10 o más personas ajenas a CC/DS, con SUS, éxito y tiempo por tarea (ver `06_EVALUACION_Y_ETICA.md`) | Lineamiento de clase | Propuesta |
 
 ## Pendientes que NO bloquean el primer PR
 
