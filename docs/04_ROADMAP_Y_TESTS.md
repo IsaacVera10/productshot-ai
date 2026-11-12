@@ -28,7 +28,7 @@ Los Hitos 2 y 3 pueden avanzar en paralelo. El Hito 7 depende de los modelos rea
 
 Objetivo: **demostración local offline** con cinco imágenes simuladas y resumen determinista; *no afirmar generación real ni agente LLM*.
 
-**Estado (2026-11-04):** implementado en la rama `feat/hito-1-mock`; `pytest` pasa con 39 pruebas en local (Windows, Python 3.12). Falta la revisión por otro integrante.
+**Estado (2026-11-12):** implementado y revisado en la rama `feat/hito-1-mock` (PR 1). La revisión corrigió el motivo multilínea, el EXIF del original, el resumen concurrente y el bloqueo del event loop; `pytest` pasa con 43 pruebas (Windows, Python 3.12, `uv sync --locked`). Queda P10 para el Hito 6.
 
 - [x] `pyproject.toml` con dependencias ligeras y versiones fijables; separar extras pesados `gpu` y `training` para después.
 - [x] FastAPI + Pydantic, rutas de `02_API_Y_MODELO_DE_DATOS.md` (salvo `POST /mask`, que es del Hito 2).
@@ -78,8 +78,9 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 - [ ] Generar cinco estilos por sesión; guardar checkpoint/revisión/seeds/prompts.
 - [ ] Probar fallos en tazas, recipientes y decorativos; registrar errores.
 - [ ] Casos obligatorios: taza con logotipo (hueco del asa, brillo y logo curvo), producto mate sencillo, producto blanco sobre fondo claro y producto con texto pequeño visible. Evaluar el logotipo contra la foto original, sin exigir reconstruir su parte oculta.
-- [ ] *(Propuesto, ADR-008, pendiente de revisión)* Guardrails G2, G3, G7 y G8: clasificador NSFW en entrada y salida, detector de rostros y verificación de fidelidad de la región protegida.
-- [ ] *(Propuesto, ADR-007, pendiente de revisión)* Rondas siguientes con planificador determinista y vocabulario cerrado de ajustes por reglas.
+- [ ] Guardrails del Hito 2 (ADR-008, `08_ITERACIONES_Y_GUARDRAILS.md`): G2 y G7 (clasificador NSFW en entrada y salida), G3 (rostros: rechazar), G8 (fidelidad de la región protegida), G12 (brillo y nitidez), G13 (heurística de máscara) y G14 (timeout por lote). Calibrar sus umbrales con los casos obligatorios.
+- [ ] `DELETE /sessions/{id}` para el borrado de fotos (G11).
+- [ ] Iteraciones (ADR-007), al cerrar el Hito 2: `POST /sessions/{id}/next-round`, sesiones hijas (máximo 3 rondas), planificador determinista y vocabulario cerrado de ajustes por reglas.
 
 ## Hito 3 — Agente con Gemini en Vertex AI
 
@@ -89,7 +90,7 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 - [ ] Python verifica cobertura, decisiones y citas, y renderiza la enumeración; `generated_by` y `validation_status` reflejan el resultado. Fallback explícito ante timeout/error, sin disfrazar fallback como agente.
 - [ ] IAM mínimo, sin secretos en `.env` versionado, pruebas con respuestas Gemini simuladas.
 - [ ] Reutilizar `validate_structured` y `render_summary` de `backend/productshot/services/summary.py` (ya probados en el Hito 1).
-- [ ] *(Propuesto, ADR-007)* Extracción de ajustes desde los motivos con salida estructurada y resumen de la cadena de rondas.
+- [ ] *(ADR-007)* Extracción de ajustes desde los motivos con salida estructurada y resumen de la cadena de rondas.
 
 ## Hito 4 — Dataset y análisis exploratorio
 
@@ -118,6 +119,9 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 ## Hito 7 — Evaluación, video e informe
 
 - [ ] Evaluación comparativa y análisis crítico en ejemplos reservados.
+- [ ] Prueba con usuarios según `06_EVALUACION_Y_ETICA.md`: reclutar 10 o más personas ajenas a CC/DS, preferentemente del nicho; puede empezar apenas termine el Hito 2.
+- [ ] Piloto del guion con una o dos personas y ajuste antes de las sesiones.
+- [ ] Sesiones con SUS, SEQ, éxito y tiempo por tarea; corregir los problemas que bloquean y reportar el resto.
 - [ ] Video y demostración e informe.
 
 ## Alcance técnico del primer hito

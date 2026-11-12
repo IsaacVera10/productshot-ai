@@ -252,3 +252,9 @@ flowchart TD
 - **Reintentos:** Cloud Tasks puede repetir entregas, así que el worker debe ser idempotente; el ejecutor local debe cumplir el mismo contrato.
 - **Trabajos interrumpidos:** un reinicio del proceso o del worker no debe dejar la sesión en `GENERATING` indefinidamente.
 - **Almacenamiento:** Cloud Run tiene disco efímero, por lo que no debe depender de rutas locales.
+
+## G. Guardrails ante fallos
+
+La lista completa de guardrails (G1 a G14), su estado por hito y las decisiones tomadas están en [`08_ITERACIONES_Y_GUARDRAILS.md`](08_ITERACIONES_Y_GUARDRAILS.md), parte B, registrada como ADR-008. Esta sección no la duplica.
+
+Las garantías de arquitectura que los sostienen ya están descritas arriba: lote atómico de cinco, idempotencia, recuperación de trabajos interrumpidos, máscara bloqueada tras generar y agente con herramientas de solo lectura y salida verificada.

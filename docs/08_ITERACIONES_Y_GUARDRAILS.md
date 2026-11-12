@@ -1,6 +1,6 @@
 # 08 — Propuesta: iteraciones guiadas por feedback y guardrails
 
-**Fecha:** 2026-11-04. **Estado:** propuesta para revisión del equipo; nada de este documento está implementado salvo lo marcado como *Hito 1*. Registro formal en ADR-007 y ADR-008 ([03 — Decisiones](03_DECISIONES_Y_RIESGOS.md)).
+**Fecha:** 2026-11-04, actualizado el 2026-11-12. **Estado:** las partes A (iteraciones) y B (guardrails) están aceptadas desde el 2026-11-12. Nada de este documento está implementado salvo lo marcado como *Hito 1*. Registro formal en ADR-007 y ADR-008 ([03 — Decisiones](03_DECISIONES_Y_RIESGOS.md)).
 
 ## Por qué
 
@@ -81,32 +81,39 @@ Esto también cubre «instrucciones escritas por el usuario»: la persona escrib
 - Rondas hasta la primera aceptación.
 - Exactitud de las citas `because` en el resumen de cadena (objetivo: 100 %).
 
-### Preguntas para el equipo
+### Decisiones (2026-11-12)
 
-1. ¿Máximo de 3 rondas por cadena (costo de GPU)?
-2. ¿Se exige `SUMMARIZED` antes de la ronda siguiente, o basta `REVIEWED`?
-3. ¿Hito: 2 (con generación real) o 3 (cuando el agente ya extrae ajustes)? Propuesta: el planificador por reglas en el Hito 2 y la extracción con Gemini en el Hito 3.
-4. ¿Confirmar con la docente que «iteración» se entiende así (rondas de cinco, no regeneración individual)?
+**Interpretación de «iteraciones».** La rúbrica usa la palabra en tres criterios. En Modelo generativo y en Explicabilidad aparece unida a las decisiones y preferencias del usuario, y el nivel más bajo de Modelo generativo castiga que no haya «coherencia entre lo indicado por el usuario y las imágenes generadas». Se adopta la lectura más exigente: una iteración es una **nueva ronda de cinco imágenes derivada de las decisiones de la ronda anterior**. Las otras lecturas posibles (cada una de las cinco variaciones, o cada ciclo de una sesión) quedan cubiertas por esta, así que no se arriesgan puntos si la docente pensaba en otra.
+
+1. **Máximo de rondas:** 3 por cadena, por costo de GPU y tiempo de demo.
+2. **Requisito para la siguiente ronda:** la madre debe estar `SUMMARIZED`, para que cada ronda tenga su resumen verificado antes de derivar la siguiente.
+3. **Hitos:** el planificador por reglas y `POST /sessions/{id}/next-round`, al final del Hito 2, sobre la generación real; la extracción de ajustes con Gemini y el resumen de cadena, en el Hito 3.
+4. **Docente:** se le informa esta interpretación en la próxima entrega de avance (P9), pero no se espera su respuesta para avanzar.
 
 ---
 
 ## Parte B — Guardrails (ADR-008)
 
-Capas ordenadas según el flujo. «H1» indica lo que ya está implementado en el Hito 1.
+Este documento es la fuente única de los guardrails; `01_ARQUITECTURA.md` (sección G) solo remite aquí. Capas ordenadas según el flujo. «H1» indica lo que ya está implementado en el Hito 1.
+
+Principio común: ningún fallo deja la sesión en un estado ambiguo ni muestra un resultado parcial como éxito, y cada fallo visible para la persona usuaria trae un mensaje en español con la acción siguiente (reintentar, subir otra foto, subir una máscara o volver más tarde). Cada guardrail registra un evento en los logs para contar cuántas veces se activa durante la evaluación.
 
 | # | Capa | Guardrail | Estado / hito | Qué se ve en la demo |
 |---|---|---|---|---|
-| G1 | Entrada: imagen | Formato real JPG/PNG (no la extensión), tamaño ≤ 10 MB, límite de píxeles contra *decompression bombs*, corrección de orientación EXIF | **H1** | Subir un archivo no válido muestra un error controlado |
+| G1 | Entrada: imagen | Formato real JPG/PNG (no la extensión), tamaño ≤ 10 MB, límite de píxeles contra *decompression bombs*, corrección de orientación EXIF y original guardado sin metadatos (EXIF, GPS) | **H1** | Subir un archivo no válido muestra un error controlado |
 | G2 | Entrada: imagen | Clasificador de contenido inapropiado (NSFW, violencia) sobre la foto subida; se rechaza antes de segmentar | Propuesto, H2 | Foto bloqueada con mensaje explicativo |
 | G3 | Entrada: imagen | Detector de rostros: si la foto contiene una cara prominente se rechaza o se pide confirmación, porque el caso de uso es producto y se evita manipular identidad visual de personas | Propuesto, H2 | Foto con persona → aviso |
-| G4 | Entrada: texto | Motivos y nota de ajuste: longitud ≤ 500, se guardan y citan **como dato** y nunca se interpretan; la UI los muestra en texto plano | **H1** (prueba T11) | Motivo con «ignora instrucciones…» aparece citado, sin efecto |
+| G4 | Entrada: texto | Motivos y nota de ajuste: longitud ≤ 500, una sola línea (sin saltos ni caracteres de control, para que no imiten líneas del resumen), se guardan y citan **como dato** y nunca se interpretan; la UI los muestra en texto plano | **H1** (pruebas T11 y de motivo multilínea) | Motivo con «ignora instrucciones…» aparece citado, sin efecto |
 | G5 | Entrada: texto | Nota de ajuste → vocabulario cerrado (Parte A); el texto libre nunca llega al prompt | Propuesto, H2/H3 | Se muestra «ajustes entendidos» |
 | G6 | Generación | Prompts fijos versionados por estilo y *negative prompt* (sin personas, texto, logotipos nuevos, NSFW) | Prompts escritos en H1 (`presets.py`), sin probar | — |
 | G7 | Salida: imagen | Clasificador NSFW sobre cada una de las cinco salidas (SDXL no trae *safety checker* propio). Si una falla, se regenera con otra semilla hasta N veces; si no, la sesión queda `FAILED` (se mantiene el «cinco o nada») | Propuesto, H2 | Registro del filtro en los metadatos |
 | G8 | Salida: fidelidad | Recomposición de los píxeles del producto desde el original con la máscara, y verificación de que la región protegida no cambió (ΔE / SSIM dentro de la máscara bajo un umbral). Evita alterar logotipos, etiquetas o colores, es decir, publicidad engañosa | Propuesto, H2 | Métrica de fidelidad por variación |
 | G9 | Transparencia | Rótulo visible «Imagen generada con IA» opcional al descargar y metadato en el PNG (`Software`, `ai_generated=true`); en el Hito 1 todo resultado mock lleva la franja «SIMULACIÓN» | Rótulo mock **H1**; resto propuesto, H2 | Franja/metadato visible |
 | G10 | Agente | Herramientas de solo lectura, salida estructurada validada contra la base de datos, sin inferir motivos no escritos, fallback explícito | Validador **H1**; LLM en H3 | Resumen con `validation_status` |
-| G11 | Operación | Límite de rondas por cadena, límite de solicitudes por cliente, autenticación en GCP, retención limitada y borrado (`DELETE /sessions/{id}`) de fotos | Propuesto, H6 (borrado: H2) | — |
+| G11 | Operación | Límite de rondas por cadena, límite de generaciones por cliente y por hora (429 «Alcanzaste el límite, inténtalo más tarde»), autenticación en GCP, retención limitada y borrado (`DELETE /sessions/{id}`) de fotos | Propuesto, H6 (borrado: H2) | — |
+| G12 | Entrada: imagen | Calidad de la foto: umbrales de brillo y nitidez (varianza del laplaciano). Solo advierte, no bloquea | Propuesto, H2 | Aviso «La foto está muy oscura o borrosa» |
+| G13 | Segmentación | Heurística sobre la máscara: área protegida fuera de un rango o varios componentes grandes indican que no hay un producto principal. Se ofrece reintentar, subir máscara o continuar | Propuesto, H2 | Aviso antes de generar |
+| G14 | Generación | Timeout configurable por lote; al vencer, la sesión pasa a `FAILED` con un mensaje claro (503 si el worker no responde) | Propuesto, H2 | Mensaje «El servicio está ocupado, inténtalo más tarde» |
 
 ### Prioridad sugerida (costo/beneficio para la nota)
 
@@ -115,9 +122,9 @@ Capas ordenadas según el flujo. «H1» indica lo que ya está implementado en e
 3. **G3** (rostros): barato con un detector clásico y argumenta «manipulación de identidad visual», que el enunciado menciona explícitamente.
 4. **G5 y G9**: salen casi gratis si se implementa la Parte A.
 
-### Preguntas para el equipo
+### Decisiones (2026-11-12)
 
-1. ¿Rechazar o solo advertir ante una foto con rostro?
-2. ¿Qué clasificador NSFW (licencia, tamaño, si cabe junto a SDXL en la L4)? Hay que medirlo en el Hito 2.
-3. ¿Umbral de fidelidad de G8? Hay que calibrarlo con los casos obligatorios (taza con logotipo, texto pequeño).
-4. ¿Política de retención: cuántos días se guardan las fotos?
+1. **Foto con rostro (G3):** se rechaza con 422 «Esta herramienta es para fotos de productos, sin personas». Las fotos de personas quedan fuera del nicho (`00_ALCANCE_Y_REQUISITOS.md`).
+2. **Clasificador NSFW (G2, G7):** se elige en el Hito 2 comparando licencia, tamaño y VRAM junto a SDXL en la L4; el mismo modelo se usa en entrada y salida.
+3. **Umbrales de G8, G12 y G13:** configurables y calibrados con los casos obligatorios del Hito 2; no se fijan antes de medir.
+4. **Retención:** en local, `data/` se borra al cerrar el proyecto. Las fotos de la prueba con usuarios se borran al terminar, salvo autorización expresa. En GCP, siete días y borrado manual con `DELETE /sessions/{id}`.
