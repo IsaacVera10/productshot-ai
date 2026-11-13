@@ -6,7 +6,7 @@
 
 | Método | Ruta | Entrada | Salida | Notas |
 |---|---|---|---|---|
-| GET | `/healthz` | — | 200 `{"status":"ok"}` | No invoca LLM/GPU |
+| GET | `/healthz` | Sin cuerpo | 200 `{"status":"ok","adapters":{...}}` | No invoca LLM/GPU; `adapters` dice qué adaptador usa cada pieza, sin URLs ni claves |
 | POST | `/sessions` | `multipart/form-data` `image`, `mode` | 201 Session | Tamaño / MIME / decodificación válidos |
 | POST | `/sessions/{id}/segment` | `{}` | 200 máscara/URI y estado `SEGMENTED` | En mock puede ser máscara de demostración rotulada |
 | POST | `/sessions/{id}/mask` | `multipart/form-data` `mask` (PNG) | 200 máscara/URI, vista previa y estado `SEGMENTED` | Alternativa a `/segment`; solo en `UPLOADED` o `SEGMENTED` y en la ronda 1 |
@@ -114,7 +114,7 @@ Los IDs de arriba son **ilustrativos**, no UUID válidos; la implementación los
 - `data/assets/<session_id>/input.png`, `mask.png`, `variation_1.png` ... `variation_5.png`.
 - `data/` siempre ignorado por Git y creado en ejecución.
 - Los archivos deben servirse por una ruta controlada que valide pertenencia/autorización; **no** concatenar paths arbitrarios a partir de input del usuario.
-- En cloud, `SessionRepository` -> Firestore y `ArtifactStore` -> Cloud Storage. Nunca persistir sesiones/archivos críticos únicamente en disco efímero de Cloud Run.
+- En cloud, `Repository` (`storage/ports.py`) -> Firestore y `ArtifactStore` -> Cloud Storage. Nunca persistir sesiones/archivos críticos únicamente en disco efímero de Cloud Run.
 
 ## Implementación del Hito 1 (2026-11-04)
 
@@ -131,4 +131,4 @@ Código en `backend/productshot/`. Decisiones de implementación que concretan e
 - **Máscara manual:** PNG real (no basta la extensión), del tamaño exacto del lienzo de trabajo, en cualquier modo de color (se pasa a gris y los bordes suaves se conservan). Se rechaza con 400 si es toda blanca (no protege nada) o toda negra (no deja fondo). Queda con `source: manual` y `simulated: false`, y reemplaza a la automática borrando sus archivos.
 - **Borrado:** `DELETE` sobre cualquier ronda borra toda la cadena, porque las rondas comparten la foto y la máscara de la ronda 1; borrar solo una dejaría a las otras sin archivos. Después de borrar, la sesión y sus imágenes responden 404.
 - **Rondas (ADR-007):** Session añade `round_index` (1 a 3), `parent_session_id`, `next_session_id` y `round_plan` (`items` con `position`, `style`, `variant`, `label`, `adjustments` y `because`, más `explanation`, una línea por variación). Variation añade `variant` (estilo más ajustes del vocabulario cerrado, por ejemplo `warm+brighter`; en la ronda 1 es el estilo) y `label`. La invariante del lote pasa a cinco `variant` distintos. La nota de ajuste sigue las reglas del motivo (una línea, 500 caracteres tras normalizar) y nunca llega al prompt. Detalle en `08_ITERACIONES_Y_GUARDRAILS.md`, parte A, «Implementación».
-- **Summary:** `preferences_supported_by_user_reasons` es una lista de `{variation_id, position, style, decision, reason}` con los motivos **literales**. En el Hito 1 `generated_by` es siempre `deterministic_fallback` (no hay LLM) y se agrega una limitación que lo declara. Un segundo POST devuelve el mismo resumen, también si llega en paralelo al primero. Al guardar se verifica que las decisiones no cambiaron mientras se calculaba (hash).
+- **Summary:** `preferences_supported_by_user_reasons` es una lista de `{variation_id, position, style, decision, reason}` con los motivos **literales**. Con `SUMMARY_BACKEND=deterministic`, `generated_by` es `deterministic_fallback` y una limitación lo declara. Con `SUMMARY_BACKEND=gemini` (2026-11-13): Gemini recibe solo decisiones y motivos y devuelve JSON con esquema; si coincide con el registro, se usan su narrativa y hasta tres observaciones (`llm_validated`), si alguna prosa no pasa G10 (más de 700 caracteres, enlaces o marcado, o una cita entre comillas que no está en ningún motivo) se descarta y queda `hybrid`, y si los dos modelos fallan, contradicen el registro o se agota el presupuesto de 45 s (la UI espera 60 s) queda `deterministic_fallback`. Las limitaciones dicen qué modelo escribió la prosa y qué se descartó; el payload guardado registra los intentos por modelo. Un segundo POST devuelve el mismo resumen, también si llega en paralelo al primero. Al guardar se verifica que las decisiones no cambiaron mientras se calculaba (hash).

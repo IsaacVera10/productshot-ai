@@ -14,7 +14,12 @@ from productshot.services.generation import MockGenerationBackend
 
 
 def test_healthz(client):
-    assert client.get("/api/v1/healthz").json() == {"status": "ok"}
+    body = client.get("/api/v1/healthz").json()
+    assert body["status"] == "ok"
+    assert body["adapters"] == {
+        "repository": "SqliteRepository", "artifacts": "LocalArtifactStore", "segmentation": "mock",
+        "generation": "mock", "summary": "deterministic", "runner": "InlineJobRunner",
+    }
 
 
 # T01 — Imagen JPG/PNG válida

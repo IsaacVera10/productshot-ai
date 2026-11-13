@@ -191,7 +191,7 @@ Modal es el despliegue principal (ADR-009, que reemplaza a ADR-003). GCP queda c
 | Worker GPU: segmentación y generación en ambos modos, con el LoRA | Función de Modal con L4, escala a cero | Cloud Run con GPU L4 | uvicorn con la RTX 4060 de 8 GB | Contrato HTTP del worker |
 | Cómo llega la API al worker | HTTP | HTTP | HTTP o en el mismo proceso | `GenerationBackend` (adaptador remoto) |
 | UI y API | Endpoint web de Modal, sin GPU | Cloud Run sin GPU | uvicorn | Contrato `/api/v1` |
-| Sesiones, decisiones y resúmenes | SQLite en un volumen de Modal (un solo contenedor de API) | Firestore | SQLite | `Repository` (por extraer) |
+| Sesiones, decisiones y resúmenes | SQLite en un volumen de Modal (un solo contenedor de API) | Firestore | SQLite | `Repository` |
 | Imágenes y máscaras | Volumen de Modal | Cloud Storage | `data/assets/` | `ArtifactStore` |
 | Agente LLM | Gemini por AI Studio | Gemini en Vertex AI | Gemini por AI Studio u Ollama | `SummaryService` y validador determinista |
 | Segundo LLM, para comparar | Modelo abierto gratuito en la nube | Modelo abierto en Vertex AI | Ollama | `SummaryService` |
@@ -201,9 +201,11 @@ Modal es el despliegue principal (ADR-009, que reemplaza a ADR-003). GCP queda c
 | Secretos | Secretos de Modal | Secret Manager | `.env` no versionado | Configuración por entorno |
 | Registros | Logs de Modal | Cloud Logging | stdout | Mismos eventos `GUARDRAIL` |
 
-El worker se escribe una vez y lo que cambia es dónde se aloja. El SDK de Gemini (`google-genai`) pasa de AI Studio a Vertex AI con un parámetro. Pasar de A a B exige los adaptadores de Firestore y Cloud Storage, un Dockerfile y la configuración de GCP, sin tocar dominio, UI ni pruebas.
+El worker se escribe una vez y lo que cambia es dónde se aloja. El adaptador de Gemini llama a la API REST con `httpx`; pasar de AI Studio a Vertex AI cambia la URL y la autenticación, no el formato. Pasar de A a B exige los adaptadores de Firestore y Cloud Storage, un Dockerfile y la configuración de GCP, sin tocar dominio, UI ni pruebas.
 
-**Estado de las piezas (2026-11-12).** Ya son interfaces con adaptadores: `GenerationBackend`, `SegmentationService`, `SummaryService`, `ArtifactStore` y `JobRunner`. Faltan cuatro: una interfaz `Repository` (hoy `SessionService` depende de `SqliteRepository`), una raíz de composición que elija adaptadores por variables de entorno (hoy `create_app` fija los mocks), el contrato HTTP del worker con su `RemoteGenerationBackend`, y ejecutores de trabajos por plataforma (P10).
+**Estado de las piezas (2026-11-13).** Todas son interfaces con adaptadores: `Repository` (`storage/ports.py`, hoy SQLite), `ArtifactStore`, `GenerationBackend` (mock y `RemoteGenerationBackend`), `SegmentationService`, `SummaryService` (determinista y Gemini) y `JobRunner`. La raíz de composición (`backend/productshot/composition.py`) es el único lugar que conoce las clases concretas y elige cada adaptador con variables de entorno; una configuración incompleta falla al arrancar, y `GET /api/v1/healthz` informa qué adaptador quedó en cada pieza. `tests/test_ports.py` corre el flujo completo con el mock dentro del proceso y con el mock detrás del contrato HTTP del worker, y verifica que el orquestador y la API solo usen métodos de `Repository`. Falta el ejecutor de Modal (`spawn`), que llega con el despliegue (P10).
+
+**Contrato del worker.** `GET /v1/health` devuelve `{contract_version, backend, model_revision, simulated}`; `POST /v1/generate` recibe la foto de trabajo y la máscara en PNG base64 más las cinco especificaciones (`position`, `style`, `seed`, `adjustments`) y devuelve las cinco imágenes con su revisión y parámetros. Con `GENERATION_WORKER_TOKEN`, ambas rutas exigen `Authorization: Bearer`. El worker no guarda estado: un reintento produce el mismo lote con las mismas semillas y la API confirma solo el primero. La API no confía en el worker: el lote de cinco, G8, G9 y G14 se validan igual que con el mock, y si el worker no responde se asume simulado. Detalle en `backend/productshot/worker/contract.py`.
 
 La configuración de desarrollo (`GENERATION_BACKEND=mock`, `SUMMARY_BACKEND=deterministic`) no cuenta como enfoque académico ni el resumen determinista como agente.
 

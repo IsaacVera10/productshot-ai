@@ -42,7 +42,12 @@ from productshot.domain import (
     utcnow,
 )
 from productshot.services import guardrails
-from productshot.services.generation import GenerationBackend, GenerationRequest, VariationSpec
+from productshot.services.generation import (
+    GenerationBackend,
+    GenerationRequest,
+    GenerationUnavailable,
+    VariationSpec,
+)
 from productshot.services.images import prepare_mask_upload, prepare_upload, to_png
 from productshot.services.jobs import JobRunner
 from productshot.services.labels import stamp
@@ -51,7 +56,7 @@ from productshot.services.rounds import RoundPlan, plan_next_round
 from productshot.services.segmentation import SegmentationService, render_mask_preview
 from productshot.services.summary import STATUS_VERIFIED, SummaryService
 from productshot.storage.artifacts import ArtifactStore
-from productshot.storage.repository import SqliteRepository
+from productshot.storage.ports import Repository
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +77,7 @@ class SessionService:
     def __init__(
         self,
         settings: Settings,
-        repo: SqliteRepository,
+        repo: Repository,
         store: ArtifactStore,
         segmenter: SegmentationService,
         generator: GenerationBackend,
@@ -321,7 +326,7 @@ class SessionService:
                 if fidelity["drift_warning"]:
                     guardrails.event("G8", job.session_id, "product_drift", position=art.position,
                                      diff=fidelity["protected_mean_abs_diff"])
-                if self.generator.simulated:
+                if art.params.get("simulated", self.generator.simulated):
                     # G9: el rótulo se pone DESPUÉS de recomponer, para no contarlo como alteración.
                     final = stamp(final, bottom=f"{art.position}/5 · {art.variant or art.style.value} · "
                                               f"modo {session.mode.value}")
@@ -350,7 +355,8 @@ class SessionService:
         except Exception as exc:
             for key in written:
                 self.store.delete(key)
-            message = str(exc) if isinstance(exc, BatchError) else f"Error de generación: {type(exc).__name__}"
+            readable = isinstance(exc, (BatchError, GenerationUnavailable))
+            message = str(exc) if readable else f"Error de generación: {type(exc).__name__}"
             log.exception("Falló la generación de la sesión %s", job.session_id)
             self.repo.fail_job(job.id, message)
 

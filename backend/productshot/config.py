@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,10 +19,26 @@ class Settings(BaseSettings):
     sqlite_path: Path = Path("./data/productshot.sqlite3")
     asset_root: Path = Path("./data/assets")
 
-    # En el Hito 1 solo existen los backends simulados. Los reales llegan en los Hitos 2 y 3.
-    generation_backend: Literal["mock"] = "mock"
+    # Piezas intercambiables (ADR-009): `composition.py` elige el adaptador de cada una.
+    generation_backend: Literal["mock", "remote"] = "mock"
     segmentation_backend: Literal["mock"] = "mock"
-    summary_backend: Literal["deterministic"] = "deterministic"
+    summary_backend: Literal["deterministic", "gemini"] = "deterministic"
+    job_runner: Literal["thread", "inline"] = "thread"
+
+    # Worker de generación por HTTP (GENERATION_BACKEND=remote). Mismo contrato en Modal,
+    # Cloud Run y la laptop; el token lo comparten la API y el worker.
+    generation_worker_url: str | None = None
+    generation_worker_token: SecretStr | None = None
+    generation_worker_timeout_s: float = 540.0  # menor que G14 para que falle antes el HTTP
+    worker_host: str = "127.0.0.1"
+    worker_port: int = 8001
+
+    # Agente de resumen (SUMMARY_BACKEND=gemini). Solo recibe decisiones y motivos.
+    gemini_api_key: SecretStr | None = None
+    gemini_model_id: str = "gemini-3.8-flash"
+    gemini_fallback_model_id: str | None = "gemini-3.5-flash-lite"
+    gemini_timeout_s: float = 20.0  # por llamada
+    gemini_budget_s: float = 45.0  # todos los intentos juntos; la UI espera 60 s
 
     max_upload_mb: float = 10.0
     # Lado mayor del lienzo de trabajo. La imagen original se conserva aparte.

@@ -59,6 +59,10 @@ class GeneratedArtifact:
     variant: str = ""
 
 
+class GenerationUnavailable(Exception):
+    """El servicio de generación no respondió o respondió mal. El mensaje se muestra a la persona."""
+
+
 class GenerationBackend(Protocol):
     name: str
     model_revision: str

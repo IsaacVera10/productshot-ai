@@ -1,0 +1,59 @@
+"""Interfaz del registro de sesiones (ADR-009, pieza intercambiable).
+
+`SessionService` y la API dependen de este `Protocol`, no de SQLite. Hoy la cumple
+`SqliteRepository` (laptop y Modal, con la base en un volumen); en GCP la cumpliría un
+adaptador de Firestore. Cada método es atómico: las transiciones de estado se validan
+dentro de la misma operación que escribe, así que dos solicitudes concurrentes no pueden
+dejar la sesión en un estado imposible. Un adaptador nuevo debe pasar las mismas pruebas
+de `tests/test_ports.py`.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable
+from typing import Protocol, runtime_checkable
+
+from productshot.domain import (
+    Decision,
+    DecisionValue,
+    GenerationJob,
+    InputImage,
+    Mask,
+    Session,
+    SessionStatus,
+    SummaryRecord,
+    Variation,
+)
+
+
+@runtime_checkable
+class Repository(Protocol):
+    # --- sesiones, imágenes y rondas ---
+    def create_session(self, session: Session, image: InputImage) -> None: ...
+    def create_child_session(self, child: Session, image: InputImage, mask: Mask, max_rounds: int) -> None: ...
+    def child_session_id(self, session_id: str) -> str | None: ...
+    def delete_chain(self, session_id: str) -> list[str]: ...
+    def get_session(self, session_id: str) -> Session: ...
+    def get_image(self, session_id: str) -> InputImage: ...
+
+    # --- máscara ---
+    def replace_mask(self, mask: Mask, allowed: Iterable[SessionStatus]) -> Mask | None: ...
+    def get_mask(self, session_id: str) -> Mask | None: ...
+
+    # --- trabajo de generación (lote de cinco o nada) ---
+    def get_job(self, session_id: str) -> GenerationJob | None: ...
+    def start_job(self, job: GenerationJob) -> tuple[GenerationJob, bool]: ...
+    def complete_job(self, job_id: str, variations: list[Variation]) -> None: ...
+    def fail_job(self, job_id: str, error: str) -> None: ...
+    def fail_interrupted_jobs(self, reason: str) -> int: ...
+
+    # --- variaciones, decisiones y resumen ---
+    def list_variations(self, session_id: str) -> list[Variation]: ...
+    def upsert_decision(
+        self, session_id: str, variation_id: str, value: DecisionValue, reason: str | None
+    ) -> Decision: ...
+    def save_summary(self, record: SummaryRecord) -> SummaryRecord: ...
+    def get_summary(self, session_id: str) -> SummaryRecord | None: ...
+
+    # --- archivos que la base asocia a la sesión (solo esos se sirven) ---
+    def session_artifact_keys(self, session_id: str) -> set[str]: ...
