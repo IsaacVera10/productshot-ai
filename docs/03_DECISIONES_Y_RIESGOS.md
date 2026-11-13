@@ -156,7 +156,7 @@ Contexto: la rúbrica pide «correspondencia entre las decisiones del usuario y 
 Opciones: regenerar las rechazadas dentro de la misma sesión; que el LLM reescriba los prompts; nueva ronda como sesión hija con un planificador determinista.
 Decisión: ronda siguiente = sesión hija (misma imagen y máscara, cinco variaciones) cuyo plan deriva de las decisiones previas mediante un planificador determinista y un vocabulario cerrado de ajustes. D-10 se mantiene por ronda.
 Consecuencias: campos parent_session_id, round_index y round_plan_json; la invariante de lote pasa a cinco (style, variant) distintos; nueva ruta POST /sessions/{id}/next-round; resumen de cadena con citas verificables. Detalle en 08_ITERACIONES_Y_GUARDRAILS.md.
-Evidencia: lectura de la rúbrica; sin implementación ni validación docente.
+Evidencia: lectura de la rúbrica. Implementada sobre el backend mock el 2026-11-12 (`services/rounds.py`, `tests/test_rounds.py`); sin validación docente.
 ```
 
 ```text

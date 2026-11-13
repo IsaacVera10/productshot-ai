@@ -15,6 +15,7 @@ from typing import Protocol
 
 from productshot.domain import VARIATIONS_PER_BATCH, DecisionValue, Style, Variation
 from productshot.services.presets import PRESETS
+from productshot.services.rounds import adjustment_labels, explain_plan, parse_variant
 
 GENERATED_BY_LLM = "llm_validated"
 GENERATED_BY_HYBRID = "hybrid"
@@ -95,7 +96,9 @@ def _join_es(parts: list[str]) -> str:
 
 
 def _label(v: Variation) -> str:
-    return f"{v.position} ({PRESETS[v.style].label_es.lower()})"
+    _style, adjustments = parse_variant(v.variant or v.style.value)
+    parts = [PRESETS[v.style].label_es.lower(), *adjustment_labels(adjustments)]
+    return f"{v.position} ({', '.join(parts)})"
 
 
 def render_summary(
@@ -107,6 +110,7 @@ def render_summary(
     generated_by: str,
     validation_status: str,
     extra_limitations: list[str] | None = None,
+    round_plan: dict | None = None,
 ) -> SummaryResult:
     """Construye la respuesta final. Las listas y la enumeración salen SIEMPRE de la base de datos."""
     accepted = [v for v in variations if v.decision and v.decision.value == DecisionValue.ACCEPTED]
@@ -139,6 +143,12 @@ def render_summary(
                     "reason": v.decision.reason,
                 }
             )
+    if round_plan:
+        # Cómo se armó esta ronda a partir de la anterior: lo compone Python desde el plan
+        # guardado, así que cada «porqué» corresponde a un registro.
+        lines.append("")
+        lines.append("Cómo se armó esta ronda:")
+        lines.extend(explain_plan(round_plan))
     if style_observations:
         lines.append("")
         lines.extend(f"Observación: {o}" for o in style_observations)
@@ -170,7 +180,9 @@ def render_summary(
 class SummaryService(Protocol):
     name: str
 
-    def summarize(self, session_id: str, variations: list[Variation]) -> SummaryResult: ...
+    def summarize(
+        self, session_id: str, variations: list[Variation], round_plan: dict | None = None
+    ) -> SummaryResult: ...
 
 
 class DeterministicSummaryService:
@@ -178,7 +190,9 @@ class DeterministicSummaryService:
 
     name = "deterministic"
 
-    def summarize(self, session_id: str, variations: list[Variation]) -> SummaryResult:
+    def summarize(
+        self, session_id: str, variations: list[Variation], round_plan: dict | None = None
+    ) -> SummaryResult:
         structured = StructuredSummary(
             items=tuple(
                 SummaryItem(
@@ -201,4 +215,5 @@ class DeterministicSummaryService:
             generated_by=GENERATED_BY_FALLBACK,
             validation_status=STATUS_VERIFIED if check.ok else STATUS_NOT_VERIFIED,
             extra_limitations=["Resumen compuesto por Python sin LLM (Hito 1); no es la salida de un agente."],
+            round_plan=round_plan,
         )
