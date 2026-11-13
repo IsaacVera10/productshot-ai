@@ -86,11 +86,11 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 
 - [ ] Herramienta `get_session_decisions(session_id)` de solo lectura.
 - [ ] Herramienta opcional `get_variation_metadata(variation_id)` de solo lectura.
-- [ ] LLM produce salida estructurada con referencias a variaciones y motivos citados literalmente.
-- [ ] Python verifica cobertura, decisiones y citas, y renderiza la enumeración; `generated_by` y `validation_status` reflejan el resultado. Fallback explícito ante timeout/error, sin disfrazar fallback como agente.
-- [ ] Clave de Gemini por AI Studio en `.env` o en un secreto de Modal, nunca versionada; pruebas con respuestas de Gemini simuladas (ADR-009).
+- [x] LLM produce salida estructurada con referencias a variaciones y motivos citados literalmente (Gemini con esquema JSON, 2026-11-13).
+- [x] Python verifica cobertura, decisiones y citas, y renderiza la enumeración; `generated_by` y `validation_status` reflejan el resultado. Fallback explícito ante timeout/error, sin disfrazar fallback como agente. Con modelo de respaldo si el principal está saturado (2026-11-13).
+- [x] Clave de Gemini por AI Studio en `.env` o en un secreto de Modal, nunca versionada; pruebas con respuestas de Gemini simuladas (ADR-009). Prueba real opcional con `RUN_LIVE_GEMINI=1`.
 - [ ] Segundo LLM detrás del mismo `SummaryService` (modelo abierto gratuito u Ollama) para comparar resúmenes con las mismas métricas.
-- [ ] Reutilizar `validate_structured` y `render_summary` de `backend/productshot/services/summary.py` (ya probados en el Hito 1).
+- [x] Reutilizar `validate_structured` y `render_summary` de `backend/productshot/services/summary.py` (ya probados en el Hito 1).
 - [ ] *(ADR-007)* Extracción de ajustes desde los motivos con salida estructurada y resumen de la cadena de rondas.
 
 ## Hito 4 — Dataset y análisis exploratorio
@@ -112,7 +112,7 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 
 ## Hito 6 — Despliegue en Modal y piezas intercambiables (ADR-009)
 
-- [ ] Piezas intercambiables: interfaz `Repository`, raíz de composición por variables de entorno, contrato HTTP del worker con `RemoteGenerationBackend` y ejecutor de trabajos por plataforma (P10).
+- [x] Piezas intercambiables: interfaz `Repository`, raíz de composición por variables de entorno y contrato HTTP del worker con `RemoteGenerationBackend` (2026-11-13). Falta el ejecutor de Modal (P10), con el despliegue.
 - [ ] Worker con GPU L4 y endpoint web de UI y API en Modal; límite de gasto de USD 30 y secretos de Modal.
 - [ ] Probar el worker en la laptop (RTX 4060) con los mismos contratos.
 - [ ] Ensayar la demo completa en Modal, en menos de seis minutos y con el worker caliente, y grabar el video de respaldo.

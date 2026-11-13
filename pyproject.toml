@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "productshot-ai"
 version = "0.1.0"
-description = "ProductShot AI — Hito 1: vertical slice offline con backends simulados (mock)."
+description = "ProductShot AI: cinco variaciones de una foto de producto, decisiones y resumen."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -30,6 +30,7 @@ dev = ["pytest>=8.0,<10.0"]
 
 [project.scripts]
 productshot = "productshot.main:run"
+productshot-worker = "productshot.worker.app:run"
 
 [tool.setuptools.packages.find]
 where = ["backend", "ui"]

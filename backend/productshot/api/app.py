@@ -29,15 +29,15 @@ from productshot.api.schemas import (
     asset_url,
 )
 from productshot.config import Settings
+from productshot.composition import build_services
 from productshot.domain import DomainError, GenerationJob, Mask, Mode, NotFound, SessionView
-from productshot.services.generation import GenerationBackend, MockGenerationBackend
-from productshot.services.jobs import JobRunner, ThreadJobRunner
+from productshot.services.generation import GenerationBackend
+from productshot.services.jobs import JobRunner
 from productshot.services.rounds import explain_plan, variant_label
-from productshot.services.segmentation import MockSegmentationService, SegmentationService
+from productshot.services.segmentation import SegmentationService
 from productshot.services.sessions import SessionService
-from productshot.services.summary import DeterministicSummaryService
-from productshot.storage.artifacts import InvalidArtifactKey, LocalArtifactStore
-from productshot.storage.repository import SqliteRepository
+from productshot.services.summary import SummaryService
+from productshot.storage.artifacts import InvalidArtifactKey
 
 log = logging.getLogger(__name__)
 
@@ -154,8 +154,9 @@ def _build_router() -> APIRouter:
         return _session_out(view, svc(request).is_simulated(view))
 
     @router.get("/healthz")
-    def healthz() -> dict:
-        return {"status": "ok"}
+    def healthz(request: Request) -> dict:
+        # Solo nombres de adaptadores: nunca URLs, claves ni rutas.
+        return {"status": "ok", "adapters": request.app.state.adapters}
 
     @router.post("/sessions", status_code=201, response_model=SessionOut)
     def create_session(
@@ -251,19 +252,25 @@ def create_app(
     runner: JobRunner | None = None,
     generator: GenerationBackend | None = None,
     segmenter: SegmentationService | None = None,
+    summarizer: SummaryService | None = None,
     mount_ui: bool = True,
 ) -> FastAPI:
     settings = settings or Settings()
-    runner = runner or ThreadJobRunner()
+    services = build_services(
+        settings, runner=runner, generator=generator, segmenter=segmenter, summarizer=summarizer
+    )
+    runner = services.runner
     sessions = SessionService(
         settings=settings,
-        repo=SqliteRepository(settings.sqlite_path),
-        store=LocalArtifactStore(settings.asset_root),
-        segmenter=segmenter or MockSegmentationService(),
-        generator=generator or MockGenerationBackend(),
-        summarizer=DeterministicSummaryService(),
+        repo=services.repo,
+        store=services.store,
+        segmenter=services.segmenter,
+        generator=services.generator,
+        summarizer=services.summarizer,
         runner=runner,
     )
+    adapters = services.describe()
+    log.info("Adaptadores: %s", ", ".join(f"{k}={v}" for k, v in adapters.items()))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -274,10 +281,11 @@ def create_app(
     app = FastAPI(
         title="ProductShot AI",
         version="0.1.0",
-        description="Hito 1: backends simulados (mock). No genera imágenes con IA ni usa un LLM.",
+        description="Generación de cinco variaciones, decisiones y resumen. Los adaptadores activos están en /api/v1/healthz.",
         lifespan=lifespan,
     )
     app.state.sessions = sessions
+    app.state.adapters = adapters
     app.include_router(_build_router())
 
     @app.exception_handler(DomainError)

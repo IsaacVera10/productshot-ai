@@ -76,23 +76,32 @@ uv run pytest          # pruebas T01–T14 y complementarias
 
 Sin uv (alternativa): crear y activar un entorno con `python -m venv .venv`, luego `pip install -e .` y `pip install pytest`. Así no se respetan las versiones exactas del lockfile.
 
-La configuración se lee de variables de entorno o de un `.env` (copiar `.env.example`). Los datos se guardan en `data/`, que Git ignora.
+La configuración se lee de variables de entorno o de un `.env` (copiar `.env.example`; `.env` nunca se versiona). Los datos se guardan en `data/`, que Git ignora. `GET /api/v1/healthz` muestra qué adaptador usa cada pieza.
+
+Para probar la generación por HTTP sin GPU, levantar el worker con el mock en otra terminal y apuntar la API a él:
+
+```bash
+uv run productshot-worker                                   # worker en http://127.0.0.1:8001
+GENERATION_BACKEND=remote GENERATION_WORKER_URL=http://127.0.0.1:8001 uv run productshot
+```
 
 Estructura:
 
 | Ruta | Contenido |
 |---|---|
 | `backend/productshot/domain.py` | Estados, estilos, entidades y errores de dominio |
-| `backend/productshot/storage/` | Repositorio SQLite y almacenamiento de artefactos (adaptadores) |
+| `backend/productshot/composition.py` | Raíz de composición: elige el adaptador de cada pieza por variables de entorno |
+| `backend/productshot/storage/` | Interfaz `Repository`, repositorio SQLite y almacenamiento de artefactos |
 | `backend/productshot/services/` | Orquestador de sesión, segmentación, generación, resumen y validador |
 | `backend/productshot/api/` | FastAPI: rutas `/api/v1` y esquemas |
+| `backend/productshot/worker/` | Worker de generación detrás del contrato HTTP (`productshot-worker`) |
 | `ui/productshot_ui/` | Gradio; consume la API por HTTP |
 | `tests/` | Pruebas `pytest` sin red ni GPU |
 
 ### Límites conocidos del Hito 1
 
 - La máscara es una elipse fija y las cinco imágenes son fondos planos con el producto recortado. Todo lleva la franja «SIMULACIÓN (MOCK) - NO GENERADO POR IA»; **no son resultados de IA**.
-- El resumen lo compone Python (`generated_by: deterministic_fallback`); no hay agente LLM todavía.
+- El resumen lo compone Python por defecto (`generated_by: deterministic_fallback`). Con `SUMMARY_BACKEND=gemini` y `GEMINI_API_KEY` en `.env` lo escribe Gemini y Python lo valida contra el registro; si Gemini no responde, vuelve al determinista y lo declara.
 - Los guardrails G12 (calidad de la foto) y G13 (máscara) solo advierten y sus umbrales son provisionales; G2, G3 y G7 necesitan modelos y llegan con el Hito 2.
 - Las rondas 2 y 3 funcionan, pero los ajustes se extraen de los motivos y de la nota con reglas de palabras clave, sin LLM, y en el mock solo cambian colores y franjas del fondo.
 - Sin autenticación: cualquiera con el ID de sesión puede ver sus imágenes. Solo para uso local.
