@@ -82,13 +82,14 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 - [x] `DELETE /sessions/{id}` para el borrado de fotos (G11): borra la cadena completa de rondas.
 - [x] Iteraciones (ADR-007): `POST /sessions/{id}/next-round` y su vista previa, sesiones hijas (máximo 3 rondas), planificador determinista y vocabulario cerrado de ajustes por reglas. Adelantado sobre el mock el 2026-11-12; falta comprobarlo con imágenes reales.
 
-## Hito 3 — Agente con Gemini en Vertex AI
+## Hito 3 — Agente con Gemini (AI Studio) y un segundo LLM
 
 - [ ] Herramienta `get_session_decisions(session_id)` de solo lectura.
 - [ ] Herramienta opcional `get_variation_metadata(variation_id)` de solo lectura.
 - [ ] LLM produce salida estructurada con referencias a variaciones y motivos citados literalmente.
 - [ ] Python verifica cobertura, decisiones y citas, y renderiza la enumeración; `generated_by` y `validation_status` reflejan el resultado. Fallback explícito ante timeout/error, sin disfrazar fallback como agente.
-- [ ] IAM mínimo, sin secretos en `.env` versionado, pruebas con respuestas Gemini simuladas.
+- [ ] Clave de Gemini por AI Studio en `.env` o en un secreto de Modal, nunca versionada; pruebas con respuestas de Gemini simuladas (ADR-009).
+- [ ] Segundo LLM detrás del mismo `SummaryService` (modelo abierto gratuito u Ollama) para comparar resúmenes con las mismas métricas.
 - [ ] Reutilizar `validate_structured` y `render_summary` de `backend/productshot/services/summary.py` (ya probados en el Hito 1).
 - [ ] *(ADR-007)* Extracción de ajustes desde los motivos con salida estructurada y resumen de la cadena de rondas.
 
@@ -102,19 +103,20 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 - [ ] Definir la rúbrica de estilos y armar un piloto de 100–200 imágenes por estilo, con captions asistidos por BLIP y plantilla, revisados a mano.
 - [ ] Definir particiones sin fuga de productos y conseguir la autorización de las fotos de prueba.
 
-## Hito 5 — Fine-tuning LoRA (Colab Pro)
+## Hito 5 — Fine-tuning LoRA (Colab Pro de Pedro; Kaggle de respaldo)
 
 - [ ] Smoke test sobre SDXL base: entrenamiento corto, exportación, recarga e inferencia con el pipeline de inpainting (ADR-004).
-- [ ] Checkpoints reanudables y exportación de pesos versionados.
+- [ ] Confirmar con Pedro cuántas unidades de Colab Pro quedan y cuándo vencen.
+- [ ] Checkpoints reanudables y exportación de pesos versionados a un repositorio privado de Hugging Face Hub, con manifiesto (ADR-009).
 - [ ] Inferencia con LoRA y comparación de memoria/estilos, evaluando cada estilo por separado.
 
-## Hito 6 — GCP y respaldo
+## Hito 6 — Despliegue en Modal y piezas intercambiables (ADR-009)
 
-- [ ] Adaptadores Firestore/Cloud Storage.
-- [ ] Cloud Run CPU y worker GPU desplegados mediante imágenes Docker.
-- [ ] Credenciales/IAM, auth, límites de gasto, logs y manejo de estados de job.
-- [ ] Probar el respaldo local con modelos reales y los mismos contratos (ADR-003).
-- [ ] Ensayar la demo completa en GCP, en menos de seis minutos y con el modelo precargado, y grabar el video de respaldo.
+- [ ] Piezas intercambiables: interfaz `Repository`, raíz de composición por variables de entorno, contrato HTTP del worker con `RemoteGenerationBackend` y ejecutor de trabajos por plataforma (P10).
+- [ ] Worker con GPU L4 y endpoint web de UI y API en Modal; límite de gasto de USD 30 y secretos de Modal.
+- [ ] Probar el worker en la laptop (RTX 4060) con los mismos contratos.
+- [ ] Ensayar la demo completa en Modal, en menos de seis minutos y con el worker caliente, y grabar el video de respaldo.
+- [ ] Alternativa GCP (solo si hay créditos): adaptadores de Firestore y Cloud Storage, Dockerfile y Cloud Run, según `05_COLAB_Y_GCP.md`.
 
 ## Hito 7 — Evaluación, video e informe
 

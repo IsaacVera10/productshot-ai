@@ -11,9 +11,9 @@
 | D-03 | Cinco presets por ejecución: studio/natural/warm/lifestyle/minimal (ver ADR-001) | Facilita diversidad y evaluación | Propuesta implementable |
 | D-04 | Modo intermedio: segmentación + inpainting preentrenado | Control de región editable sin reentrenamiento | Elegido, pendiente de pruebas |
 | D-05 | Modo avanzado: inpainting + LoRA entrenado | Adaptación y comparación del estilo comercial | Elegido; plan B en ADR-002 |
-| D-06 | Colab Pro para entrenamiento offline | Evita factura de entrenamiento en GCP | Elegido, condicionado a recursos |
-| D-07 | GCP para despliegue; Cloud Run CPU/GPU + Storage/Firestore | Separación web/inferencia y portabilidad | Elegido como principal, con respaldo local (ADR-003) |
-| D-08 | Gemini mediante Vertex AI para agente LLM | Consumo gestionado, sin alojar LLM en nuestra GPU | Elegido |
+| D-06 | Colab Pro para entrenamiento offline | Evita factura de entrenamiento en GCP | Vigente (ADR-009): Colab Pro de Pedro (~140 unidades) como principal, Kaggle de respaldo |
+| D-07 | GCP para despliegue; Cloud Run CPU/GPU + Storage/Firestore | Separación web/inferencia y portabilidad | Reemplazada por ADR-009: Modal como principal; GCP queda como alternativa compatible |
+| D-08 | Gemini mediante Vertex AI para agente LLM | Consumo gestionado, sin alojar LLM en nuestra GPU | Ajustada por ADR-009: Gemini por la API de AI Studio (plan gratuito); Vertex AI solo con la alternativa GCP |
 | D-09 | MVP local offline con adaptador mock y resumen determinista | Probar el flujo sin costosos modelos ni credenciales | Elegido para primer PR |
 | D-10 | Una sesión = imagen + modo + generación de cinco; sin iteraciones | Evita estado ambiguo y repetición de costes | Vigente por ronda: las iteraciones de ADR-007 son sesiones hijas, cada una con sus cinco |
 | D-11 | Nicho: emprendedores en Perú que venden productos pequeños y rígidos por redes sociales (ver `00_ALCANCE_Y_REQUISITOS.md`) | Lineamiento de clase; acota los productos a los que el pipeline maneja mejor y da acceso a usuarios de prueba | Elegida (2026-11-12) |
@@ -106,7 +106,7 @@ Evidencia: un compañero presentó a la docente un avance con LoRA reentrenado s
 ```text
 ADR-003 — GCP como despliegue principal, con respaldo local
 Fecha: 2026-11-01
-Estado: aceptada
+Estado: reemplazada por ADR-009 (2026-11-12); se conserva la idea de mismos contratos en todos los entornos
 Contexto: el enunciado no exige nube, pero el equipo quiere desplegar en GCP. La demo en vivo no debe depender de un único entorno.
 Opciones: solo local; GCP opcional; GCP desde el inicio con respaldo local.
 Decisión: comprometer GCP como despliegue principal y mantener una arquitectura local equivalente como respaldo, con los mismos contratos.
@@ -168,4 +168,20 @@ Opciones: solo reflexión; filtros externos de contenido; guardrails por capas (
 Decisión: guardrails por capas G1–G14, priorizando fidelidad del producto (G8), clasificador NSFW en entrada y salida (G2, G7) y detector de rostros (G3).
 Consecuencias: más VRAM y latencia en el worker (clasificadores), umbrales que calibrar y casos de demo preparados. Detalle en 08_ITERACIONES_Y_GUARDRAILS.md.
 Evidencia: lectura de la rúbrica; sin mediciones todavía.
+```
+
+```text
+ADR-009 — Infraestructura sin créditos de GCP: Modal como principal y piezas intercambiables
+Fecha: 2026-11-12
+Estado: aceptada
+Contexto: el equipo no tiene créditos de GCP (las cuentas de facturación de Isaac están cerradas y el proyecto planifica-proyecto no tiene facturación). Cloud Run con GPU no tiene capa gratuita, se factura por instancia y sigue cobrando unos minutos después de cada solicitud; una instancia olvidada cuesta unos USD 25 al día y las alertas de presupuesto no cortan el gasto. La cuota de GPU exige solicitud y aprobación. Dejar la demo en la laptop obliga a tenerla encendida. Pedro tiene Colab Pro con unas 140 unidades de cómputo.
+Opciones: GCP con tarjeta (estimado USD 25 a 30 para todo el proyecto, con riesgo de cobros por olvido); solo local; Cloudflare Workers AI (inpainting solo con SD 1.5 y sin LoRA propio para imágenes: deja fuera el modo avanzado); Hugging Face Spaces (Gradio en hardware gratuito pide PRO, disco no persistente, poca GPU gratis); Modal (USD 30 de cómputo gratis al mes, L4 cerca de USD 0.80 la hora, escala a cero, Python nativo, admite SDXL y LoRA propio).
+Decisión:
+1. Despliegue principal en Modal: UI y API como endpoint web sin GPU, y un worker con GPU L4 para segmentar y generar en ambos modos. Límite de gasto de la cuenta en USD 30 si Modal pide tarjeta.
+2. Agente con Gemini por la API de AI Studio (plan gratuito, clave en .env o en un secreto de Modal). Segundo LLM para comparar resúmenes: un modelo abierto (Ollama en local, o uno gratuito en la nube) detrás de la misma interfaz SummaryService.
+3. LoRA en Colab Pro (cuenta de Pedro) como principal y Kaggle como respaldo gratuito. El smoke test de ADR-004 se completa cargando el adaptador en el worker de Modal, que es donde se servirá.
+4. Pesos del LoRA y dataset curado en repositorios privados de Hugging Face Hub, con manifiesto de revisión y checksum; el worker los toma de LORA_ADAPTER_URI.
+5. Arquitectura de piezas intercambiables: cada componente (worker GPU, UI y API, base de datos, archivos, agente, ejecutor de trabajos, entrenamiento, pesos) tiene una interfaz y adaptadores para Modal (A), GCP (B) y la laptop (C). El worker se escribe una sola vez y se aloja en cualquiera de los tres detrás del mismo contrato HTTP. Pasar de A a B debe ser configuración más los adaptadores de Firestore y Cloud Storage, sin tocar dominio, UI ni pruebas.
+Consecuencias: el informe describe Modal y no Cloud Run. Faltan cuatro piezas para que el intercambio sea real: interfaz Repository (hoy SessionService depende de SqliteRepository), una raíz de composición que elija adaptadores por variables de entorno, el contrato HTTP del worker con un RemoteGenerationBackend, y ejecutores de trabajos por plataforma (P10). El plan gratuito de Gemini permite a Google usar lo enviado para mejorar sus productos: al agente solo se envían decisiones y motivos, nunca fotos, y se declara en el consentimiento de la prueba con usuarios. SQLite en un volumen de Modal exige un solo contenedor de API escribiendo. Las unidades de Colab Pro vencen (habitualmente a los 90 días de su compra): confirmar la fecha con Pedro antes de planificar el entrenamiento.
+Evidencia: consulta de precios y planes del 2026-11-12 (Cloud Run, Modal, Workers AI y Spaces; varias cifras de fuentes secundarias, a confirmar al registrarse); revisión de gcloud sobre las cuentas de facturación y proyectos del equipo. Sin mediciones de GPU todavía.
 ```

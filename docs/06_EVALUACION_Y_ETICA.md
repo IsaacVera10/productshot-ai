@@ -62,7 +62,7 @@ Cada problema observado se registra con la tarea, cuántas personas lo tuvieron 
 
 **Sesión (15 a 20 minutos):**
 
-1. Consentimiento informado: qué se registra, que la foto se borra al terminar el proyecto salvo autorización expresa, y que puede retirarse cuando quiera.
+1. Consentimiento informado: qué se registra, que la foto se borra al terminar el proyecto salvo autorización expresa, que las decisiones y los motivos escritos (nunca la foto) se envían a Gemini, cuyo plan gratuito permite a Google usarlos para mejorar sus productos (ADR-009), y que puede retirarse cuando quiera.
 2. Contexto en una frase, sin enseñar la interfaz: «Imagina que quieres publicar este producto en tu Instagram».
 3. Tareas, cada una seguida de la pregunta SEQ:
    - U1: subir la foto y elegir el modo indicado.

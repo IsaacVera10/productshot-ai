@@ -4,8 +4,8 @@ Cada diagrama tiene su fuente editable en draw.io (`.drawio`) y su exportación 
 
 | Diagrama | Qué muestra | Archivos |
 |---|---|---|
-| Arquitectura GCP | Despliegue principal | [PNG](01-arquitectura-gcp.png) · [draw.io](01-arquitectura-gcp.drawio) |
-| Arquitectura local | Respaldo con los mismos contratos | [PNG](02-arquitectura-local.png) · [draw.io](02-arquitectura-local.drawio) |
+| Arquitectura GCP | Alternativa B desde ADR-009 (el principal es Modal; ver `01_ARQUITECTURA.md`, sección F) | [PNG](01-arquitectura-gcp.png) · [draw.io](01-arquitectura-gcp.drawio) |
+| Arquitectura local | Diseño anterior a ADR-009; hoy la laptop es el entorno de desarrollo | [PNG](02-arquitectura-local.png) · [draw.io](02-arquitectura-local.drawio) |
 | Flujo del sistema | Flujo de información y decisiones | [PNG](03-flujo-sistema.png) · [draw.io](03-flujo-sistema.drawio) |
 | Secuencia de sesión | Recorrido completo, de la foto al resumen | [PNG](04-secuencia-sesion.png) · [draw.io](04-secuencia-sesion.drawio) |
 | Secuencia de generación | Generación asíncrona en GCP, con éxito y fallo | [PNG](05-secuencia-generacion-gcp.png) · [draw.io](05-secuencia-generacion-gcp.drawio) |
