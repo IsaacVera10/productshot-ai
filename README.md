@@ -85,6 +85,8 @@ uv run productshot-worker                                   # worker en http://1
 GENERATION_BACKEND=remote GENERATION_WORKER_URL=http://127.0.0.1:8001 uv run productshot
 ```
 
+El worker real (SDXL en una GPU L4 de Modal) está en `deploy/modal/worker.py`; los comandos y la prueba de humo están en [05, despliegue principal](docs/05_COLAB_Y_GCP.md#despliegue-principal-modal).
+
 Estructura:
 
 | Ruta | Contenido |

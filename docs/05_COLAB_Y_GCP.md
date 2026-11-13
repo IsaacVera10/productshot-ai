@@ -45,6 +45,35 @@ El mapeo completo por pieza está en [01 — Arquitectura, sección F](01_ARQUIT
 5. Secretos de Modal para la clave de Gemini y el token de Hugging Face.
 6. Para la demo: un contenedor mínimo del worker encendido solo durante la presentación, y volver a 0 al terminar.
 
+### Comandos (implementado el 2026-11-13)
+
+El worker está en `deploy/modal/worker.py` y usa `SdxlInpaintBackend` (`backend/productshot/services/sdxl_generation.py`) detrás del mismo contrato HTTP que el mock.
+
+```bash
+# una vez: el token lo comparten la API (.env) y el worker (secreto de Modal)
+modal secret create productshot-worker GENERATION_WORKER_TOKEN=<token>
+
+PYTHONPATH=backend modal run deploy/modal/worker.py      # prueba de humo: un lote de cinco, deja PNG y métricas en data/smoke/
+PYTHONPATH=backend modal deploy deploy/modal/worker.py   # endpoint permanente; escala a cero a los 2 minutos sin uso
+```
+
+Con el endpoint desplegado, la API local o la de Modal lo usa con `GENERATION_BACKEND=remote` y `GENERATION_WORKER_URL=<URL del endpoint>`. Los pesos quedan en el volumen `productshot-hf-cache` y la revisión exacta del checkpoint (SHA) se registra en cada variación.
+
+### Prueba de humo en Modal (2026-11-13)
+
+Un lote de cinco con `stabilityai/stable-diffusion-xl-base-1.0@462165984030d82259a11f4367a4eed129e94a7b`, pipeline de inpainting de cuatro canales, fp16, 30 pasos, guidance 7.0, strength 0.99, a 1024×768, sobre un producto sintético (una taza roja plana dibujada con su máscara exacta):
+
+| Medida | Resultado |
+|---|---|
+| GPU | NVIDIA L4, 22.1 GB utilizables |
+| Pico de VRAM | 9.5 GB por imagen (sobra margen en la L4; no entra tal cual en los 8 GB de la RTX 4060: haría falta `enable_model_cpu_offload`) |
+| Carga del modelo | 55 s con los pesos ya en el volumen (la primera descarga suma unos 45 s) |
+| Lote de cinco | 50 s, unos 10 s por imagen |
+| Deriva del producto antes de recomponer (G8) | 3.1 a 6.2 de 255; la recomposición la lleva a 0 |
+| Costo | Unos minutos de L4, menos de USD 0.10 |
+
+Hallazgo de calidad: con el producto sintético, el modelo **prolonga la silueta del producto** en el fondo (un telón rojo detrás en estudio, un vaso en natural, una tetera en lifestyle, una tarjeta blanca en minimalista). Es el problema conocido de expansión de objeto en inpainting y es lo que el Hito 2 debe medir con fotos reales de los casos obligatorios. Opciones a probar en ese orden: describir el producto en el prompt, agrandar un poco la máscara protegida o difuminar menos su borde, bajar `strength` y, si no alcanza, el UNet de nueve canales (P4). Las imágenes y `metrics.json` quedan en `data/smoke/` (no versionado).
+
 Costo esperado: unas 20 h de L4 para todo el proyecto (desarrollo, prueba con 10 usuarios, ensayos y demo) a cerca de USD 0.80 por hora, dentro de los USD 30 gratis de un mes. Es una estimación: el smoke test medirá el costo real por lote.
 
 ## Alternativa: GCP

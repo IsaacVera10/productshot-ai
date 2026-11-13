@@ -99,9 +99,17 @@ def run() -> None:
     from productshot.config import Settings
     from productshot.services.generation import MockGenerationBackend
 
+    def sdxl():
+        # Necesita torch y diffusers con CUDA (laptop con la RTX 4060 o cualquier GPU).
+        from productshot.services.sdxl_generation import SdxlInpaintBackend
+
+        backend = SdxlInpaintBackend()
+        backend.load()
+        return backend
+
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     settings = Settings()
-    backends = {"mock": MockGenerationBackend}
+    backends = {"mock": MockGenerationBackend, "sdxl": sdxl}
     name = os.environ.get("WORKER_BACKEND", "mock")
     if name not in backends:
         raise SystemExit(f"WORKER_BACKEND desconocido: {name!r}. Disponibles: {sorted(backends)}.")
