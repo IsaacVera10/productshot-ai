@@ -35,17 +35,17 @@ Ambos modos deben poder elegirse y utilizarse por separado. Corresponden a los n
 
 ## Tecnologías previstas
 
-| Área | Desarrollo local | Despliegue objetivo |
-|---|---|---|
-| API y UI | FastAPI, Gradio | Cloud Run CPU |
-| Generación | PyTorch, Diffusers, pipeline local/mock | Cloud Run GPU |
-| Segmentación | rembg / SAM 2 | Servicio GPU |
-| Datos operativos | SQLite | Firestore |
-| Artefactos | Directorio local | Cloud Storage |
-| Agente de explicación | Servicio simulado (MVP) | Gemini en Vertex AI |
-| Entrenamiento LoRA | Prototipos / scripts reproducibles | Colab Pro para entrenamiento offline |
+| Área | Desarrollo (laptop) | Despliegue (Modal) | Alternativa (GCP) |
+|---|---|---|---|
+| API y UI | FastAPI, Gradio | Endpoint web de Modal | Cloud Run sin GPU |
+| Generación | PyTorch, Diffusers, mock | Worker con GPU L4 en Modal | Cloud Run con GPU |
+| Segmentación | rembg / SAM 2 | El mismo worker | El mismo worker |
+| Datos operativos | SQLite | SQLite en un volumen de Modal | Firestore |
+| Artefactos | Directorio local | Volumen de Modal | Cloud Storage |
+| Agente de explicación | Determinista (Hito 1) | Gemini por AI Studio y un segundo LLM | Gemini en Vertex AI |
+| Entrenamiento LoRA | Scripts reproducibles | Colab Pro (principal) o Kaggle | Igual |
 
-GCP es el despliegue principal y la arquitectura local su respaldo; el mapeo de ambas está en [01 — Arquitectura, sección F](docs/01_ARQUITECTURA.md#f-mapeo-de-arquitecturas-gcp-y-local). El checkpoint exacto de difusión sigue pendiente de pruebas de memoria, compatibilidad con inpainting y entrenamiento LoRA.
+Modal es el despliegue principal, GCP una alternativa compatible y la laptop el entorno de desarrollo (ADR-009). El rompecabezas de piezas intercambiables está en [01 — Arquitectura, sección F](docs/01_ARQUITECTURA.md#f-mapeo-de-arquitecturas-modal-gcp-y-local). El checkpoint exacto de difusión sigue pendiente de pruebas de memoria, compatibilidad con inpainting y entrenamiento LoRA.
 
 ## Documentación
 
@@ -54,7 +54,7 @@ GCP es el despliegue principal y la arquitectura local su respaldo; el mapeo de 
 - [02 — API y modelo de datos](docs/02_API_Y_MODELO_DE_DATOS.md)
 - [03 — Decisiones y riesgos](docs/03_DECISIONES_Y_RIESGOS.md)
 - [04 — Roadmap y pruebas](docs/04_ROADMAP_Y_TESTS.md)
-- [05 — Colab y GCP](docs/05_COLAB_Y_GCP.md)
+- [05 — Entrenamiento y despliegue (Colab, Kaggle, Modal y GCP)](docs/05_COLAB_Y_GCP.md)
 - [06 — Evaluación y ética](docs/06_EVALUACION_Y_ETICA.md)
 - [07 — Enunciado Proyecto 2](docs/07_ENUNCIADO_PROYECTO_2.md)
 - [08 — Propuesta: iteraciones y guardrails](docs/08_ITERACIONES_Y_GUARDRAILS.md) (aceptado: iteraciones por rondas y guardrails G1 a G14)

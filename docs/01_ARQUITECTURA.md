@@ -4,19 +4,19 @@ Las versiones editables en draw.io y exportadas en PNG están en [`diagrams/`](d
 
 ## Criterios de diseño
 
-Separar dominio/servicios de implementaciones de infraestructura. El mismo orquestador invoca backends intercambiables: `mock`, `pretrained_inpainting`, `lora_inpainting`. **`mock` es solo para desarrollo y pruebas y no cuenta como enfoque académico.** El procesamiento de GPU debe ser independiente de la API/web. En local usar persistencia SQLite + carpetas; en nube Firestore + Cloud Storage mediante adaptadores.
+Separar dominio/servicios de implementaciones de infraestructura. El mismo orquestador invoca backends intercambiables: `mock`, `pretrained_inpainting`, `lora_inpainting`. **`mock` es solo para desarrollo y pruebas y no cuenta como enfoque académico.** El procesamiento de GPU debe ser independiente de la API/web. En la laptop y en Modal se usa SQLite + carpetas (en Modal, sobre un volumen); en la alternativa GCP, Firestore + Cloud Storage mediante adaptadores (ADR-009, sección F).
 
-## A. Componentes — local y GCP
+## A. Componentes
 
 ```mermaid
 flowchart TD
     UI["Gradio UI"] --> API["FastAPI: API / Orquestador"]
     API --> REP["SessionRepository / DecisionRepository"]
     REP --> LOCAL[("SQLite local")]
-    REP -. "adaptador GCP" .-> FS[("Firestore")]
+    REP -. "alternativa GCP" .-> FS[("Firestore")]
     API --> ART["ArtifactStore"]
     ART --> FILES[("Archivos locales")]
-    ART -. "adaptador GCP" .-> GCS[("Cloud Storage")]
+    ART -. "alternativa GCP" .-> GCS[("Cloud Storage")]
     API --> SEG["SegmentationService: rembg -> máscara"]
     API --> GEN["GenerationService: 5 estilos"]
     SEG --> GEN
@@ -31,14 +31,14 @@ flowchart TD
     API --> SUMMARY["SummaryService"]
     SUMMARY --> TOOL["Herramientas de consulta de decisiones"]
     TOOL --> REP
-    SUMMARY --> GEM["Gemini en Vertex AI (fase agente)"]
+    SUMMARY --> GEM["Gemini por AI Studio (Vertex AI en la alternativa GCP)"]
     SUMMARY --> CHECK["Validador determinista"]
     CHECK --> API
-    COLAB["Colab Pro: entrenamiento LoRA offline"] --> WEIGHTS["LoRA versionado"]
+    COLAB["Colab Pro o Kaggle: entrenamiento LoRA offline"] --> WEIGHTS["LoRA versionado en Hugging Face Hub"]
     WEIGHTS --> L
 ```
 
-**Nota:** componentes GCP dibujados como adaptadores futuros; el primer PR NO establece conexiones reales con servicios cloud ni usa pesos GPU.
+**Nota:** los componentes de nube son adaptadores futuros; el código actual no se conecta a servicios cloud ni usa pesos de GPU. El mapeo por entorno (Modal, GCP y laptop) está en la sección F.
 
 ## B. Flujo de sesión (v1)
 
@@ -182,76 +182,79 @@ class SummaryService(Protocol):
 
 *Especificaciones conceptuales*: La implementación deberá concretar los tipos en el repositorio. No copiar interfaces sin implementar semánticas de errores, configuración e idempotencia definidas en el contrato.
 
-## F. Mapeo de arquitecturas: GCP y local
+## F. Mapeo de arquitecturas: Modal, GCP y local
 
-GCP es el despliegue principal y la arquitectura local es su respaldo (ver ADR-003). Ambas usan el mismo dominio, la misma API `/api/v1` y las interfaces de la sección E; cambian los adaptadores. Ninguna está implementada todavía.
+Modal es el despliegue principal (ADR-009, que reemplaza a ADR-003). GCP queda como alternativa compatible y la laptop como entorno de desarrollo. Las tres usan el mismo dominio, la misma API `/api/v1` y las mismas interfaces; solo cambian los adaptadores, como piezas de un rompecabezas.
 
-| Componente | GCP (principal) | Local (respaldo) | Interfaz común |
-|---|---|---|---|
-| UI y API | Cloud Run CPU: Gradio + FastAPI | Uvicorn: Gradio + FastAPI | Contrato `/api/v1` |
-| Ejecución de trabajos | Cloud Tasks invoca al worker | Ejecutor aislado en el mismo proceso | Semántica `202` y estados de sesión |
-| Segmentación e inferencia | Cloud Run GPU (L4 inicial) | GPU local o Colab, según medición | `SegmentationService`, `GenerationBackend` |
-| Sesiones y decisiones | Firestore | SQLite | `SessionRepository`, `DecisionRepository` |
-| Imágenes y máscaras | Cloud Storage | `data/assets/` | `ArtifactStore` |
-| Pesos LoRA | Cloud Storage | Copia local versionada | Manifiesto con revisión y checksum |
-| Entrenamiento LoRA | Colab Pro, fuera de GCP | Colab Pro, fuera de GCP | Mismo adaptador exportado |
-| Agente | Gemini en Vertex AI con identidad de servicio | Gemini en Vertex AI con ADC; requiere internet | `SummaryService` y validador determinista |
-| Credenciales | Identidades de servicio y Secret Manager | ADC y `.env` no versionado | Configuración por entorno |
-| Contenedores | Artifact Registry | Build local, si se usa Docker | Mismo código |
-| Registros | Cloud Logging y Monitoring | stdout estructurado | Mismos eventos |
+| Pieza | A: Modal (principal) | B: GCP (alternativa) | C: laptop (desarrollo) | Interfaz común |
+|---|---|---|---|---|
+| Worker GPU: segmentación y generación en ambos modos, con el LoRA | Función de Modal con L4, escala a cero | Cloud Run con GPU L4 | uvicorn con la RTX 4060 de 8 GB | Contrato HTTP del worker |
+| Cómo llega la API al worker | HTTP | HTTP | HTTP o en el mismo proceso | `GenerationBackend` (adaptador remoto) |
+| UI y API | Endpoint web de Modal, sin GPU | Cloud Run sin GPU | uvicorn | Contrato `/api/v1` |
+| Sesiones, decisiones y resúmenes | SQLite en un volumen de Modal (un solo contenedor de API) | Firestore | SQLite | `Repository` (por extraer) |
+| Imágenes y máscaras | Volumen de Modal | Cloud Storage | `data/assets/` | `ArtifactStore` |
+| Agente LLM | Gemini por AI Studio | Gemini en Vertex AI | Gemini por AI Studio u Ollama | `SummaryService` y validador determinista |
+| Segundo LLM, para comparar | Modelo abierto gratuito en la nube | Modelo abierto en Vertex AI | Ollama | `SummaryService` |
+| Ejecución de trabajos | `spawn` de Modal | Cloud Tasks | Hilo del mismo proceso | `JobRunner` y semántica `202` |
+| Entrenamiento del LoRA | Colab Pro (Pedro); Kaggle de respaldo | Igual | Igual (8 GB no alcanzan para entrenar SDXL) | Adaptador exportado con manifiesto |
+| Pesos del LoRA y dataset curado | Repositorios privados en Hugging Face Hub | Hub o Cloud Storage | Hub o copia local | `LORA_ADAPTER_URI` con revisión y checksum |
+| Secretos | Secretos de Modal | Secret Manager | `.env` no versionado | Configuración por entorno |
+| Registros | Logs de Modal | Cloud Logging | stdout | Mismos eventos `GUARDRAIL` |
 
-La configuración de desarrollo del Hito 1 (`GENERATION_BACKEND=mock`, `SUMMARY_BACKEND=deterministic`) es distinta del respaldo: el mock no cuenta como enfoque académico ni el resumen determinista como agente.
+El worker se escribe una vez y lo que cambia es dónde se aloja. El SDK de Gemini (`google-genai`) pasa de AI Studio a Vertex AI con un parámetro. Pasar de A a B exige los adaptadores de Firestore y Cloud Storage, un Dockerfile y la configuración de GCP, sin tocar dominio, UI ni pruebas.
 
-### GCP (principal)
+**Estado de las piezas (2026-11-12).** Ya son interfaces con adaptadores: `GenerationBackend`, `SegmentationService`, `SummaryService`, `ArtifactStore` y `JobRunner`. Faltan cuatro: una interfaz `Repository` (hoy `SessionService` depende de `SqliteRepository`), una raíz de composición que elija adaptadores por variables de entorno (hoy `create_app` fija los mocks), el contrato HTTP del worker con su `RemoteGenerationBackend`, y ejecutores de trabajos por plataforma (P10).
+
+La configuración de desarrollo (`GENERATION_BACKEND=mock`, `SUMMARY_BACKEND=deterministic`) no cuenta como enfoque académico ni el resumen determinista como agente.
+
+### Modal (principal)
 
 ```mermaid
 flowchart TD
-    USER["Navegador"] --> WEB["Cloud Run CPU: Gradio + FastAPI"]
+    USER["Navegador"] --> WEB["Modal, sin GPU: Gradio + FastAPI"]
+    WEB --> VOL[("Volumen de Modal: SQLite y archivos")]
+    WEB -->|"spawn"| GPU["Modal con GPU L4: segmentación e inferencia"]
+    GPU --> VOL
+    WEB --> AGENT["Agente Python de solo lectura"]
+    AGENT --> GEM["Gemini por AI Studio"]
+    AGENT --> VOL
+    COLAB["Colab Pro o Kaggle: LoRA offline"] --> HUB[("Hugging Face Hub privado: LoRA y manifiesto")]
+    HUB --> GPU
+```
+
+### GCP (alternativa)
+
+```mermaid
+flowchart TD
+    USER["Navegador"] --> WEB["Cloud Run sin GPU: Gradio + FastAPI"]
     WEB --> STORE[("Cloud Storage")]
     WEB --> META[("Firestore")]
     WEB --> TASK["Cloud Tasks"]
-    TASK --> GPU["Cloud Run GPU: segmentación e inferencia"]
+    TASK --> GPU["Cloud Run con GPU: segmentación e inferencia"]
     GPU --> STORE
     GPU --> META
     WEB --> AGENT["Agente Python de solo lectura"]
     AGENT --> GEM["Vertex AI: Gemini"]
     AGENT --> META
-    COLAB["Colab Pro: LoRA offline"] --> ART["LoRA versionado"]
-    ART --> STORE
-    STORE --> GPU
+    COLAB["Colab Pro o Kaggle: LoRA offline"] --> HUB[("Hugging Face Hub o Cloud Storage")]
+    HUB --> GPU
 ```
 
-### Local (respaldo)
-
-```mermaid
-flowchart TD
-    USER["Navegador"] --> WEB["Uvicorn: Gradio + FastAPI"]
-    WEB --> FILES[("data/assets/")]
-    WEB --> DB[("SQLite")]
-    WEB --> EXEC["Ejecutor aislado"]
-    EXEC --> GPU["GPU local o Colab: segmentación e inferencia"]
-    GPU --> FILES
-    GPU --> DB
-    WEB --> AGENT["Agente Python de solo lectura"]
-    AGENT --> GEM["Vertex AI: Gemini"]
-    AGENT --> DB
-    COLAB["Colab Pro: LoRA offline"] --> ART["LoRA versionado"]
-    ART --> FILES
-    FILES --> GPU
-```
+Los diagramas `01-arquitectura-gcp` y `02-arquitectura-local` de `docs/diagrams/` muestran el diseño anterior a ADR-009: el 01 corresponde hoy a la alternativa B.
 
 ### Niveles de respaldo para la demo
 
-1. **GCP:** modelo precargado antes de presentar.
-2. **Local:** misma aplicación con modelos reales, si la medición confirma que la GPU es suficiente.
+1. **Modal:** el worker se calienta antes de presentar (un contenedor mínimo solo durante la demo, y se vuelve a 0 al terminar).
+2. **Laptop:** la misma aplicación con el worker en la RTX 4060, si la medición confirma que alcanza.
 3. **Video grabado y sesión ya generada:** sirven como evidencia si fallan los anteriores, pero no sustituyen la demostración en vivo.
 
-### Diferencias que ambos adaptadores deben cubrir
+### Diferencias que todos los adaptadores deben cubrir
 
 - **Lote atómico:** una sesión solo pasa a `READY_FOR_REVIEW` con cinco artefactos y registros, sin depender de transacciones SQL.
-- **Reintentos:** Cloud Tasks puede repetir entregas, así que el worker debe ser idempotente; el ejecutor local debe cumplir el mismo contrato.
-- **Trabajos interrumpidos:** un reinicio del proceso o del worker no debe dejar la sesión en `GENERATING` indefinidamente.
-- **Almacenamiento:** Cloud Run tiene disco efímero, por lo que no debe depender de rutas locales.
+- **Reintentos:** `spawn` de Modal y Cloud Tasks pueden repetir entregas, así que el worker debe ser idempotente; el ejecutor local cumple el mismo contrato.
+- **Trabajos interrumpidos:** un reinicio del proceso o del worker no debe dejar la sesión en `GENERATING` indefinidamente (G14 ya la vence).
+- **Almacenamiento:** Cloud Run y los contenedores de Modal tienen disco efímero; solo el volumen, Cloud Storage o `data/` persisten.
+- **Un solo escritor de SQLite:** en Modal, la API corre en un solo contenedor (`max_containers=1`) mientras la base sea SQLite.
 
 ## G. Guardrails ante fallos
 

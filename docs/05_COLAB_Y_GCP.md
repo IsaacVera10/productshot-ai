@@ -1,62 +1,82 @@
-# 05 — Entrenamiento Colab Pro y despliegue GCP
+# 05 — Entrenamiento (Colab Pro, Kaggle) y despliegue (Modal, alternativa GCP)
 
-## Objetivo de despliegue (no implementado todavía)
+**Estado (2026-11-12):** decidido en ADR-009; nada desplegado todavía. Los precios son de una consulta del 2026-11-12, varios de fuentes secundarias: confirmarlos al registrarse.
 
-| Servicio | Propósito | Alternativa local |
-|---|---|---|
-| Colab Pro | Entrenar LoRA offline, exportar pesos y registro | GPU propia/Khipu autorizada |
-| Cloud Run CPU | FastAPI + Gradio, agente/tool orchestration | Uvicorn local |
-| Cloud Run GPU (L4 inicial) | Segmentar y generar cinco imágenes | Worker local con GPU/Colab para pruebas |
-| Cloud Storage | Fotos originales, máscaras, variantes, pesos LoRA | Directorio `data/assets/` |
-| Firestore | Sesiones, trabajos, decisiones, metadatos | SQLite |
-| Vertex AI + Gemini | Modelo fundacional que usa el agente | Servicio mock/LLM local de prueba |
-| Artifact Registry | Contenedores Docker | Build local |
-| Secret Manager | Claves y configuración sensible | `.env` local no versionado / ADC |
-| Cloud Logging/Monitoring | Métricas, errores y diagnóstico | stdout estructurado |
+## Resumen
 
-## Diagramas de despliegue
+| Necesidad | Principal | Respaldo o alternativa | Costo esperado |
+|---|---|---|---|
+| Entrenar el LoRA | Colab Pro de Pedro (~140 unidades de cómputo) | Kaggle (gratis, unas 30 h de GPU por semana) | Unidades ya pagadas |
+| Servir la generación (ambos modos) | Modal, GPU L4 de 24 GB, escala a cero | Laptop con RTX 4060 de 8 GB; Cloud Run con GPU | Dentro de los USD 30 gratis al mes de Modal |
+| UI y API | Modal, endpoint web sin GPU | Laptop; Cloud Run sin GPU | Dentro de los mismos créditos |
+| Agente | Gemini por AI Studio (plan gratuito) | Gemini en Vertex AI (solo con GCP) | 0 |
+| Segundo LLM | Modelo abierto gratuito en la nube | Ollama en la laptop | 0 |
+| Pesos y dataset | Repositorios privados de Hugging Face Hub | Cloud Storage | 0 |
 
-El mapeo completo y los diagramas de las arquitecturas GCP (principal) y local (respaldo) están en [01 — Arquitectura, sección F](01_ARQUITECTURA.md#f-mapeo-de-arquitecturas-gcp-y-local).
+El mapeo completo por pieza está en [01 — Arquitectura, sección F](01_ARQUITECTURA.md#f-mapeo-de-arquitecturas-modal-gcp-y-local).
 
-## Flujo de entrenamiento — fuera de GCP
+## Entrenamiento del LoRA
 
-1. Descargar solo datos permitidos y definir split train/validation/test separado **por producto/identidad** para reducir fuga.
-2. Guardar manifiesto `datasets.csv` (id, origen, licencia, hash, split, categoría, caption).
-3. Probar checkpoint compatible y entorno Colab; verificar VRAM real antes de iniciar entrenamiento.
-4. Registrar `base_model_id`, **revisión exacta**, scripts/dependencias, LoRA rank/alpha/LR/steps/seed, curvas de pérdida, checkpoint y resultados en validación.
-5. Guardar checkpoints para reanudar y **exportar únicamente los adaptadores necesarios**, con licencias y documentación. No depender de una sesión de Colab encendida.
-6. Publicar un paquete de pesos/manifest en Cloud Storage (o copiar localmente para pruebas), **solo tras verificar compatibilidad** de `load_lora_weights` con el pipeline elegido.
+### Dónde
 
-**Colab Pro no garantiza tipo de GPU ni disponibilidad ilimitada.** Ver FAQ oficial: https://research.google.com/colaboratory/faq.html?hl=es
+- **Colab Pro (principal).** Cuenta de Pedro, con unas 140 unidades de cómputo. Permite GPU de 24 GB o más (L4, A100), cómodas para SDXL a 1024 px. El consumo por hora depende de la GPU y es mucho mayor en A100 que en L4 o T4: revisar en el panel de Colab cuántas unidades por hora gasta la GPU asignada antes de cada corrida larga. **Las unidades vencen** (habitualmente a los 90 días de la compra): confirmar la fecha con Pedro y planificar el entrenamiento antes.
+- **Kaggle (respaldo gratuito).** T4 o P100 de 16 GB, unas 30 h por semana y sesiones de hasta 12 h. SDXL a 1024 px entra con `fp16`, *gradient checkpointing*, Adam en 8 bits y lote de 1, pero es lento. Sirve para el piloto o si se agotan las unidades.
+- **Modal (integración).** El smoke test de ADR-004 termina cargando el adaptador en el worker de Modal, que es donde se servirá: si no carga o no se ve en el pipeline de inpainting, se detecta ahí. Entrenar en Modal también es posible con los créditos (unos USD 1.5 a 3 por corrida en L4), pero compite con la inferencia.
+- **Laptop:** 8 GB no alcanzan para entrenar SDXL.
 
-## Flujo de GCP — segunda etapa
+**Colab Pro no garantiza tipo de GPU ni disponibilidad ilimitada.** FAQ oficial: https://research.google.com/colaboratory/faq.html?hl=es
 
-1. Establecer proyecto de prueba, región, presupuesto y alertas; no asumir créditos gratuitos.
-2. Crear bucket privado y Firestore, definir identidades de servicio de permisos mínimos.
-3. Crear imágenes de contenedor reproducibles (API CPU y worker GPU por separado), publicar en Artifact Registry.
-4. Configurar Cloud Run CPU con API/UI; almacenamiento permanente externo (Cloud Run tiene filesystem efímero).
-5. Configurar GPU Cloud Run con L4 u otra GPU compatible, **min instances = 0** cuando aplique, **max instances = 1** inicialmente, CPU/RAM mínimos del tipo GPU, límite de concurrencia y timeout basados en benchmark. Confirmar región y cuotas.
-6. Generación asíncrona con trabajos: `POST /generate` crea job -> Cloud Tasks invoca worker -> worker valida y guarda cinco artefactos -> confirma estado `READY_FOR_REVIEW`. Proteger endpoint worker con IAM, implementar reintentos seguros (idempotentes).
-7. Activar Gemini a través de Vertex AI con identidad de servicio; el LLM no corre en GPU propia.
-8. Validar una demo de extremo a extremo y apagar los recursos no necesarios tras pruebas.
+### Flujo
 
-Cloud Run GPU admite GPU L4 de 24 GB, puede reducir instancias a cero, pero **la factibilidad de nuestro modelo y sus tiempos solo se conocen tras benchmarks**. Documentación: https://docs.cloud.google.com/run/docs/configuring/services/gpu
+1. Descargar solo datos permitidos y definir el split train/validation/test separado **por producto/identidad** para reducir fuga.
+2. Guardar el manifiesto `datasets.csv` (id, origen, licencia, hash, split, categoría, caption).
+3. Probar el checkpoint y el entorno; verificar la VRAM real antes de iniciar el entrenamiento.
+4. Registrar `base_model_id`, **revisión exacta**, scripts y dependencias, rank, alpha, LR, pasos, semilla, curvas de pérdida, checkpoint y resultados en validación.
+5. Guardar checkpoints para reanudar (Kaggle corta a las 12 h y Colab por inactividad) y **exportar solo los adaptadores**.
+6. Publicar el adaptador y su manifiesto (revisión, checksum, checkpoint base) en un **repositorio privado de Hugging Face Hub**. El worker lo carga desde `LORA_ADAPTER_URI`, así que da igual dónde se entrenó.
+7. El dataset curado también va privado: BG60k es solo para uso académico y falta confirmar con sus autores si se pueden publicar ejemplos y pesos (P6).
 
-## Costos y protección
+## Despliegue principal: Modal
 
-- **Antes de crear GPU**: revisar precio efectivo por región, cuota, costos de inicio/carga e inactividad, facturación de Gemini, GCS y red. No poner valores monetarios inventados en propuesta.
-- Presupuesto + alertas **no son un apagado automático**. Configurar topes de instancias, autenticación y protección del endpoint para minimizar generación maliciosa/repetitiva.
-- La cuota y `max-instances=1` limitan escalado, pero **no garantizan un tope monetario total** si la instancia opera de forma sostenida.
-- Cachear adaptadores/modelos cuando sea seguro; evitar bajar pesos enormes en cada request.
-- En la demo, considerar solicitudes preautorizadas para evitar abuso público.
+1. Crear la cuenta en modal.com (puede ser con GitHub) y `modal setup`. Si pide tarjeta, **fijar el límite de gasto en USD 30**, para no pasar de los créditos gratuitos.
+2. Worker con GPU L4: el mismo código para ambos modos (SDXL base con inpainting de cuatro canales; el LoRA solo en `advanced`), pesos cacheados en un volumen para no descargarlos en cada arranque.
+3. UI y API como endpoint web sin GPU, con `max_containers=1` mientras la base sea SQLite en un volumen.
+4. La API encola la generación con `spawn`; el worker guarda los cinco artefactos y la API confirma `READY_FOR_REVIEW` con las mismas validaciones de hoy (lote de cinco o nada, G8, G14).
+5. Secretos de Modal para la clave de Gemini y el token de Hugging Face.
+6. Para la demo: un contenedor mínimo del worker encendido solo durante la presentación, y volver a 0 al terminar.
+
+Costo esperado: unas 20 h de L4 para todo el proyecto (desarrollo, prueba con 10 usuarios, ensayos y demo) a cerca de USD 0.80 por hora, dentro de los USD 30 gratis de un mes. Es una estimación: el smoke test medirá el costo real por lote.
+
+## Alternativa: GCP
+
+Se mantiene compatible por si el equipo consigue créditos (por ejemplo, educativos) o quiere la demo en Cloud Run. **No hay créditos hoy:** las cuentas de facturación de Isaac están cerradas y `planifica-proyecto` no tiene facturación vinculada.
+
+1. Proyecto con presupuesto y alertas; no asumir créditos gratuitos. La prueba gratuita no da GPU: hay que pasar a cuenta de pago para pedir cuota de L4, y la aprobación puede tardar días.
+2. Bucket privado y Firestore con identidades de servicio de permisos mínimos.
+3. Imágenes de contenedor reproducibles (API y worker por separado) en Artifact Registry.
+4. Cloud Run sin GPU para la API y la UI, con almacenamiento externo (el disco de Cloud Run es efímero).
+5. Cloud Run con GPU L4 sin redundancia zonal, **min instances = 0**, **max instances = 1**, timeout según el benchmark.
+6. `POST /generate` crea el trabajo y Cloud Tasks invoca al worker, protegido con IAM e idempotente.
+7. Gemini por Vertex AI con identidad de servicio (el mismo SDK, `vertexai=True`).
+
+Costo estimado (consulta del 2026-11-12): L4 a USD 0.0001867 por segundo, cerca de USD 1.05 por hora con el CPU y la memoria mínimos; la instancia sigue cobrándose unos minutos tras la última solicitud. Para el uso del proyecto, unos USD 25 a 30. **El riesgo es una instancia olvidada:** unos USD 25 al día.
+
+Documentación: https://docs.cloud.google.com/run/docs/configuring/services/gpu y https://cloud.google.com/run/pricing
+
+## Protección de costos (cualquier opción)
+
+- Las alertas de presupuesto **no apagan nada**: en GCP hace falta una función que desactive la facturación al pasar el tope; en Modal, el límite de gasto de la cuenta.
+- Nunca dejar contenedores o instancias mínimas encendidas fuera de una demo.
+- Máximo de un worker con GPU a la vez y endpoints protegidos, para que nadie genere en masa.
+- Cachear pesos en un volumen o en la imagen; no descargarlos en cada solicitud.
 
 ## Secretos e identidad
 
-- Nunca versionar JSON de service account, refresh tokens ni claves Gemini.
-- En GCP usar identidades de servicio y ADC, roles mínimos en Storage, Firestore y Vertex AI.
-- En local usar ADC de desarrollo si se autoriza; `SUMMARY_BACKEND=deterministic` en Hito 1.
-- Impedir acceso público a buckets y a archivos de sesiones de otros usuarios. Crear borrado/retención de datos de usuario.
+- Nunca versionar claves de Gemini, tokens de Hugging Face, JSON de cuentas de servicio ni refresh tokens.
+- En la laptop: `.env` no versionado. En Modal: secretos de Modal. En GCP: identidades de servicio, ADC y Secret Manager.
+- El plan gratuito de Gemini permite a Google usar lo enviado para mejorar sus productos: al agente solo van decisiones y motivos, nunca fotos, y se declara en el consentimiento de la prueba con usuarios (`06_EVALUACION_Y_ETICA.md`).
+- Repositorios de pesos y datos privados; sin acceso público a archivos de sesiones de otros usuarios; borrado con `DELETE /sessions/{id}`.
 
 ## Punto de decisión
 
-Si la prueba de inferencia de cinco fotos supera memoria/latencia/costo tolerable de Cloud Run GPU, considerar otra GPU/tamaño de modelo o despliegue por batch en Compute Engine como contingencia. **La nube no determina por adelantado el checkpoint.**
+Si el lote de cinco no entra en memoria o tarda demasiado en una L4, probar menos pasos, menor resolución o una GPU mayor en Modal antes de cambiar de checkpoint. **La infraestructura no determina por adelantado el checkpoint.**
