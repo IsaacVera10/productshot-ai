@@ -22,6 +22,7 @@ from productshot.domain import (
     Decision,
     DecisionValue,
     DependencyUnavailable,
+    DomainError,
     GenerationJob,
     InputImage,
     InvalidInput,
@@ -40,9 +41,11 @@ from productshot.domain import (
     normalize_reason,
     utcnow,
 )
+from productshot.services import guardrails
 from productshot.services.generation import GenerationBackend, GenerationRequest, VariationSpec
 from productshot.services.images import prepare_mask_upload, prepare_upload, to_png
 from productshot.services.jobs import JobRunner
+from productshot.services.labels import stamp
 from productshot.services.presets import PROMPT_VERSION
 from productshot.services.rounds import RoundPlan, plan_next_round
 from productshot.services.segmentation import SegmentationService, render_mask_preview
@@ -96,13 +99,21 @@ class SessionService:
     # --- 1. sesión ---
 
     def create_session(self, data: bytes, mode: Mode) -> SessionView:
-        prepared = prepare_upload(
-            data,
-            max_bytes=self.settings.max_upload_bytes,
-            max_pixels=self.settings.max_image_pixels,
-            work_max_side=self.settings.work_max_side,
-        )
+        try:
+            prepared = prepare_upload(
+                data,
+                max_bytes=self.settings.max_upload_bytes,
+                max_pixels=self.settings.max_image_pixels,
+                work_max_side=self.settings.work_max_side,
+            )
+        except DomainError as exc:
+            guardrails.event("G1", None, exc.code)
+            raise
         session_id, image_id = _new_id(), _new_id()
+        metrics = guardrails.photo_metrics(prepared.working)
+        quality = guardrails.photo_warnings(metrics, self.settings)
+        for w in quality:
+            guardrails.event(w.guardrail, session_id, w.code, **metrics)
         ext = "jpg" if prepared.original_format == "JPEG" else "png"
         original_key = f"{session_id}/original.{ext}"
         working_key = f"{session_id}/input.png"
@@ -127,6 +138,7 @@ class SessionService:
             original_width=prepared.original_size[0],
             original_height=prepared.original_size[1],
             original_format=prepared.original_format,
+            quality_json=json.dumps({"metrics": metrics, "warnings": [w.to_json() for w in quality]}, ensure_ascii=False),
         )
         written: list[str] = []
         try:
@@ -172,6 +184,10 @@ class SessionService:
         mask_png = to_png(mask_img)
         preview_png = to_png(render_mask_preview(image, mask_img, simulated))
         suffix = uuid.uuid4().hex[:12]
+        metrics = guardrails.mask_metrics(mask_img, self.settings)
+        warnings = guardrails.mask_warnings(metrics, self.settings)
+        for w in warnings:
+            guardrails.event(w.guardrail, session_id, w.code, source=source, **metrics)
         mask = Mask(
             id=_new_id(),
             session_id=session_id,
@@ -181,6 +197,8 @@ class SessionService:
             sha256=hashlib.sha256(mask_png).hexdigest(),
             simulated=simulated,
             created_at=utcnow(),
+            warnings_json=json.dumps({"metrics": metrics, "warnings": [w.to_json() for w in warnings]},
+                                     ensure_ascii=False),
         )
         try:
             # Las escrituras van dentro del try: si falla la segunda (o la transacción), no
@@ -292,8 +310,24 @@ class SessionService:
 
             variations = []
             for art in sorted(artifacts, key=lambda a: a.position):
+                # G8: el producto se recompone SIEMPRE desde la foto de trabajo; la métrica dice
+                # cuánto lo había cambiado el generador.
+                try:
+                    final, fidelity = guardrails.enforce_fidelity(image, mask, art.image, self.settings)
+                except ValueError as exc:
+                    raise BatchError(f"Variación {art.position}: {exc}") from exc
+                if fidelity["protected_max_diff_after"] != 0:
+                    raise BatchError(f"La variación {art.position} alteró el producto tras recomponerlo.")
+                if fidelity["drift_warning"]:
+                    guardrails.event("G8", job.session_id, "product_drift", position=art.position,
+                                     diff=fidelity["protected_mean_abs_diff"])
+                if self.generator.simulated:
+                    # G9: el rótulo se pone DESPUÉS de recomponer, para no contarlo como alteración.
+                    final = stamp(final, bottom=f"{art.position}/5 · {art.variant or art.style.value} · "
+                                              f"modo {session.mode.value}")
+                art_params = {**art.params, "fidelity": fidelity}
                 key = f"{job.session_id}/variation_{art.position}.png"
-                written.append(self.store.save(to_png(art.image), key))
+                written.append(self.store.save(to_png(final), key))
                 variations.append(
                     Variation(
                         id=_new_id(),
@@ -305,7 +339,7 @@ class SessionService:
                         seed=art.seed,
                         model_revision=art.model_revision,
                         prompt_version=art.prompt_version,
-                        params_json=json.dumps(art.params, ensure_ascii=False),
+                        params_json=json.dumps(art_params, ensure_ascii=False),
                         variant=art.variant or art.style.value,
                     )
                 )
@@ -411,8 +445,22 @@ class SessionService:
 
     # --- lectura ---
 
+    def _expire_if_stale(self, session: Session) -> Session:
+        """G14: un lote que supera el timeout pasa a FAILED. Si el trabajo termina después,
+        `complete_job` lo rechaza (ya no está GENERATING) y sus archivos se borran."""
+        if session.status != SessionStatus.GENERATING:
+            return session
+        job = self.repo.get_job(session.id)
+        if job is None or (utcnow() - job.created_at).total_seconds() <= self.settings.generation_timeout_s:
+            return session
+        reason = (f"La generación tardó más de {int(self.settings.generation_timeout_s)} s; "
+                  "el servicio está ocupado. Crea una nueva sesión e inténtalo más tarde.")
+        self.repo.fail_job(job.id, reason)
+        guardrails.event("G14", session.id, "batch_timeout", timeout_s=self.settings.generation_timeout_s)
+        return self.repo.get_session(session.id)
+
     def get_view(self, session_id: str) -> SessionView:
-        session = self.repo.get_session(session_id)
+        session = self._expire_if_stale(self.repo.get_session(session_id))
         variations = self.repo.list_variations(session_id) if session.status in VARIATIONS_VISIBLE_STATES else []
         return SessionView(
             session=session,

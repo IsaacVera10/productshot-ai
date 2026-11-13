@@ -45,13 +45,20 @@ log = logging.getLogger(__name__)
 # --- serialización ---
 
 
+def _json(raw: str | None) -> dict:
+    return json.loads(raw) if raw else {}
+
+
 def _mask_out(mask: Mask) -> MaskOut:
+    data = _json(mask.warnings_json)
     return MaskOut(
         id=mask.id,
         source=mask.source,
         url=asset_url(mask.storage_key),
         preview_url=asset_url(mask.preview_key),
         simulated=mask.simulated,
+        warnings=data.get("warnings", []),
+        metrics=data.get("metrics"),
     )
 
 
@@ -81,7 +88,10 @@ def _session_out(view: SessionView, simulated: bool) -> SessionOut:
                 variant=v.variant or v.style.value,
                 label=variant_label(v.variant or v.style.value),
                 image_url=asset_url(v.storage_key),
-                generation=GenerationInfo(seed=v.seed, model_revision=v.model_revision, prompt_version=v.prompt_version),
+                generation=GenerationInfo(
+                    seed=v.seed, model_revision=v.model_revision, prompt_version=v.prompt_version,
+                    fidelity=_json(v.params_json).get("fidelity"),
+                ),
                 decision=(
                     DecisionOut(
                         variation_id=v.id,
@@ -96,6 +106,8 @@ def _session_out(view: SessionView, simulated: bool) -> SessionOut:
             for v in view.variations
         ],
         summary_available=view.summary is not None,
+        warnings=_json(view.image.quality_json).get("warnings", []) + (_json(view.mask.warnings_json).get("warnings", []) if view.mask else []),
+        photo_quality=_json(view.image.quality_json).get("metrics"),
         round_index=s.round_index,
         parent_session_id=s.parent_session_id,
         next_session_id=view.next_session_id,

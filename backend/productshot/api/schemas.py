@@ -91,6 +91,13 @@ class GenerationInfo(BaseModel):
     seed: int
     model_revision: str
     prompt_version: str
+    fidelity: dict | None = Field(default=None, description="G8: métricas de la región protegida.")
+
+
+class WarningOut(BaseModel):
+    guardrail: str
+    code: str
+    message: str
 
 
 class VariationOut(BaseModel):
@@ -110,6 +117,8 @@ class MaskOut(BaseModel):
     url: str
     preview_url: str
     simulated: bool
+    warnings: list[WarningOut] = Field(default_factory=list, description="G13: avisos sobre la máscara.")
+    metrics: dict | None = None
 
 
 class JobOut(BaseModel):
@@ -134,6 +143,8 @@ class SessionOut(BaseModel):
     job: JobOut | None
     variations: list[VariationOut]
     summary_available: bool
+    warnings: list[WarningOut] = Field(description="Avisos de los guardrails G12 y G13; no bloquean.")
+    photo_quality: dict | None = Field(description="G12: brillo y nitidez de la foto de trabajo.")
     round_index: int
     parent_session_id: str | None
     next_session_id: str | None = Field(description="Ronda siguiente, si ya se creó.")

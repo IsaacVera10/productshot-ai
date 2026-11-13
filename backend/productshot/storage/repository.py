@@ -62,7 +62,8 @@ CREATE TABLE IF NOT EXISTS input_images (
     height INTEGER NOT NULL,
     original_width INTEGER NOT NULL,
     original_height INTEGER NOT NULL,
-    original_format TEXT NOT NULL
+    original_format TEXT NOT NULL,
+    quality_json TEXT
 );
 CREATE TABLE IF NOT EXISTS masks (
     id TEXT PRIMARY KEY,
@@ -72,7 +73,8 @@ CREATE TABLE IF NOT EXISTS masks (
     preview_key TEXT NOT NULL,
     sha256 TEXT NOT NULL,
     simulated INTEGER NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    warnings_json TEXT
 );
 CREATE TABLE IF NOT EXISTS generation_jobs (
     id TEXT PRIMARY KEY,
@@ -118,7 +120,7 @@ CREATE TABLE IF NOT EXISTS summaries (
     created_at TEXT NOT NULL
 );
 """
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Hito 1 original (versión 0): sin rondas y con UNIQUE (session_id, style).
 _MIGRATE_0_TO_2 = """
@@ -165,7 +167,7 @@ class SqliteRepository:
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
     def _migrate(self) -> None:
-        """Lleva una base del Hito 1 original (versión 0) al esquema con rondas.
+        """Lleva una base de una versión anterior al esquema actual, paso a paso.
 
         Sigue el procedimiento de SQLite para cambiar restricciones: tabla nueva, copia,
         borrado y renombre, con las claves foráneas desactivadas y verificadas al final.
@@ -178,15 +180,22 @@ class SqliteRepository:
             ).fetchone()
             if version >= SCHEMA_VERSION or not has_sessions:
                 return
-            columns = {r[1] for r in conn.execute("PRAGMA table_info(sessions)")}
-            if "round_index" in columns:
-                return
+            def cols(table: str) -> set[str]:
+                return {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+
             conn.execute("PRAGMA foreign_keys=OFF")
             conn.execute("BEGIN IMMEDIATE")
             try:
-                for statement in _MIGRATE_0_TO_2.split(";"):
-                    if statement.strip():
-                        conn.execute(statement)
+                if "round_index" not in cols("sessions"):  # versión 0 -> 2: rondas
+                    for statement in _MIGRATE_0_TO_2.split(";"):
+                        if statement.strip():
+                            conn.execute(statement)
+                # 2 -> 3: métricas y avisos de los guardrails G12 y G13 (columnas nuevas, sin restricciones).
+                # Si una tabla no existe, SCHEMA la crea después ya con la columna.
+                if cols("input_images") and "quality_json" not in cols("input_images"):
+                    conn.execute("ALTER TABLE input_images ADD COLUMN quality_json TEXT")
+                if cols("masks") and "warnings_json" not in cols("masks"):
+                    conn.execute("ALTER TABLE masks ADD COLUMN warnings_json TEXT")
                 broken = conn.execute("PRAGMA foreign_key_check").fetchall()
                 if broken:
                     raise sqlite3.IntegrityError(f"La migración dejó claves foráneas rotas: {broken[:3]}")
@@ -256,21 +265,22 @@ class SqliteRepository:
     def _insert_image(conn: sqlite3.Connection, image: InputImage) -> None:
         conn.execute(
             "INSERT INTO input_images (id, session_id, storage_key, original_key, sha256, width, height,"
-            " original_width, original_height, original_format) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " original_width, original_height, original_format, quality_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 image.id, image.session_id, image.storage_key, image.original_key, image.sha256,
                 image.width, image.height, image.original_width, image.original_height, image.original_format,
+                image.quality_json,
             ),
         )
 
     @staticmethod
     def _insert_mask(conn: sqlite3.Connection, mask: Mask) -> None:
         conn.execute(
-            "INSERT INTO masks (id, session_id, source, storage_key, preview_key, sha256, simulated, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO masks (id, session_id, source, storage_key, preview_key, sha256, simulated, created_at,"
+            " warnings_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 mask.id, mask.session_id, mask.source, mask.storage_key, mask.preview_key, mask.sha256,
-                int(mask.simulated), iso(mask.created_at),
+                int(mask.simulated), iso(mask.created_at), mask.warnings_json,
             ),
         )
 

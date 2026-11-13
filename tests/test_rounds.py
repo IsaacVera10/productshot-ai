@@ -274,7 +274,7 @@ def test_legacy_database_is_migrated(tmp_path):
     [v] = repo.list_variations("s1")
     assert v.variant == "warm" and v.decision.reason == "bonito"
     con = sqlite3.connect(path)
-    assert con.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert con.execute("PRAGMA user_version").fetchone()[0] == 3
     assert con.execute("PRAGMA foreign_key_check").fetchall() == []
     con.close()
     SqliteRepository(path)  # abrirla otra vez no vuelve a migrar

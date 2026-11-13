@@ -138,6 +138,13 @@ def _form_from(variations: list[dict]) -> list:
     return out
 
 
+def warnings_text(warnings: list[dict]) -> str:
+    """Avisos de los guardrails (textos del sistema, no de la persona). No bloquean."""
+    if not warnings:
+        return ""
+    return "\n\n**Avisos:**\n" + "\n".join(f"- {w['message']} ({w['guardrail']})" for w in warnings)
+
+
 def _empty_cards() -> list:
     out = []
     for i in range(N):
@@ -215,10 +222,12 @@ def build_ui(api_base: str) -> gr.Blocks:
                 session = api.create_session(path, mode)
                 seg = api.segment(session["id"])
                 mask = api.image(seg["mask"]["preview_url"])
+                warnings = api.session(session["id"])["warnings"]
             except ApiError as exc:
                 return None, None, f"**Error:** {exc}", *_empty_cards(), "", ""
             note = " (máscara simulada)" if seg["mask"]["simulated"] else ""
-            return (session["id"], mask, f"Ronda 1 creada en modo `{mode}`. Máscara lista{note}.",
+            return (session["id"], mask,
+                    f"Ronda 1 creada en modo `{mode}`. Máscara lista{note}." + warnings_text(warnings),
                     *_empty_cards(), "", "")
 
         def resegment(sid):
@@ -229,7 +238,7 @@ def build_ui(api_base: str) -> gr.Blocks:
                 mask = api.image(seg["mask"]["preview_url"])
             except ApiError as exc:
                 return gr.update(), f"**Error:** {exc}"
-            return mask, "Máscara recalculada."
+            return mask, "Máscara recalculada." + warnings_text(seg["mask"]["warnings"])
 
         def use_mask(sid, path):
             if not sid:
@@ -241,7 +250,7 @@ def build_ui(api_base: str) -> gr.Blocks:
                 mask = api.image(seg["mask"]["preview_url"])
             except ApiError as exc:
                 return gr.update(), f"**Error:** {exc}"
-            return mask, "Máscara manual lista. Ya puedes generar."
+            return mask, "Máscara manual lista. Ya puedes generar." + warnings_text(seg["mask"]["warnings"])
 
         def delete(sid):
             unchanged = [gr.update()] * (3 * N)

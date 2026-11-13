@@ -95,6 +95,7 @@ class InputImage:
     original_width: int
     original_height: int
     original_format: str
+    quality_json: str | None = None  # G12: métricas y avisos de calidad de la foto
 
 
 @dataclass(frozen=True)
@@ -107,6 +108,7 @@ class Mask:
     sha256: str
     simulated: bool
     created_at: datetime
+    warnings_json: str | None = None  # G13: métricas y avisos de la máscara
 
 
 @dataclass(frozen=True)
