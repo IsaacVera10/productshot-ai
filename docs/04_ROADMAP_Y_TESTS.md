@@ -31,7 +31,7 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 **Estado (2026-11-12):** implementado y revisado en la rama `feat/hito-1-mock` (PR 1). La revisión corrigió el motivo multilínea, el EXIF del original, el resumen concurrente y el bloqueo del event loop; `pytest` pasa con 43 pruebas (Windows, Python 3.12, `uv sync --locked`). Queda P10 para el Hito 6.
 
 - [x] `pyproject.toml` con dependencias ligeras y versiones fijables; separar extras pesados `gpu` y `training` para después.
-- [x] FastAPI + Pydantic, rutas de `02_API_Y_MODELO_DE_DATOS.md` (salvo `POST /mask`, que es del Hito 2).
+- [x] FastAPI + Pydantic, rutas de `02_API_Y_MODELO_DE_DATOS.md`.
 - [x] SQLite + almacenamiento local; acceso por adaptadores/repositorios.
 - [x] Gradio para imagen, selector de modo y visualización de cinco tarjetas.
 - [x] Segmentador `MockSegmentationService` (resultado marcado como simulado).
@@ -72,14 +72,14 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 ## Hito 2 — Inpainting real (intermedio)
 
 - [ ] Puerta de decisión: medir memoria, arranque y lote completo en GCP, GPU local y Colab con benchmarks autorizados; elegir entornos según el resultado.
-- [ ] Probar `rembg` y la máscara; implementar reintento y `POST /sessions/{id}/mask` para máscaras manuales.
+- [ ] Probar `rembg` y la máscara. Reintento y `POST /sessions/{id}/mask` para máscaras manuales ya implementados (2026-11-12).
 - [ ] Ejecutar el candidato SDXL base con el pipeline de inpainting de cuatro canales; medir VRAM, latencia y calidad de integración.
 - [ ] Integrar preservación del producto y manejo explícito de sombras/bordes.
 - [ ] Generar cinco estilos por sesión; guardar checkpoint/revisión/seeds/prompts.
 - [ ] Probar fallos en tazas, recipientes y decorativos; registrar errores.
 - [ ] Casos obligatorios: taza con logotipo (hueco del asa, brillo y logo curvo), producto mate sencillo, producto blanco sobre fondo claro y producto con texto pequeño visible. Evaluar el logotipo contra la foto original, sin exigir reconstruir su parte oculta.
 - [ ] Guardrails del Hito 2 (ADR-008, `08_ITERACIONES_Y_GUARDRAILS.md`): G2 y G7 (clasificador NSFW en entrada y salida), G3 (rostros: rechazar), G8 (fidelidad de la región protegida), G12 (brillo y nitidez), G13 (heurística de máscara) y G14 (timeout por lote). Calibrar sus umbrales con los casos obligatorios.
-- [ ] `DELETE /sessions/{id}` para el borrado de fotos (G11).
+- [x] `DELETE /sessions/{id}` para el borrado de fotos (G11): borra la cadena completa de rondas.
 - [x] Iteraciones (ADR-007): `POST /sessions/{id}/next-round` y su vista previa, sesiones hijas (máximo 3 rondas), planificador determinista y vocabulario cerrado de ajustes por reglas. Adelantado sobre el mock el 2026-11-12; falta comprobarlo con imágenes reales.
 
 ## Hito 3 — Agente con Gemini en Vertex AI

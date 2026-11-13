@@ -31,6 +31,7 @@ Ambos modos deben poder elegirse y utilizarse por separado. Corresponden a los n
 5. Evaluar individualmente cada variación y registrar la decisión.
 6. Solicitar un resumen estructurado y validado de las cinco decisiones.
 7. Opcional: pedir otra ronda de cinco derivada de esas decisiones y de una nota de ajuste, hasta 3 rondas.
+8. Borrar la sesión con sus fotos en cualquier momento (se borran todas sus rondas).
 
 ## Tecnologías previstas
 
@@ -93,7 +94,6 @@ Estructura:
 - La máscara es una elipse fija y las cinco imágenes son fondos planos con el producto recortado. Todo lleva la franja «SIMULACIÓN (MOCK) - NO GENERADO POR IA»; **no son resultados de IA**.
 - El resumen lo compone Python (`generated_by: deterministic_fallback`); no hay agente LLM todavía.
 - Las rondas 2 y 3 funcionan, pero los ajustes se extraen de los motivos y de la nota con reglas de palabras clave, sin LLM, y en el mock solo cambian colores y franjas del fondo.
-- `POST /sessions/{id}/mask` (máscara manual) queda para el Hito 2.
 - Sin autenticación: cualquiera con el ID de sesión puede ver sus imágenes. Solo para uso local.
 - El ejecutor de trabajos es un hilo del mismo proceso; un reinicio marca como `FAILED` las generaciones en curso.
 

@@ -101,3 +101,43 @@ def prepare_upload(data: bytes, *, max_bytes: int, max_pixels: int, work_max_sid
         working_png=to_png(working),
         sha256=hashlib.sha256(data).hexdigest(),
     )
+
+
+def prepare_mask_upload(data: bytes, *, max_bytes: int, max_pixels: int, expected_size: tuple[int, int]) -> Image.Image:
+    """Valida una máscara manual: PNG real, decodificable y del tamaño del lienzo de trabajo.
+
+    Semántica (docs/00): BLANCO = fondo editable, NEGRO = producto protegido. Se acepta
+    cualquier PNG (gris, RGB o con alfa) y se pasa a escala de grises; los valores
+    intermedios se conservan, porque un borde suave ayuda al inpainting.
+    """
+    if len(data) == 0:
+        raise InvalidInput("La máscara está vacía.")
+    if len(data) > max_bytes:
+        raise PayloadTooLarge(f"La máscara supera el máximo de {max_bytes // (1024 * 1024)} MB.")
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(data)) as probe:
+                if probe.format != "PNG":
+                    raise InvalidInput("La máscara debe ser un PNG.")
+                if probe.width * probe.height > max_pixels:
+                    raise InvalidInput("La máscara tiene demasiados píxeles.")
+                probe.verify()
+            with Image.open(io.BytesIO(data)) as img:
+                img.load()
+                mask = flatten_to_rgb(img).convert("L")
+    except InvalidInput:
+        raise
+    except (UnidentifiedImageError, OSError, SyntaxError, ValueError, Image.DecompressionBombError,
+            Image.DecompressionBombWarning) as exc:
+        raise InvalidInput("El archivo no es un PNG decodificable.") from exc
+
+    if mask.size != tuple(expected_size):
+        w, h = expected_size
+        raise InvalidInput(f"La máscara debe medir {w}×{h} píxeles, igual que la imagen de trabajo.")
+    lo, hi = mask.getextrema()
+    if hi < 128:
+        raise InvalidInput("La máscara es toda negra: no deja fondo editable.")
+    if lo >= 128:
+        raise InvalidInput("La máscara es toda blanca: no protege el producto.")
+    return mask

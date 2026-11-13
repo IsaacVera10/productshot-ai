@@ -168,6 +168,22 @@ def _build_router() -> APIRouter:
         status = svc(request).repo.get_session(session_id).status
         return SegmentOut(session_id=session_id, status=status, mask=_mask_out(mask))
 
+    @router.post("/sessions/{session_id}/mask", response_model=SegmentOut)
+    def upload_mask(
+        request: Request,
+        session_id: str,
+        mask: Annotated[UploadFile, File(description="PNG del tamaño de la imagen de trabajo: blanco = fondo, negro = producto")],
+    ) -> SegmentOut:
+        limit = svc(request).settings.max_upload_bytes
+        stored = svc(request).upload_mask(session_id, mask.file.read(limit + 1))
+        status = svc(request).repo.get_session(session_id).status
+        return SegmentOut(session_id=session_id, status=status, mask=_mask_out(stored))
+
+    @router.delete("/sessions/{session_id}", status_code=204)
+    def delete_session(request: Request, session_id: str) -> Response:
+        svc(request).delete_session(session_id)
+        return Response(status_code=204)
+
     @router.post("/sessions/{session_id}/generate", status_code=202, response_model=JobOut)
     def generate(
         request: Request,

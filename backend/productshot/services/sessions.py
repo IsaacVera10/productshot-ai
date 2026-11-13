@@ -41,7 +41,7 @@ from productshot.domain import (
     utcnow,
 )
 from productshot.services.generation import GenerationBackend, GenerationRequest, VariationSpec
-from productshot.services.images import prepare_upload, to_png
+from productshot.services.images import prepare_mask_upload, prepare_upload, to_png
 from productshot.services.jobs import JobRunner
 from productshot.services.presets import PROMPT_VERSION
 from productshot.services.rounds import RoundPlan, plan_next_round
@@ -142,27 +142,44 @@ class SessionService:
 
     # --- 2. máscara ---
 
-    def segment(self, session_id: str) -> Mask:
+    def _check_mask_editable(self, session_id: str) -> None:
         session = self.repo.get_session(session_id)
         if session.parent_session_id is not None:
             raise StateConflict("Esta ronda usa la máscara de la ronda 1; no se puede cambiar.")
         if session.status not in MASK_EDITABLE_STATES:
             raise StateConflict(f"La máscara ya no se puede cambiar (estado {session.status}).")
+
+    def segment(self, session_id: str) -> Mask:
+        self._check_mask_editable(session_id)
         image = self._load_image(self.repo.get_image(session_id).storage_key)
         result = self.segmenter.segment(image)
         if result.mask.size != image.size:
             raise DependencyUnavailable("El segmentador devolvió una máscara con dimensiones incorrectas.")
-        mask_png = to_png(result.mask.convert("L"))
-        preview_png = to_png(render_mask_preview(image, result.mask, result.simulated))
+        return self._store_mask(session_id, image, result.mask.convert("L"), "auto", result.simulated)
+
+    def upload_mask(self, session_id: str, data: bytes) -> Mask:
+        """Máscara manual en PNG (ADR-005): blanco = fondo editable, negro = producto protegido."""
+        self._check_mask_editable(session_id)
+        image = self._load_image(self.repo.get_image(session_id).storage_key)
+        mask = prepare_mask_upload(
+            data, max_bytes=self.settings.max_upload_bytes, max_pixels=self.settings.max_image_pixels,
+            expected_size=image.size,
+        )
+        return self._store_mask(session_id, image, mask, "manual", simulated=False)
+
+    def _store_mask(self, session_id: str, image: Image.Image, mask_img: Image.Image, source: str,
+                    simulated: bool) -> Mask:
+        mask_png = to_png(mask_img)
+        preview_png = to_png(render_mask_preview(image, mask_img, simulated))
         suffix = uuid.uuid4().hex[:12]
         mask = Mask(
             id=_new_id(),
             session_id=session_id,
-            source="auto",
+            source=source,
             storage_key=f"{session_id}/mask_{suffix}.png",
             preview_key=f"{session_id}/mask_{suffix}_preview.png",
             sha256=hashlib.sha256(mask_png).hexdigest(),
-            simulated=result.simulated,
+            simulated=simulated,
             created_at=utcnow(),
         )
         try:
@@ -377,6 +394,20 @@ class SessionService:
         self.repo.create_child_session(child, image, mask, MAX_ROUNDS)
         log.info("Ronda %d creada: %s (madre %s)", plan.round_index, child_id, session_id)
         return self.get_view(child_id)
+
+    # --- 7. borrado (G11) ---
+
+    def delete_session(self, session_id: str) -> list[str]:
+        """Borra la cadena completa de rondas de la sesión: registros y archivos.
+
+        Todas las rondas comparten la foto y la máscara de la ronda 1, así que borrar solo
+        una dejaría a las demás apuntando a archivos inexistentes. Devuelve los IDs borrados.
+        """
+        deleted = self.repo.delete_chain(session_id)
+        for sid in deleted:
+            self.store.delete_session_dir(sid)
+        log.info("Cadena borrada: %d sesiones (pedido sobre %s)", len(deleted), session_id)
+        return deleted
 
     # --- lectura ---
 
