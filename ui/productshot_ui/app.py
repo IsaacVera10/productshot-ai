@@ -58,7 +58,7 @@ class Api:
             except Exception:
                 msg = r.text[:200]
             raise ApiError(f"{msg} (HTTP {r.status_code})")
-        return r.json()
+        return r.json() if r.status_code != 204 else {}
 
     def image(self, url: str) -> Image.Image:
         try:
@@ -76,6 +76,13 @@ class Api:
 
     def segment(self, sid: str) -> dict:
         return self._call("POST", f"/sessions/{sid}/segment")
+
+    def upload_mask(self, sid: str, path: str) -> dict:
+        with open(path, "rb") as fh:
+            return self._call("POST", f"/sessions/{sid}/mask", files={"mask": ("mask.png", fh, "image/png")})
+
+    def delete_session(self, sid: str) -> dict:
+        return self._call("DELETE", f"/sessions/{sid}")
 
     def generate(self, sid: str) -> dict:
         # Llave estable por sesión: un doble clic no crea un segundo trabajo.
@@ -158,6 +165,11 @@ def build_ui(api_base: str) -> gr.Blocks:
                 with gr.Row():
                     reseg_btn = gr.Button("Reintentar segmentación")
                     gen_btn = gr.Button("2. Generar 5 variaciones", variant="primary")
+                with gr.Accordion("¿La máscara no calza? Sube la tuya", open=False):
+                    gr.Markdown("PNG del mismo tamaño que la foto de trabajo: **blanco** = fondo que se puede "
+                                "cambiar, **negro** = producto que se conserva.")
+                    mask_file = gr.File(label="Máscara (PNG)", file_types=[".png"], type="filepath")
+                    mask_btn = gr.Button("Usar esta máscara")
         status_md = gr.Markdown("Sube una foto para empezar.")
 
         gr.Markdown("## Variaciones\nAcepta o rechaza **cada una**. El motivo es opcional.")
@@ -190,6 +202,10 @@ def build_ui(api_base: str) -> gr.Blocks:
         # Texto plano: el plan no se interpreta como Markdown.
         plan_out = gr.Textbox(label="Plan de la siguiente ronda", lines=8, interactive=False)
 
+        gr.Markdown("## Privacidad\nBorra la foto, la máscara, las imágenes y las decisiones de esta sesión "
+                    "y de todas sus rondas. No se puede deshacer.")
+        delete_btn = gr.Button("Borrar esta sesión y sus fotos", variant="stop")
+
         # --- manejadores ---
 
         def start(path, mode):
@@ -214,6 +230,29 @@ def build_ui(api_base: str) -> gr.Blocks:
             except ApiError as exc:
                 return gr.update(), f"**Error:** {exc}"
             return mask, "Máscara recalculada."
+
+        def use_mask(sid, path):
+            if not sid:
+                return gr.update(), "Primero crea una sesión con tu foto."
+            if not path:
+                return gr.update(), "Elige un archivo PNG."
+            try:
+                seg = api.upload_mask(sid, path)
+                mask = api.image(seg["mask"]["preview_url"])
+            except ApiError as exc:
+                return gr.update(), f"**Error:** {exc}"
+            return mask, "Máscara manual lista. Ya puedes generar."
+
+        def delete(sid):
+            unchanged = [gr.update()] * (3 * N)
+            if not sid:
+                return sid, gr.update(), "No hay sesión activa.", *unchanged, gr.update(), gr.update()
+            try:
+                api.delete_session(sid)
+            except ApiError as exc:
+                return sid, gr.update(), f"**Error:** {exc}", *unchanged, gr.update(), gr.update()
+            return (None, None, "Sesión borrada, con todas sus rondas y fotos. Sube otra foto para empezar.",
+                    *_empty_cards(), "", "")
 
         def generate(sid):
             if not sid:
@@ -325,6 +364,9 @@ def build_ui(api_base: str) -> gr.Blocks:
         start_btn.click(start, [image_in, mode_in],
                         [session_state, mask_out, status_md, *card_components, summary_out, plan_out])
         preview_btn.click(preview_round, [session_state, note_in], [status_md, plan_out])
+        mask_btn.click(use_mask, [session_state, mask_file], [mask_out, status_md])
+        delete_btn.click(delete, [session_state],
+                         [session_state, mask_out, status_md, *card_components, summary_out, plan_out])
         round_btn.click(create_round, [session_state, note_in],
                         [session_state, mask_out, status_md, *card_components, summary_out, plan_out, note_in])
         reseg_btn.click(resegment, [session_state], [mask_out, status_md])

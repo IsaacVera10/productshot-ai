@@ -1,6 +1,6 @@
 # 02 — API v1 y contratos de datos
 
-**Prefijo**: `/api/v1`. **Estado de estas rutas**: implementadas en el Hito 1 con backends simulados, salvo `POST /mask` (Hito 2); ver la sección «Implementación del Hito 1» al final. La documentación interactiva (OpenAPI) está en `/docs` con el servidor en marcha. Preferir UUID v4/UUID7, timestamps ISO-8601 UTC y validación estricta con Pydantic. Objetos con identificadores opacos; no exponer rutas absolutas locales ni credenciales.
+**Prefijo**: `/api/v1`. **Estado de estas rutas**: implementadas con backends simulados; ver la sección «Implementación del Hito 1» al final. La documentación interactiva (OpenAPI) está en `/docs` con el servidor en marcha. Preferir UUID v4/UUID7, timestamps ISO-8601 UTC y validación estricta con Pydantic. Objetos con identificadores opacos; no exponer rutas absolutas locales ni credenciales.
 
 ## Endpoints
 
@@ -9,10 +9,11 @@
 | GET | `/healthz` | — | 200 `{"status":"ok"}` | No invoca LLM/GPU |
 | POST | `/sessions` | `multipart/form-data` `image`, `mode` | 201 Session | Tamaño / MIME / decodificación válidos |
 | POST | `/sessions/{id}/segment` | `{}` | 200 máscara/URI y estado `SEGMENTED` | En mock puede ser máscara de demostración rotulada |
-| POST | `/sessions/{id}/mask` | `multipart/form-data` `mask` (PNG) | 200 máscara/URI, vista previa y estado `SEGMENTED` | Alternativa a `/segment` desde el Hito 2; solo en `UPLOADED` o `SEGMENTED` |
+| POST | `/sessions/{id}/mask` | `multipart/form-data` `mask` (PNG) | 200 máscara/URI, vista previa y estado `SEGMENTED` | Alternativa a `/segment`; solo en `UPLOADED` o `SEGMENTED` y en la ronda 1 |
 | POST | `/sessions/{id}/generate` | `{}` + `Idempotency-Key` opcional | 202 `job_id`, estado | Solo tras máscara; el modo fue elegido al crear sesión |
 | GET | `/sessions/{id}` | — | 200 sesión + estado + variaciones (si completas) | Polling para UI |
 | PUT | `/sessions/{id}/variations/{vid}/decision` | Decision | 200 decisión actualizada | Solo si variación pertenece a sesión y está lista |
+| DELETE | `/sessions/{id}` | — | 204 | Borra la cadena completa de rondas (registros y archivos); 409 si alguna ronda está generando (G11) |
 | POST | `/sessions/{id}/summary` | `{}` | 200 Summary | Solo tras cinco decisiones; requiere validar |
 | POST | `/sessions/{id}/next-round/preview` | `{"adjustment_note": str \| null}` | 200 RoundPlan | Plan de la ronda siguiente sin crearla (ADR-007) |
 | POST | `/sessions/{id}/next-round` | `{"adjustment_note": str \| null}` | 201 Session hija en `SEGMENTED` | Solo con la madre `SUMMARIZED`; 409 si ya tiene hija o es la ronda 3 |
@@ -126,5 +127,7 @@ Código en `backend/productshot/`. Decisiones de implementación que concretan e
 - **Generación:** `202` con `{job_id, session_id, status, backend, error}`. Sin `Idempotency-Key`, un segundo POST da 409; con la misma llave devuelve el mismo trabajo. En local el trabajo corre en un hilo aparte (un trabajo a la vez). Si el trabajo no se puede encolar, se marca `FAILED` y la respuesta es 503. Al arrancar, los trabajos que quedaron en `GENERATING` se marcan `FAILED`.
 - **Lote:** el orquestador exige 5 artefactos, posiciones 1–5, estilos canónicos en orden y las semillas pedidas; si no, borra los archivos escritos y marca `FAILED`.
 - **Decisión:** `reason` se guarda en una sola línea (saltos de línea, tabulaciones y caracteres de control pasan a un espacio, se colapsan los espacios y se quitan los controles bidireccionales), y una cadena vacía equivale a `null`. El límite de 500 caracteres se mide sobre el texto ya normalizado; el texto crudo tiene un tope de 2000. Superar cualquiera de los dos, o enviar campos extra en el cuerpo, da 422.
+- **Máscara manual:** PNG real (no basta la extensión), del tamaño exacto del lienzo de trabajo, en cualquier modo de color (se pasa a gris y los bordes suaves se conservan). Se rechaza con 400 si es toda blanca (no protege nada) o toda negra (no deja fondo). Queda con `source: manual` y `simulated: false`, y reemplaza a la automática borrando sus archivos.
+- **Borrado:** `DELETE` sobre cualquier ronda borra toda la cadena, porque las rondas comparten la foto y la máscara de la ronda 1; borrar solo una dejaría a las otras sin archivos. Después de borrar, la sesión y sus imágenes responden 404.
 - **Rondas (ADR-007):** Session añade `round_index` (1 a 3), `parent_session_id`, `next_session_id` y `round_plan` (`items` con `position`, `style`, `variant`, `label`, `adjustments` y `because`, más `explanation`, una línea por variación). Variation añade `variant` (estilo más ajustes del vocabulario cerrado, por ejemplo `warm+brighter`; en la ronda 1 es el estilo) y `label`. La invariante del lote pasa a cinco `variant` distintos. La nota de ajuste sigue las reglas del motivo (una línea, 500 caracteres tras normalizar) y nunca llega al prompt. Detalle en `08_ITERACIONES_Y_GUARDRAILS.md`, parte A, «Implementación».
 - **Summary:** `preferences_supported_by_user_reasons` es una lista de `{variation_id, position, style, decision, reason}` con los motivos **literales**. En el Hito 1 `generated_by` es siempre `deterministic_fallback` (no hay LLM) y se agrega una limitación que lo declara. Un segundo POST devuelve el mismo resumen, también si llega en paralelo al primero. Al guardar se verifica que las decisiones no cambiaron mientras se calculaba (hash).

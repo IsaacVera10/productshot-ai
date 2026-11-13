@@ -306,6 +306,40 @@ class SqliteRepository:
             self._insert_image(conn, image)
             self._insert_mask(conn, mask)
 
+    def delete_chain(self, session_id: str) -> list[str]:
+        """Borra todas las rondas de la cadena a la que pertenece la sesión, en una transacción.
+
+        No borra si alguna ronda está generando: el trabajo escribiría archivos después
+        del borrado. Devuelve los IDs borrados (la raíz primero).
+        """
+        with self._tx() as conn:
+            self._status(conn, session_id)  # NotFound si no existe
+            root = session_id
+            while True:
+                row = conn.execute("SELECT parent_session_id FROM sessions WHERE id = ?", (root,)).fetchone()
+                if row["parent_session_id"] is None:
+                    break
+                root = row["parent_session_id"]
+            chain = [root]
+            while True:
+                row = conn.execute("SELECT id FROM sessions WHERE parent_session_id = ?", (chain[-1],)).fetchone()
+                if row is None:
+                    break
+                chain.append(row["id"])
+            marks = ",".join("?" * len(chain))
+            busy = conn.execute(
+                f"SELECT COUNT(*) FROM sessions WHERE id IN ({marks}) AND status = ?",
+                (*chain, SessionStatus.GENERATING.value),
+            ).fetchone()[0]
+            if busy:
+                raise StateConflict("Hay una generación en curso; espera a que termine para borrar.")
+            for table in ("decisions", "summaries", "variations", "generation_jobs", "masks", "input_images"):
+                conn.execute(f"DELETE FROM {table} WHERE session_id IN ({marks})", chain)
+            # De la hija más nueva a la raíz, por la clave foránea parent_session_id.
+            for sid in reversed(chain):
+                conn.execute("DELETE FROM sessions WHERE id = ?", (sid,))
+        return chain
+
     def child_session_id(self, session_id: str) -> str | None:
         with self._connect() as conn:
             row = conn.execute("SELECT id FROM sessions WHERE parent_session_id = ?", (session_id,)).fetchone()

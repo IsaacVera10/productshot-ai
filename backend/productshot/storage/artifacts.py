@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Protocol
 
 # <uuid>/<nombre>.png, solo minúsculas, dígitos, guion y guion bajo.
+_SESSION_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _KEY_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[a-z0-9_\-]{1,64}\.(png|jpg)$")
 
 
@@ -31,6 +33,7 @@ class ArtifactStore(Protocol):
     def load(self, key: str) -> bytes: ...
     def exists(self, key: str) -> bool: ...
     def delete(self, key: str) -> None: ...
+    def delete_session_dir(self, session_id: str) -> None: ...
 
 
 class LocalArtifactStore:
@@ -67,3 +70,12 @@ class LocalArtifactStore:
 
     def delete(self, key: str) -> None:
         self._path(key).unlink(missing_ok=True)
+
+    def delete_session_dir(self, session_id: str) -> None:
+        """Borra la carpeta de una sesión con todo lo que tenga, incluidos temporales huérfanos."""
+        if not _SESSION_RE.fullmatch(session_id):
+            raise InvalidArtifactKey(f"ID de sesión inválido: {session_id!r}")
+        path = (self.root / session_id).resolve()
+        if path.parent != self.root:
+            raise InvalidArtifactKey(f"Carpeta fuera del almacenamiento: {session_id!r}")
+        shutil.rmtree(path, ignore_errors=True)
