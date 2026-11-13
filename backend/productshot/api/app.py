@@ -19,6 +19,9 @@ from productshot.api.schemas import (
     GenerationInfo,
     JobOut,
     MaskOut,
+    NextRoundIn,
+    PlanItemOut,
+    RoundPlanOut,
     SegmentOut,
     SessionOut,
     SummaryOut,
@@ -29,6 +32,7 @@ from productshot.config import Settings
 from productshot.domain import DomainError, GenerationJob, Mask, Mode, NotFound, SessionView
 from productshot.services.generation import GenerationBackend, MockGenerationBackend
 from productshot.services.jobs import JobRunner, ThreadJobRunner
+from productshot.services.rounds import explain_plan, variant_label
 from productshot.services.segmentation import MockSegmentationService, SegmentationService
 from productshot.services.sessions import SessionService
 from productshot.services.summary import DeterministicSummaryService
@@ -74,6 +78,8 @@ def _session_out(view: SessionView, simulated: bool) -> SessionOut:
                 id=v.id,
                 position=v.position,
                 style=v.style,
+                variant=v.variant or v.style.value,
+                label=variant_label(v.variant or v.style.value),
                 image_url=asset_url(v.storage_key),
                 generation=GenerationInfo(seed=v.seed, model_revision=v.model_revision, prompt_version=v.prompt_version),
                 decision=(
@@ -90,6 +96,29 @@ def _session_out(view: SessionView, simulated: bool) -> SessionOut:
             for v in view.variations
         ],
         summary_available=view.summary is not None,
+        round_index=s.round_index,
+        parent_session_id=s.parent_session_id,
+        next_session_id=view.next_session_id,
+        round_plan=_plan_out(json.loads(s.round_plan_json)) if s.round_plan_json else None,
+    )
+
+
+def _plan_out(plan: dict) -> RoundPlanOut:
+    return RoundPlanOut(
+        round_index=plan["round_index"],
+        parent_session_id=plan["parent_session_id"],
+        rule=plan["rule"],
+        note=plan["note"],
+        note_adjustments=plan["note_adjustments"],
+        ignored=plan["ignored"],
+        items=[
+            PlanItemOut(
+                position=it["position"], style=it["style"], variant=it["variant"], label=variant_label(it["variant"]),
+                adjustments=it["adjustments"], because=it["because"],
+            )
+            for it in plan["items"]
+        ],
+        explanation=explain_plan(plan),
     )
 
 
@@ -157,6 +186,16 @@ def _build_router() -> APIRouter:
     def summary(request: Request, session_id: str) -> SummaryOut:
         record = svc(request).summarize(session_id)
         return SummaryOut(**json.loads(record.payload_json))
+
+    @router.post("/sessions/{session_id}/next-round", status_code=201, response_model=SessionOut)
+    def next_round(request: Request, session_id: str, body: NextRoundIn | None = None) -> SessionOut:
+        note = body.adjustment_note if body else None
+        return out(request, svc(request).next_round(session_id, note))
+
+    @router.post("/sessions/{session_id}/next-round/preview", response_model=RoundPlanOut)
+    def preview_next_round(request: Request, session_id: str, body: NextRoundIn | None = None) -> RoundPlanOut:
+        note = body.adjustment_note if body else None
+        return _plan_out(svc(request).preview_next_round(session_id, note))
 
     @router.get("/assets/{session_id}/{name}")
     def asset(request: Request, session_id: str, name: str) -> Response:

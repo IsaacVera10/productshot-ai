@@ -1,6 +1,6 @@
 # 08 — Propuesta: iteraciones guiadas por feedback y guardrails
 
-**Fecha:** 2026-11-04, actualizado el 2026-11-12. **Estado:** las partes A (iteraciones) y B (guardrails) están aceptadas desde el 2026-11-12. Nada de este documento está implementado salvo lo marcado como *Hito 1*. Registro formal en ADR-007 y ADR-008 ([03 — Decisiones](03_DECISIONES_Y_RIESGOS.md)).
+**Fecha:** 2026-11-04, actualizado el 2026-11-12. **Estado:** las partes A (iteraciones) y B (guardrails) están aceptadas desde el 2026-11-12. La parte A está implementada sobre el backend mock (ver «Implementación» al final de la parte A); de la parte B solo lo marcado como *H1*. Registro formal en ADR-007 y ADR-008 ([03 — Decisiones](03_DECISIONES_Y_RIESGOS.md)).
 
 ## Por qué
 
@@ -87,8 +87,22 @@ Esto también cubre «instrucciones escritas por el usuario»: la persona escrib
 
 1. **Máximo de rondas:** 3 por cadena, por costo de GPU y tiempo de demo.
 2. **Requisito para la siguiente ronda:** la madre debe estar `SUMMARIZED`, para que cada ronda tenga su resumen verificado antes de derivar la siguiente.
-3. **Hitos:** el planificador por reglas y `POST /sessions/{id}/next-round`, al final del Hito 2, sobre la generación real; la extracción de ajustes con Gemini y el resumen de cadena, en el Hito 3.
+3. **Hitos:** el planificador por reglas y `POST /sessions/{id}/next-round` se adelantaron y ya funcionan sobre el mock, porque no necesitan GPU; con la generación real del Hito 2 solo cambia el backend. La extracción de ajustes con Gemini y el resumen de cadena siguen en el Hito 3.
 4. **Docente:** se le informa esta interpretación en la próxima entrega de avance (P9), pero no se espera su respuesta para avanzar.
+
+### Implementación (2026-11-12, sobre mock)
+
+Código en `backend/productshot/services/rounds.py`; pruebas en `tests/test_rounds.py`. Concreta el diseño de arriba así:
+
+- **Orden de aceptación** = hora de la decisión (`decided_at`), con la posición como desempate. Los huecos se reparten en ronda entre los estilos aceptados, y cada hueco suma **un** ajuste nuevo a la variante que hereda.
+- **Ronda 3:** la variante aceptada en la ronda 2 se hereda completa (por ejemplo `warm+brighter`) y se le suman los ajustes nuevos.
+- **Prioridad entre ajustes:** la nota manda sobre el motivo, y el motivo sobre lo heredado. Dos ajustes contradictorios en la misma fuente (por ejemplo «más oscuro y más luminoso») se descartan los dos y la explicación lo dice.
+- **Motivos de variaciones rechazadas** cuando hay alguna aceptada: no cambian el plan, porque su estilo no continúa, pero quedan registrados y la explicación los menciona.
+- **Extracción por reglas:** palabras clave en español, sin acentos ni mayúsculas; las frases específicas se evalúan antes («más oscuro» antes que «oscuro»), y una negación cercana («no me gusta la madera», «sin tela») anula los ajustes de gusto (superficies, interior o exterior, más utilería). No entiende ironía ni negaciones lejanas: es la limitación que el Hito 3 cubre con Gemini.
+- **Vista previa:** `POST /sessions/{id}/next-round/preview` devuelve el plan con su explicación sin crear la ronda, para mostrar los ajustes entendidos **antes** de generar.
+- **Máscara heredada:** la hija apunta a los archivos de la ronda 1 y no puede re-segmentar (409), para que nunca borre archivos de la madre.
+- **Explicación:** cada ronda hija agrega a su resumen «Cómo se armó esta ronda», una línea por variación compuesta por Python desde `round_plan_json`, sin texto libre del usuario.
+- **Migración:** una base SQLite del Hito 1 original se actualiza sola al arrancar (`PRAGMA user_version` 2).
 
 ---
 
@@ -104,13 +118,13 @@ Principio común: ningún fallo deja la sesión en un estado ambiguo ni muestra 
 | G2 | Entrada: imagen | Clasificador de contenido inapropiado (NSFW, violencia) sobre la foto subida; se rechaza antes de segmentar | Propuesto, H2 | Foto bloqueada con mensaje explicativo |
 | G3 | Entrada: imagen | Detector de rostros: si la foto contiene una cara prominente se rechaza o se pide confirmación, porque el caso de uso es producto y se evita manipular identidad visual de personas | Propuesto, H2 | Foto con persona → aviso |
 | G4 | Entrada: texto | Motivos y nota de ajuste: longitud ≤ 500, una sola línea (sin saltos ni caracteres de control, para que no imiten líneas del resumen), se guardan y citan **como dato** y nunca se interpretan; la UI los muestra en texto plano | **H1** (pruebas T11 y de motivo multilínea) | Motivo con «ignora instrucciones…» aparece citado, sin efecto |
-| G5 | Entrada: texto | Nota de ajuste → vocabulario cerrado (Parte A); el texto libre nunca llega al prompt | Propuesto, H2/H3 | Se muestra «ajustes entendidos» |
+| G5 | Entrada: texto | Nota de ajuste → vocabulario cerrado (Parte A); el texto libre nunca llega al prompt | Reglas **H1** (rondas sobre mock); Gemini en H3 | Se muestra «ajustes entendidos» |
 | G6 | Generación | Prompts fijos versionados por estilo y *negative prompt* (sin personas, texto, logotipos nuevos, NSFW) | Prompts escritos en H1 (`presets.py`), sin probar | — |
 | G7 | Salida: imagen | Clasificador NSFW sobre cada una de las cinco salidas (SDXL no trae *safety checker* propio). Si una falla, se regenera con otra semilla hasta N veces; si no, la sesión queda `FAILED` (se mantiene el «cinco o nada») | Propuesto, H2 | Registro del filtro en los metadatos |
 | G8 | Salida: fidelidad | Recomposición de los píxeles del producto desde el original con la máscara, y verificación de que la región protegida no cambió (ΔE / SSIM dentro de la máscara bajo un umbral). Evita alterar logotipos, etiquetas o colores, es decir, publicidad engañosa | Propuesto, H2 | Métrica de fidelidad por variación |
 | G9 | Transparencia | Rótulo visible «Imagen generada con IA» opcional al descargar y metadato en el PNG (`Software`, `ai_generated=true`); en el Hito 1 todo resultado mock lleva la franja «SIMULACIÓN» | Rótulo mock **H1**; resto propuesto, H2 | Franja/metadato visible |
 | G10 | Agente | Herramientas de solo lectura, salida estructurada validada contra la base de datos, sin inferir motivos no escritos, fallback explícito | Validador **H1**; LLM en H3 | Resumen con `validation_status` |
-| G11 | Operación | Límite de rondas por cadena, límite de generaciones por cliente y por hora (429 «Alcanzaste el límite, inténtalo más tarde»), autenticación en GCP, retención limitada y borrado (`DELETE /sessions/{id}`) de fotos | Propuesto, H6 (borrado: H2) | — |
+| G11 | Operación | Límite de rondas por cadena, límite de generaciones por cliente y por hora (429 «Alcanzaste el límite, inténtalo más tarde»), autenticación en GCP, retención limitada y borrado (`DELETE /sessions/{id}`) de fotos | Límite de 3 rondas **H1**; el resto propuesto, H6 (borrado: H2) | — |
 | G12 | Entrada: imagen | Calidad de la foto: umbrales de brillo y nitidez (varianza del laplaciano). Solo advierte, no bloquea | Propuesto, H2 | Aviso «La foto está muy oscura o borrosa» |
 | G13 | Segmentación | Heurística sobre la máscara: área protegida fuera de un rango o varios componentes grandes indican que no hay un producto principal. Se ofrece reintentar, subir máscara o continuar | Propuesto, H2 | Aviso antes de generar |
 | G14 | Generación | Timeout configurable por lote; al vencer, la sesión pasa a `FAILED` con un mensaje claro (503 si el worker no responde) | Propuesto, H2 | Mensaje «El servicio está ocupado, inténtalo más tarde» |

@@ -14,6 +14,8 @@
 | GET | `/sessions/{id}` | — | 200 sesión + estado + variaciones (si completas) | Polling para UI |
 | PUT | `/sessions/{id}/variations/{vid}/decision` | Decision | 200 decisión actualizada | Solo si variación pertenece a sesión y está lista |
 | POST | `/sessions/{id}/summary` | `{}` | 200 Summary | Solo tras cinco decisiones; requiere validar |
+| POST | `/sessions/{id}/next-round/preview` | `{"adjustment_note": str \| null}` | 200 RoundPlan | Plan de la ronda siguiente sin crearla (ADR-007) |
+| POST | `/sessions/{id}/next-round` | `{"adjustment_note": str \| null}` | 201 Session hija en `SEGMENTED` | Solo con la madre `SUMMARIZED`; 409 si ya tiene hija o es la ronda 3 |
 
 La máscara manual debe ser un PNG decodificable, dentro de los límites de tamaño, con las dimensiones del lienzo de trabajo y la semántica blanco editable/negro protegido. Reintentar la segmentación o subir una máscara reemplaza la anterior solo en `UPLOADED` o `SEGMENTED`; al iniciar la generación, la máscara queda bloqueada de forma atómica. Se registran su origen (`auto | manual`) y su hash.
 
@@ -100,7 +102,7 @@ Los IDs de arriba son **ilustrativos**, no UUID válidos; la implementación los
 
 - `UPLOADED -> SEGMENTED -> GENERATING -> READY_FOR_REVIEW -> REVIEWED -> SUMMARIZED`. `GENERATING -> FAILED` ante cualquier error.
 - **Éxito de generación** = cinco archivos realmente existentes + cinco registros persistidos + estilos distintos. Si no, `FAILED`.
-- **Una sesión = una generación**; POST duplicados devuelven 409 salvo reintento idempotente de la misma operación.
+- **Una sesión = una generación**; POST duplicados devuelven 409 salvo reintento idempotente de la misma operación. Otra ronda es otra sesión (hija), con su propia generación.
 - Se permite cambiar las decisiones mientras no esté `SUMMARIZED`; tras resumen quedan congeladas.
 - Un resumen **no se solicita** hasta cinco decisiones registradas, incluyendo caso `0 accepted`.
 - En errores HTTP: 400 para contenido inválido no capturado por validación, 404 ID inexistente, 409 conflicto de estado, 413 archivo excesivo, 422 payload inválido o foto rechazada por los guardrails de entrada, 429 límite de generaciones alcanzado, 503 dependencia LLM/GPU caída; usar estructura de error coherente con un mensaje en español para la persona usuaria y la acción siguiente (ver `08_ITERACIONES_Y_GUARDRAILS.md`, parte B). 422 y 429 por guardrails llegan en el Hito 2.
@@ -124,4 +126,5 @@ Código en `backend/productshot/`. Decisiones de implementación que concretan e
 - **Generación:** `202` con `{job_id, session_id, status, backend, error}`. Sin `Idempotency-Key`, un segundo POST da 409; con la misma llave devuelve el mismo trabajo. En local el trabajo corre en un hilo aparte (un trabajo a la vez). Si el trabajo no se puede encolar, se marca `FAILED` y la respuesta es 503. Al arrancar, los trabajos que quedaron en `GENERATING` se marcan `FAILED`.
 - **Lote:** el orquestador exige 5 artefactos, posiciones 1–5, estilos canónicos en orden y las semillas pedidas; si no, borra los archivos escritos y marca `FAILED`.
 - **Decisión:** `reason` se guarda en una sola línea (saltos de línea, tabulaciones y caracteres de control pasan a un espacio, se colapsan los espacios y se quitan los controles bidireccionales), y una cadena vacía equivale a `null`. El límite de 500 caracteres se mide sobre el texto ya normalizado; el texto crudo tiene un tope de 2000. Superar cualquiera de los dos, o enviar campos extra en el cuerpo, da 422.
+- **Rondas (ADR-007):** Session añade `round_index` (1 a 3), `parent_session_id`, `next_session_id` y `round_plan` (`items` con `position`, `style`, `variant`, `label`, `adjustments` y `because`, más `explanation`, una línea por variación). Variation añade `variant` (estilo más ajustes del vocabulario cerrado, por ejemplo `warm+brighter`; en la ronda 1 es el estilo) y `label`. La invariante del lote pasa a cinco `variant` distintos. La nota de ajuste sigue las reglas del motivo (una línea, 500 caracteres tras normalizar) y nunca llega al prompt. Detalle en `08_ITERACIONES_Y_GUARDRAILS.md`, parte A, «Implementación».
 - **Summary:** `preferences_supported_by_user_reasons` es una lista de `{variation_id, position, style, decision, reason}` con los motivos **literales**. En el Hito 1 `generated_by` es siempre `deterministic_fallback` (no hay LLM) y se agrega una limitación que lo declara. Un segundo POST devuelve el mismo resumen, también si llega en paralelo al primero. Al guardar se verifica que las decisiones no cambiaron mientras se calculaba (hash).

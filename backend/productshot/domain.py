@@ -62,6 +62,9 @@ REASON_MAX_CHARS = 500
 # Tope del texto CRUDO recibido; el límite real (REASON_MAX_CHARS) se mide tras normalizar.
 REASON_RAW_MAX_CHARS = 4 * REASON_MAX_CHARS
 
+# Máximo de rondas por cadena (ADR-007): costo de GPU y tiempo de demo.
+MAX_ROUNDS = 3
+
 # Estados en los que todavía se puede reemplazar la máscara.
 MASK_EDITABLE_STATES = frozenset({SessionStatus.UPLOADED, SessionStatus.SEGMENTED})
 # Estados en los que se aceptan o corrigen decisiones.
@@ -140,6 +143,8 @@ class Variation:
     prompt_version: str
     params_json: str
     decision: Decision | None = None
+    # Estilo más ajustes del vocabulario cerrado, p. ej. `warm+brighter`. En la ronda 1 es el estilo.
+    variant: str = ""
 
 
 @dataclass(frozen=True)
@@ -152,6 +157,10 @@ class Session:
     created_at: datetime
     updated_at: datetime
     failure_reason: str | None = None
+    # Rondas (ADR-007): la ronda 1 no tiene madre; las siguientes heredan imagen y máscara.
+    parent_session_id: str | None = None
+    round_index: int = 1
+    round_plan_json: str | None = None
 
 
 @dataclass(frozen=True)
@@ -175,6 +184,7 @@ class SessionView:
     job: GenerationJob | None
     variations: list[Variation] = field(default_factory=list)
     summary: SummaryRecord | None = None
+    next_session_id: str | None = None
 
 
 def decisions_hash(variations: list[Variation]) -> str:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import io
 import json
@@ -15,6 +16,7 @@ from productshot.config import Settings
 from productshot.domain import (
     CANONICAL_STYLES,
     MASK_EDITABLE_STATES,
+    MAX_ROUNDS,
     REASON_MAX_CHARS,
     VARIATIONS_PER_BATCH,
     Decision,
@@ -42,6 +44,7 @@ from productshot.services.generation import GenerationBackend, GenerationRequest
 from productshot.services.images import prepare_upload, to_png
 from productshot.services.jobs import JobRunner
 from productshot.services.presets import PROMPT_VERSION
+from productshot.services.rounds import RoundPlan, plan_next_round
 from productshot.services.segmentation import SegmentationService, render_mask_preview
 from productshot.services.summary import STATUS_VERIFIED, SummaryService
 from productshot.storage.artifacts import ArtifactStore
@@ -141,6 +144,8 @@ class SessionService:
 
     def segment(self, session_id: str) -> Mask:
         session = self.repo.get_session(session_id)
+        if session.parent_session_id is not None:
+            raise StateConflict("Esta ronda usa la máscara de la ronda 1; no se puede cambiar.")
         if session.status not in MASK_EDITABLE_STATES:
             raise StateConflict(f"La máscara ya no se puede cambiar (estado {session.status}).")
         image = self._load_image(self.repo.get_image(session_id).storage_key)
@@ -183,17 +188,31 @@ class SessionService:
             if not idempotency_key or len(idempotency_key) > IDEMPOTENCY_KEY_MAX or not idempotency_key.isprintable():
                 raise InvalidInput("Idempotency-Key inválida.")
         session = self.repo.get_session(session_id)
-        specs = [
-            VariationSpec(position=i + 1, style=style, seed=self._rng.randrange(0, 2**31 - 1))
-            for i, style in enumerate(CANONICAL_STYLES)
-        ]
+        if session.round_plan_json:
+            # Rondas 2 y 3: el plan ya fijó estilo, ajustes y semilla de cada posición.
+            specs = [
+                VariationSpec(
+                    position=it["position"], style=Style(it["style"]), seed=it["seed"],
+                    adjustments=tuple(it["adjustments"]),
+                )
+                for it in json.loads(session.round_plan_json)["items"]
+            ]
+        else:
+            specs = [
+                VariationSpec(position=i + 1, style=style, seed=self._rng.randrange(0, 2**31 - 1))
+                for i, style in enumerate(CANONICAL_STYLES)
+            ]
         config = {
             "backend": self.generator.name,
             "simulated": self.generator.simulated,
             "mode": session.mode.value,
             "model_revision": self.generator.model_revision,
             "prompt_version": PROMPT_VERSION,
-            "specs": [{"position": s.position, "style": s.style.value, "seed": s.seed} for s in specs],
+            "round_index": session.round_index,
+            "specs": [
+                {"position": s.position, "style": s.style.value, "seed": s.seed, "adjustments": list(s.adjustments)}
+                for s in specs
+            ],
         }
         job = GenerationJob(
             id=_new_id(),
@@ -243,7 +262,10 @@ class SessionService:
             mask = self._load_image(mask_record.storage_key, mode="L")
             config = json.loads(job.config_json)
             specs = tuple(
-                VariationSpec(position=s["position"], style=Style(s["style"]), seed=s["seed"])
+                VariationSpec(
+                    position=s["position"], style=Style(s["style"]), seed=s["seed"],
+                    adjustments=tuple(s.get("adjustments", ())),
+                )
                 for s in config["specs"]
             )
             artifacts = self.generator.generate(
@@ -267,6 +289,7 @@ class SessionService:
                         model_revision=art.model_revision,
                         prompt_version=art.prompt_version,
                         params_json=json.dumps(art.params, ensure_ascii=False),
+                        variant=art.variant or art.style.value,
                     )
                 )
             if not all(self.store.exists(k) for k in written):
@@ -288,14 +311,72 @@ class SessionService:
         positions = [a.position for a in artifacts]
         if sorted(positions) != sorted(expected):
             raise BatchError("Las posiciones del lote no son 1..5 sin repetición.")
-        if len({a.style for a in artifacts}) != VARIATIONS_PER_BATCH:
-            raise BatchError("El lote no tiene cinco estilos distintos.")
+        # Ronda 1: cinco estilos distintos. Rondas siguientes: cinco (estilo + ajustes) distintos,
+        # porque un estilo aceptado puede repetirse con otra semilla o con otro ajuste.
+        if len({a.variant or a.style.value for a in artifacts}) != VARIATIONS_PER_BATCH:
+            raise BatchError("El lote no tiene cinco variantes distintas.")
         for a in artifacts:
             spec = expected[a.position]
-            if a.style != spec.style or a.seed != spec.seed:
-                raise BatchError(f"La variación {a.position} no corresponde al estilo o semilla pedidos.")
+            if a.style != spec.style or a.seed != spec.seed or (a.variant or a.style.value) != spec.variant:
+                raise BatchError(f"La variación {a.position} no corresponde al estilo, ajustes o semilla pedidos.")
             if a.image is None or a.image.size[0] == 0:
                 raise BatchError(f"La variación {a.position} no tiene imagen.")
+
+    # --- 6. rondas (ADR-007) ---
+
+    def _plan_for(self, session_id: str, note: str | None) -> tuple[Session, RoundPlan]:
+        parent = self.repo.get_session(session_id)
+        if parent.status != SessionStatus.SUMMARIZED:
+            raise StateConflict("Para pedir otra ronda, primero resume las cinco decisiones de esta.")
+        if parent.round_index >= MAX_ROUNDS:
+            raise StateConflict(f"Se alcanzó el máximo de {MAX_ROUNDS} rondas.")
+        if self.repo.child_session_id(session_id) is not None:
+            raise StateConflict("Esta ronda ya tiene una ronda siguiente.")
+        # Las decisiones están congeladas desde el resumen, así que leerlas fuera de la
+        # transacción es seguro; la creación vuelve a verificar el estado de forma atómica.
+        plan = plan_next_round(
+            parent_session_id=session_id,
+            parent_round=parent.round_index,
+            variations=self.repo.list_variations(session_id),
+            note=normalize_reason(note) if note else None,
+            rng=self._rng,
+        )
+        return parent, plan
+
+    def preview_next_round(self, session_id: str, note: str | None) -> dict:
+        """Plan de la ronda siguiente sin crearla: la persona ve qué se entendió antes de generar."""
+        _parent, plan = self._plan_for(session_id, note)
+        data = plan.to_json()
+        for item in data["items"]:
+            item.pop("seed")  # la semilla real se sortea al crear la ronda
+        return data
+
+    def next_round(self, session_id: str, note: str | None) -> SessionView:
+        parent, plan = self._plan_for(session_id, note)
+        parent_image = self.repo.get_image(session_id)
+        parent_mask = self.repo.get_mask(session_id)
+        if parent_mask is None:  # una sesión resumida siempre tiene máscara
+            raise StateConflict("La ronda anterior no tiene máscara.")
+        child_id, image_id, now = _new_id(), _new_id(), utcnow()
+        child = Session(
+            id=child_id,
+            mode=parent.mode,
+            status=SessionStatus.SEGMENTED,
+            image_id=image_id,
+            base_model_revision=self.generator.model_revision,
+            created_at=now,
+            updated_at=now,
+            parent_session_id=session_id,
+            round_index=plan.round_index,
+            round_plan_json=json.dumps(plan.to_json(), ensure_ascii=False),
+        )
+        # La hija apunta a los MISMOS archivos de la madre: no se copian ni se pueden borrar
+        # desde la hija (su máscara está bloqueada).
+        image = dataclasses.replace(parent_image, id=image_id, session_id=child_id)
+        mask = dataclasses.replace(parent_mask, id=_new_id(), session_id=child_id, created_at=now)
+        self.repo.create_child_session(child, image, mask, MAX_ROUNDS)
+        log.info("Ronda %d creada: %s (madre %s)", plan.round_index, child_id, session_id)
+        return self.get_view(child_id)
 
     # --- lectura ---
 
@@ -309,6 +390,7 @@ class SessionService:
             job=self.repo.get_job(session_id),
             variations=variations,
             summary=self.repo.get_summary(session_id),
+            next_session_id=self.repo.child_session_id(session_id),
         )
 
     # --- 4. decisiones ---
@@ -331,7 +413,8 @@ class SessionService:
         if session.status != SessionStatus.REVIEWED:
             raise StateConflict("El resumen requiere las cinco decisiones registradas.")
         variations = self.repo.list_variations(session_id)
-        result = self.summarizer.summarize(session_id, variations)
+        plan = json.loads(session.round_plan_json) if session.round_plan_json else None
+        result = self.summarizer.summarize(session_id, variations, round_plan=plan)
         if result.validation_status != STATUS_VERIFIED:
             raise DependencyUnavailable("No se pudo producir un resumen verificado contra el registro.")
         record = SummaryRecord(

@@ -45,6 +45,41 @@ class DecisionIn(StrictModel):
         return value
 
 
+class NextRoundIn(StrictModel):
+    # Texto libre: nunca llega al prompt. Se traduce a ajustes de un vocabulario cerrado (G5).
+    adjustment_note: str | None = Field(default=None, max_length=REASON_RAW_MAX_CHARS)
+
+    @field_validator("adjustment_note")
+    @classmethod
+    def _normalized_note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = normalize_reason(value)
+        if value is not None and len(value) > REASON_MAX_CHARS:
+            raise ValueError(f"La nota supera {REASON_MAX_CHARS} caracteres.")
+        return value
+
+
+class PlanItemOut(BaseModel):
+    position: int
+    style: Style
+    variant: str
+    label: str
+    adjustments: list[str]
+    because: list[dict]
+
+
+class RoundPlanOut(BaseModel):
+    round_index: int
+    parent_session_id: str
+    rule: str
+    note: str | None
+    note_adjustments: list[dict]
+    ignored: list[dict]
+    items: list[PlanItemOut]
+    explanation: list[str] = Field(description="Una línea por variación con su porqué, compuesta por Python.")
+
+
 class DecisionOut(BaseModel):
     variation_id: str
     decision: DecisionValue
@@ -62,6 +97,8 @@ class VariationOut(BaseModel):
     id: str
     position: int
     style: Style
+    variant: str
+    label: str
     image_url: str
     generation: GenerationInfo
     decision: DecisionOut | None
@@ -97,6 +134,10 @@ class SessionOut(BaseModel):
     job: JobOut | None
     variations: list[VariationOut]
     summary_available: bool
+    round_index: int
+    parent_session_id: str | None
+    next_session_id: str | None = Field(description="Ronda siguiente, si ya se creó.")
+    round_plan: RoundPlanOut | None
 
 
 class SegmentOut(BaseModel):

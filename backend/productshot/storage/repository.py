@@ -45,8 +45,13 @@ CREATE TABLE IF NOT EXISTS sessions (
     base_model_revision TEXT,
     failure_reason TEXT,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    parent_session_id TEXT REFERENCES sessions(id),
+    round_index INTEGER NOT NULL DEFAULT 1 CHECK (round_index BETWEEN 1 AND 3),
+    round_plan_json TEXT
 );
+-- Una ronda tiene a lo sumo una hija (ADR-007).
+CREATE UNIQUE INDEX IF NOT EXISTS ux_sessions_parent ON sessions(parent_session_id);
 CREATE TABLE IF NOT EXISTS input_images (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL UNIQUE REFERENCES sessions(id),
@@ -86,13 +91,15 @@ CREATE TABLE IF NOT EXISTS variations (
     job_id TEXT NOT NULL REFERENCES generation_jobs(id),
     position INTEGER NOT NULL CHECK (position BETWEEN 1 AND 5),
     style TEXT NOT NULL,
+    variant TEXT NOT NULL,
     storage_key TEXT NOT NULL,
     seed INTEGER NOT NULL,
     model_revision TEXT NOT NULL,
     prompt_version TEXT NOT NULL,
     params_json TEXT NOT NULL,
     UNIQUE (session_id, position),
-    UNIQUE (session_id, style)
+    -- Desde las rondas, un estilo aceptado se repite: lo único es (estilo + ajustes).
+    UNIQUE (session_id, variant)
 );
 CREATE TABLE IF NOT EXISTS decisions (
     variation_id TEXT PRIMARY KEY REFERENCES variations(id),
@@ -111,6 +118,35 @@ CREATE TABLE IF NOT EXISTS summaries (
     created_at TEXT NOT NULL
 );
 """
+SCHEMA_VERSION = 2
+
+# Hito 1 original (versión 0): sin rondas y con UNIQUE (session_id, style).
+_MIGRATE_0_TO_2 = """
+ALTER TABLE sessions ADD COLUMN parent_session_id TEXT REFERENCES sessions(id);
+ALTER TABLE sessions ADD COLUMN round_index INTEGER NOT NULL DEFAULT 1 CHECK (round_index BETWEEN 1 AND 3);
+ALTER TABLE sessions ADD COLUMN round_plan_json TEXT;
+CREATE TABLE variations_v2 (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id),
+    job_id TEXT NOT NULL REFERENCES generation_jobs(id),
+    position INTEGER NOT NULL CHECK (position BETWEEN 1 AND 5),
+    style TEXT NOT NULL,
+    variant TEXT NOT NULL,
+    storage_key TEXT NOT NULL,
+    seed INTEGER NOT NULL,
+    model_revision TEXT NOT NULL,
+    prompt_version TEXT NOT NULL,
+    params_json TEXT NOT NULL,
+    UNIQUE (session_id, position),
+    UNIQUE (session_id, variant)
+);
+INSERT INTO variations_v2 (id, session_id, job_id, position, style, variant, storage_key, seed,
+                           model_revision, prompt_version, params_json)
+    SELECT id, session_id, job_id, position, style, style, storage_key, seed,
+           model_revision, prompt_version, params_json FROM variations;
+DROP TABLE variations;
+ALTER TABLE variations_v2 RENAME TO variations;
+"""
 
 
 def _dt(value: str | None) -> datetime | None:
@@ -123,7 +159,44 @@ class SqliteRepository:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
+        self._migrate()
+        with self._connect() as conn:
             conn.executescript(SCHEMA)
+            conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+    def _migrate(self) -> None:
+        """Lleva una base del Hito 1 original (versión 0) al esquema con rondas.
+
+        Sigue el procedimiento de SQLite para cambiar restricciones: tabla nueva, copia,
+        borrado y renombre, con las claves foráneas desactivadas y verificadas al final.
+        """
+        conn = sqlite3.connect(self.path, timeout=30, isolation_level=None)
+        try:
+            version = conn.execute("PRAGMA user_version").fetchone()[0]
+            has_sessions = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sessions'"
+            ).fetchone()
+            if version >= SCHEMA_VERSION or not has_sessions:
+                return
+            columns = {r[1] for r in conn.execute("PRAGMA table_info(sessions)")}
+            if "round_index" in columns:
+                return
+            conn.execute("PRAGMA foreign_keys=OFF")
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                for statement in _MIGRATE_0_TO_2.split(";"):
+                    if statement.strip():
+                        conn.execute(statement)
+                broken = conn.execute("PRAGMA foreign_key_check").fetchall()
+                if broken:
+                    raise sqlite3.IntegrityError(f"La migración dejó claves foráneas rotas: {broken[:3]}")
+                conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+                conn.execute("COMMIT")
+            except BaseException:
+                conn.execute("ROLLBACK")
+                raise
+        finally:
+            conn.close()
 
     # --- infraestructura ---
 
@@ -177,14 +250,66 @@ class SqliteRepository:
                     session.base_model_revision, None, iso(session.created_at), iso(session.updated_at),
                 ),
             )
+            self._insert_image(conn, image)
+
+    @staticmethod
+    def _insert_image(conn: sqlite3.Connection, image: InputImage) -> None:
+        conn.execute(
+            "INSERT INTO input_images (id, session_id, storage_key, original_key, sha256, width, height,"
+            " original_width, original_height, original_format) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                image.id, image.session_id, image.storage_key, image.original_key, image.sha256,
+                image.width, image.height, image.original_width, image.original_height, image.original_format,
+            ),
+        )
+
+    @staticmethod
+    def _insert_mask(conn: sqlite3.Connection, mask: Mask) -> None:
+        conn.execute(
+            "INSERT INTO masks (id, session_id, source, storage_key, preview_key, sha256, simulated, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                mask.id, mask.session_id, mask.source, mask.storage_key, mask.preview_key, mask.sha256,
+                int(mask.simulated), iso(mask.created_at),
+            ),
+        )
+
+    def create_child_session(self, child: Session, image: InputImage, mask: Mask, max_rounds: int) -> None:
+        """Crea la ronda siguiente, ya en SEGMENTED, con la imagen y la máscara de la madre.
+
+        Todo se verifica en la misma transacción: la madre debe estar SUMMARIZED, no tener
+        hija y no haber alcanzado el máximo de rondas. El índice único sobre
+        `parent_session_id` impide dos hijas aunque lleguen dos solicitudes a la vez.
+        """
+        parent_id = child.parent_session_id
+        with self._tx() as conn:
+            row = conn.execute("SELECT status, round_index FROM sessions WHERE id = ?", (parent_id,)).fetchone()
+            if row is None:
+                raise NotFound("La sesión no existe.")
+            if row["status"] != SessionStatus.SUMMARIZED.value:
+                raise StateConflict("Para pedir otra ronda, primero resume las cinco decisiones de esta.")
+            if row["round_index"] >= max_rounds:
+                raise StateConflict(f"Se alcanzó el máximo de {max_rounds} rondas.")
+            existing = conn.execute("SELECT id FROM sessions WHERE parent_session_id = ?", (parent_id,)).fetchone()
+            if existing is not None:
+                raise StateConflict("Esta ronda ya tiene una ronda siguiente.")
             conn.execute(
-                "INSERT INTO input_images (id, session_id, storage_key, original_key, sha256, width, height,"
-                " original_width, original_height, original_format) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO sessions (id, mode, status, image_id, base_model_revision, failure_reason,"
+                " created_at, updated_at, parent_session_id, round_index, round_plan_json)"
+                " VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)",
                 (
-                    image.id, image.session_id, image.storage_key, image.original_key, image.sha256,
-                    image.width, image.height, image.original_width, image.original_height, image.original_format,
+                    child.id, child.mode.value, child.status.value, child.image_id, child.base_model_revision,
+                    iso(child.created_at), iso(child.updated_at), parent_id, child.round_index,
+                    child.round_plan_json,
                 ),
             )
+            self._insert_image(conn, image)
+            self._insert_mask(conn, mask)
+
+    def child_session_id(self, session_id: str) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT id FROM sessions WHERE parent_session_id = ?", (session_id,)).fetchone()
+        return row["id"] if row else None
 
     def get_session(self, session_id: str) -> Session:
         with self._connect() as conn:
@@ -200,6 +325,9 @@ class SqliteRepository:
             failure_reason=row["failure_reason"],
             created_at=_dt(row["created_at"]),
             updated_at=_dt(row["updated_at"]),
+            parent_session_id=row["parent_session_id"],
+            round_index=row["round_index"],
+            round_plan_json=row["round_plan_json"],
         )
 
     def get_image(self, session_id: str) -> InputImage:
@@ -217,16 +345,15 @@ class SqliteRepository:
             status = self._status(conn, mask.session_id)
             if status not in set(allowed):
                 raise StateConflict(f"No se puede cambiar la máscara en estado {status}.")
+            parent = conn.execute(
+                "SELECT parent_session_id FROM sessions WHERE id = ?", (mask.session_id,)
+            ).fetchone()["parent_session_id"]
+            if parent is not None:
+                # La máscara es la de la ronda 1 y sus archivos son de esa sesión: no se toca.
+                raise StateConflict("Esta ronda usa la máscara de la ronda 1; no se puede cambiar.")
             previous = self._mask_row(conn, mask.session_id)
             conn.execute("DELETE FROM masks WHERE session_id = ?", (mask.session_id,))
-            conn.execute(
-                "INSERT INTO masks (id, session_id, source, storage_key, preview_key, sha256, simulated, created_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    mask.id, mask.session_id, mask.source, mask.storage_key, mask.preview_key, mask.sha256,
-                    int(mask.simulated), iso(mask.created_at),
-                ),
-            )
+            self._insert_mask(conn, mask)
             self._set_status(conn, mask.session_id, SessionStatus.SEGMENTED)
         return previous
 
@@ -299,11 +426,11 @@ class SqliteRepository:
             session_id = row["session_id"]
             for v in variations:
                 conn.execute(
-                    "INSERT INTO variations (id, session_id, job_id, position, style, storage_key, seed,"
-                    " model_revision, prompt_version, params_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO variations (id, session_id, job_id, position, style, variant, storage_key, seed,"
+                    " model_revision, prompt_version, params_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
-                        v.id, session_id, job_id, v.position, v.style.value, v.storage_key, v.seed,
-                        v.model_revision, v.prompt_version, v.params_json,
+                        v.id, session_id, job_id, v.position, v.style.value, v.variant or v.style.value,
+                        v.storage_key, v.seed, v.model_revision, v.prompt_version, v.params_json,
                     ),
                 )
             conn.execute(
@@ -362,7 +489,7 @@ class SqliteRepository:
                     id=r["id"], session_id=r["session_id"], job_id=r["job_id"], position=r["position"],
                     style=Style(r["style"]), storage_key=r["storage_key"], seed=r["seed"],
                     model_revision=r["model_revision"], prompt_version=r["prompt_version"],
-                    params_json=r["params_json"], decision=decision,
+                    params_json=r["params_json"], decision=decision, variant=r["variant"],
                 )
             )
         return result

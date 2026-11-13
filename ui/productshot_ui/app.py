@@ -92,6 +92,12 @@ class Api:
     def summary(self, sid: str) -> dict:
         return self._call("POST", f"/sessions/{sid}/summary")
 
+    def preview_next_round(self, sid: str, note: str | None) -> dict:
+        return self._call("POST", f"/sessions/{sid}/next-round/preview", json={"adjustment_note": note})
+
+    def next_round(self, sid: str, note: str | None) -> dict:
+        return self._call("POST", f"/sessions/{sid}/next-round", json={"adjustment_note": note})
+
 
 def _clean_reason(reason: str | None) -> str | None:
     """Aproxima la normalización de la API (una línea, espacios colapsados) para comparar."""
@@ -171,20 +177,33 @@ def build_ui(api_base: str) -> gr.Blocks:
             summary_btn = gr.Button("4. Generar resumen", variant="primary")
         summary_out = gr.Textbox(label="Resumen de decisiones", lines=10, interactive=False)
 
+        gr.Markdown(
+            "## Nueva ronda\nCinco variaciones nuevas a partir de lo que aceptaste y de tus motivos, "
+            "hasta 3 rondas. La nota se traduce a una lista cerrada de ajustes; nunca se envía tal cual al "
+            "generador."
+        )
+        note_in = gr.Textbox(label="Nota de ajuste (opcional)", max_lines=2, max_length=500,
+                             placeholder="Por ejemplo: más luminoso, sobre madera")
+        with gr.Row():
+            preview_btn = gr.Button("Ver qué se entendió")
+            round_btn = gr.Button("5. Crear la siguiente ronda", variant="primary")
+        # Texto plano: el plan no se interpreta como Markdown.
+        plan_out = gr.Textbox(label="Plan de la siguiente ronda", lines=8, interactive=False)
+
         # --- manejadores ---
 
         def start(path, mode):
             if not path:
-                return None, None, "Primero sube una foto.", *_empty_cards(), ""
+                return None, None, "Primero sube una foto.", *_empty_cards(), "", ""
             try:
                 session = api.create_session(path, mode)
                 seg = api.segment(session["id"])
                 mask = api.image(seg["mask"]["preview_url"])
             except ApiError as exc:
-                return None, None, f"**Error:** {exc}", *_empty_cards(), ""
+                return None, None, f"**Error:** {exc}", *_empty_cards(), "", ""
             note = " (máscara simulada)" if seg["mask"]["simulated"] else ""
-            return (session["id"], mask, f"Sesión creada en modo `{mode}`. Máscara lista{note}.",
-                    *_empty_cards(), "")
+            return (session["id"], mask, f"Ronda 1 creada en modo `{mode}`. Máscara lista{note}.",
+                    *_empty_cards(), "", "")
 
         def resegment(sid):
             if not sid:
@@ -215,7 +234,7 @@ def build_ui(api_base: str) -> gr.Blocks:
             cards = []
             try:
                 for v in session["variations"]:
-                    label = f"{v['position']}. {STYLE_LABELS.get(v['style'], v['style'])}"
+                    label = f"{v['position']}. {v.get('label') or STYLE_LABELS.get(v['style'], v['style'])}"
                     if session["simulated"]:
                         label += " · SIMULADA"
                     d = v["decision"]
@@ -226,7 +245,7 @@ def build_ui(api_base: str) -> gr.Blocks:
                     ]
             except ApiError as exc:
                 return f"**Error:** {exc}", *_empty_cards()
-            return "Cinco variaciones listas. Revisa cada una.", *cards
+            return (f"Ronda {session['round_index']}: cinco variaciones listas. Revisa cada una.", *cards)
 
         def save(sid, *values):
             if not sid:
@@ -281,8 +300,33 @@ def build_ui(api_base: str) -> gr.Blocks:
             return ("Resumen generado. Las decisiones de esta sesión quedan congeladas." + note,
                     s["summary"] + meta, *_form_from(frozen["variations"]))
 
+        def preview_round(sid, note):
+            if not sid:
+                return "No hay sesión activa.", ""
+            try:
+                plan = api.preview_next_round(sid, (note or "").strip() or None)
+            except ApiError as exc:
+                return f"**Error:** {exc}", ""
+            return "Este es el plan; si te parece bien, crea la siguiente ronda.", "\n".join(plan["explanation"])
+
+        def create_round(sid, note):
+            unchanged = [gr.update()] * (3 * N)
+            if not sid:
+                return sid, gr.update(), "No hay sesión activa.", *unchanged, gr.update(), gr.update(), gr.update()
+            try:
+                child = api.next_round(sid, (note or "").strip() or None)
+                mask = api.image(child["mask"]["preview_url"])
+            except ApiError as exc:
+                return sid, gr.update(), f"**Error:** {exc}", *unchanged, gr.update(), gr.update(), gr.update()
+            status = (f"Ronda {child['round_index']} de 3 creada con la misma foto y máscara. "
+                      "Pulsa «2. Generar 5 variaciones».")
+            return (child["id"], mask, status, *_empty_cards(), "", "\n".join(child["round_plan"]["explanation"]), "")
+
         start_btn.click(start, [image_in, mode_in],
-                        [session_state, mask_out, status_md, *card_components, summary_out])
+                        [session_state, mask_out, status_md, *card_components, summary_out, plan_out])
+        preview_btn.click(preview_round, [session_state, note_in], [status_md, plan_out])
+        round_btn.click(create_round, [session_state, note_in],
+                        [session_state, mask_out, status_md, *card_components, summary_out, plan_out, note_in])
         reseg_btn.click(resegment, [session_state], [mask_out, status_md])
         gen_btn.click(generate, [session_state], [status_md, *card_components])
         save_btn.click(save, [session_state, *decision_inputs], [status_md])
