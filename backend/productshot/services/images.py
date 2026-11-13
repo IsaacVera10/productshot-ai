@@ -30,6 +30,20 @@ def to_png(image: Image.Image) -> bytes:
     return buf.getvalue()
 
 
+def flatten_to_rgb(image: Image.Image) -> Image.Image:
+    """Pasa a RGB componiendo la transparencia sobre blanco.
+
+    `convert("RGB")` descarta el alfa y deja a la vista el color oculto bajo los píxeles
+    transparentes, que suele ser negro: un PNG recortado con un removedor de fondo acabaría
+    con fondo negro en el lienzo de trabajo.
+    """
+    if not image.has_transparency_data:
+        return image.convert("RGB")
+    rgba = image.convert("RGBA")
+    white = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
+    return Image.alpha_composite(white, rgba).convert("RGB")
+
+
 def _without_metadata(image: Image.Image, fmt: str) -> bytes:
     """Reescribe la imagen sin EXIF ni bloques de texto: las fotos de celular traen la ubicación GPS.
 
@@ -70,7 +84,7 @@ def prepare_upload(data: bytes, *, max_bytes: int, max_pixels: int, work_max_sid
                 img = ImageOps.exif_transpose(img)
                 original_size = img.size
                 original_clean = _without_metadata(img, fmt)
-                rgb = img.convert("RGB")
+                rgb = flatten_to_rgb(img)
     except InvalidInput:
         raise
     except (UnidentifiedImageError, OSError, SyntaxError, ValueError, Image.DecompressionBombError,

@@ -7,7 +7,6 @@ import io
 import json
 import logging
 import random
-import unicodedata
 import uuid
 
 from PIL import Image
@@ -36,6 +35,7 @@ from productshot.domain import (
     Variation,
     VARIATIONS_VISIBLE_STATES,
     decisions_hash,
+    normalize_reason,
     utcnow,
 )
 from productshot.services.generation import GenerationBackend, GenerationRequest, VariationSpec
@@ -51,6 +51,7 @@ log = logging.getLogger(__name__)
 
 IDEMPOTENCY_KEY_MAX = 128
 INTERRUPTED_REASON = "Trabajo interrumpido por un reinicio del servicio; crea una nueva sesión."
+SUBMIT_FAILED_REASON = "El servicio de generación no está disponible; crea una nueva sesión e inténtalo más tarde."
 
 
 class BatchError(Exception):
@@ -59,27 +60,6 @@ class BatchError(Exception):
 
 def _new_id() -> str:
     return str(uuid.uuid4())
-
-
-def normalize_reason(reason: str) -> str | None:
-    """Deja el motivo en una sola línea, sin caracteres de control ni separadores de línea.
-
-    El motivo es un DATO: se cita literalmente en el resumen y nunca se interpreta. Si
-    conservara saltos de línea, podría imitar líneas del resumen (por ejemplo «Se aceptaron
-    5 de 5») y contradecir el registro aunque la validación estructurada pase.
-    """
-    flat = "".join(
-        "" if ch in _BIDI_CONTROLS else " " if unicodedata.category(ch) in _BREAKING_CATEGORIES else ch
-        for ch in reason
-    )
-    return " ".join(flat.split()) or None
-
-
-# Control (incluye \n, \r, \t, NUL) y separadores de línea o párrafo Unicode.
-_BREAKING_CATEGORIES = frozenset({"Cc", "Zl", "Zp"})
-# Controles bidireccionales que reordenan visualmente el texto. Otros caracteres de formato,
-# como el ZWJ de los emojis compuestos, se conservan.
-_BIDI_CONTROLS = frozenset("‪‫‬‭‮⁦⁧⁨⁩")
 
 
 class SessionService:
@@ -180,9 +160,11 @@ class SessionService:
             simulated=result.simulated,
             created_at=utcnow(),
         )
-        self.store.save(mask_png, mask.storage_key)
-        self.store.save(preview_png, mask.preview_key)
         try:
+            # Las escrituras van dentro del try: si falla la segunda (o la transacción), no
+            # queda un archivo de máscara huérfano. `delete` tolera archivos inexistentes.
+            self.store.save(mask_png, mask.storage_key)
+            self.store.save(preview_png, mask.preview_key)
             previous = self.repo.replace_mask(mask, MASK_EDITABLE_STATES)
         except BaseException:
             self.store.delete(mask.storage_key)
@@ -226,8 +208,29 @@ class SessionService:
         )
         job, created = self.repo.start_job(job)
         if created:
-            self.runner.submit(lambda: self._run_job(job))
+            try:
+                self.runner.submit(lambda: self._run_job(job))
+            except Exception as exc:
+                # El trabajo ya está confirmado en GENERATING: sin esto quedaría así hasta reiniciar.
+                log.exception("No se pudo encolar la generación de la sesión %s", session_id)
+                self.repo.fail_job(job.id, SUBMIT_FAILED_REASON)
+                raise DependencyUnavailable(SUBMIT_FAILED_REASON) from exc
         return self.repo.get_job(session_id) or job, created
+
+    def is_simulated(self, view: SessionView) -> bool:
+        """True si algún componente de ESTA sesión es simulado.
+
+        Usa lo que quedó registrado (máscara y configuración del trabajo), no el backend
+        actual del servidor: una sesión creada con mock sigue rotulada como simulada aunque
+        después se active un backend real. Solo para los pasos aún no ejecutados se usa el
+        backend configurado.
+        """
+        seg = view.mask.simulated if view.mask else self.segmenter.simulated
+        if view.job is not None:
+            gen = bool(json.loads(view.job.config_json).get("simulated", True))
+        else:
+            gen = self.generator.simulated
+        return seg or gen
 
     def _run_job(self, job: GenerationJob) -> None:
         written: list[str] = []

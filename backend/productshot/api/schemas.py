@@ -4,9 +4,18 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from productshot.domain import REASON_MAX_CHARS, DecisionValue, JobStatus, Mode, SessionStatus, Style
+from productshot.domain import (
+    REASON_MAX_CHARS,
+    REASON_RAW_MAX_CHARS,
+    DecisionValue,
+    JobStatus,
+    Mode,
+    SessionStatus,
+    Style,
+    normalize_reason,
+)
 
 API_PREFIX = "/api/v1"
 
@@ -21,7 +30,19 @@ class StrictModel(BaseModel):
 
 class DecisionIn(StrictModel):
     decision: DecisionValue
-    reason: str | None = Field(default=None, max_length=REASON_MAX_CHARS)
+    # El tope crudo evita cuerpos enormes; el límite de REASON_MAX_CHARS se aplica al texto
+    # ya normalizado, que es el que se guarda y se cita.
+    reason: str | None = Field(default=None, max_length=REASON_RAW_MAX_CHARS)
+
+    @field_validator("reason")
+    @classmethod
+    def _normalized_reason(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = normalize_reason(value)
+        if value is not None and len(value) > REASON_MAX_CHARS:
+            raise ValueError(f"El motivo supera {REASON_MAX_CHARS} caracteres.")
+        return value
 
 
 class DecisionOut(BaseModel):

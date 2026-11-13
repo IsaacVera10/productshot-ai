@@ -22,6 +22,7 @@ class MaskResult:
 
 class SegmentationService(Protocol):
     name: str
+    simulated: bool
 
     def segment(self, image: Image.Image) -> MaskResult: ...
 
@@ -30,6 +31,7 @@ class MockSegmentationService:
     """Máscara de demostración: una elipse central protegida. No detecta el producto."""
 
     name = "mock"
+    simulated = True
 
     def segment(self, image: Image.Image) -> MaskResult:
         w, h = image.size
