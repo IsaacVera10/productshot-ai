@@ -78,7 +78,7 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 - [ ] Generar cinco estilos por sesión; guardar checkpoint/revisión/seeds/prompts.
 - [ ] Probar fallos en tazas, recipientes y decorativos; registrar errores.
 - [ ] Casos obligatorios: taza con logotipo (hueco del asa, brillo y logo curvo), producto mate sencillo, producto blanco sobre fondo claro y producto con texto pequeño visible. Evaluar el logotipo contra la foto original, sin exigir reconstruir su parte oculta.
-- [ ] Guardrails del Hito 2 (ADR-008, `08_ITERACIONES_Y_GUARDRAILS.md`): G2 y G7 (clasificador NSFW en entrada y salida), G3 (rostros: rechazar), G8 (fidelidad de la región protegida), G12 (brillo y nitidez), G13 (heurística de máscara) y G14 (timeout por lote). Calibrar sus umbrales con los casos obligatorios.
+- [ ] Guardrails del Hito 2 (ADR-008, `08_ITERACIONES_Y_GUARDRAILS.md`): G2 y G7 (clasificador NSFW en entrada y salida), G3 (rostros: rechazar), G8 (fidelidad de la región protegida), G12 (brillo y nitidez), G13 (heurística de máscara) y G14 (timeout por lote). G8, G12, G13 y G14 ya funcionan sin modelos (2026-11-12); faltan G2, G3 y G7 y calibrar todos los umbrales con los casos obligatorios.
 - [x] `DELETE /sessions/{id}` para el borrado de fotos (G11): borra la cadena completa de rondas.
 - [x] Iteraciones (ADR-007): `POST /sessions/{id}/next-round` y su vista previa, sesiones hijas (máximo 3 rondas), planificador determinista y vocabulario cerrado de ajustes por reglas. Adelantado sobre el mock el 2026-11-12; falta comprobarlo con imágenes reales.
 

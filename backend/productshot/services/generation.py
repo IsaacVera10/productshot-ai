@@ -15,7 +15,6 @@ from typing import Protocol
 from PIL import Image, ImageDraw
 
 from productshot.domain import Mode, Style
-from productshot.services.labels import stamp
 from productshot.services.presets import NEGATIVE_PROMPT, PRESETS, PROMPT_VERSION
 from productshot.services.rounds import prompt_fragments, variant_key
 
@@ -142,12 +141,12 @@ class MockGenerationBackend:
             bg = self._background(spec, request.image.size)
             # Blanco en la máscara = fondo nuevo; negro = píxeles originales del producto.
             composed = Image.composite(bg, request.image.convert("RGB"), request.mask)
-            labeled = stamp(composed, bottom=f"{spec.position}/5 · {spec.variant} · modo {request.mode.value}")
+            # El rótulo «SIMULACIÓN» lo pone el orquestador después de recomponer (G8, G9).
             results.append(
                 GeneratedArtifact(
                     position=spec.position,
                     style=spec.style,
-                    image=labeled,
+                    image=composed,
                     seed=spec.seed,
                     model_revision=self.model_revision,
                     prompt_version=request.prompt_version,

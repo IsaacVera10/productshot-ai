@@ -93,6 +93,7 @@ Estructura:
 
 - La máscara es una elipse fija y las cinco imágenes son fondos planos con el producto recortado. Todo lleva la franja «SIMULACIÓN (MOCK) - NO GENERADO POR IA»; **no son resultados de IA**.
 - El resumen lo compone Python (`generated_by: deterministic_fallback`); no hay agente LLM todavía.
+- Los guardrails G12 (calidad de la foto) y G13 (máscara) solo advierten y sus umbrales son provisionales; G2, G3 y G7 necesitan modelos y llegan con el Hito 2.
 - Las rondas 2 y 3 funcionan, pero los ajustes se extraen de los motivos y de la nota con reglas de palabras clave, sin LLM, y en el mock solo cambian colores y franjas del fondo.
 - Sin autenticación: cualquiera con el ID de sesión puede ver sus imágenes. Solo para uso local.
 - El ejecutor de trabajos es un hilo del mismo proceso; un reinicio marca como `FAILED` las generaciones en curso.

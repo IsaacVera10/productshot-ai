@@ -102,7 +102,7 @@ Código en `backend/productshot/services/rounds.py`; pruebas en `tests/test_roun
 - **Vista previa:** `POST /sessions/{id}/next-round/preview` devuelve el plan con su explicación sin crear la ronda, para mostrar los ajustes entendidos **antes** de generar.
 - **Máscara heredada:** la hija apunta a los archivos de la ronda 1 y no puede re-segmentar (409), para que nunca borre archivos de la madre.
 - **Explicación:** cada ronda hija agrega a su resumen «Cómo se armó esta ronda», una línea por variación compuesta por Python desde `round_plan_json`, sin texto libre del usuario.
-- **Migración:** una base SQLite del Hito 1 original se actualiza sola al arrancar (`PRAGMA user_version` 2).
+- **Migración:** una base SQLite del Hito 1 original se actualiza sola al arrancar (hoy `PRAGMA user_version` 3, que suma las columnas de G12 y G13).
 
 ---
 
@@ -110,7 +110,7 @@ Código en `backend/productshot/services/rounds.py`; pruebas en `tests/test_roun
 
 Este documento es la fuente única de los guardrails; `01_ARQUITECTURA.md` (sección G) solo remite aquí. Capas ordenadas según el flujo. «H1» indica lo que ya está implementado en el Hito 1.
 
-Principio común: ningún fallo deja la sesión en un estado ambiguo ni muestra un resultado parcial como éxito, y cada fallo visible para la persona usuaria trae un mensaje en español con la acción siguiente (reintentar, subir otra foto, subir una máscara o volver más tarde). Cada guardrail registra un evento en los logs para contar cuántas veces se activa durante la evaluación.
+Principio común: ningún fallo deja la sesión en un estado ambiguo ni muestra un resultado parcial como éxito, y cada fallo visible para la persona usuaria trae un mensaje en español con la acción siguiente (reintentar, subir otra foto, subir una máscara o volver más tarde). Cada guardrail registra un evento en los logs para contar cuántas veces se activa durante la evaluación, con el formato `GUARDRAIL <código> code=<motivo> session=<id> ...` en el logger `productshot.guardrails` (implementado para G1, G8, G12, G13 y G14).
 
 | # | Capa | Guardrail | Estado / hito | Qué se ve en la demo |
 |---|---|---|---|---|
@@ -121,13 +121,13 @@ Principio común: ningún fallo deja la sesión en un estado ambiguo ni muestra 
 | G5 | Entrada: texto | Nota de ajuste → vocabulario cerrado (Parte A); el texto libre nunca llega al prompt | Reglas **H1** (rondas sobre mock); Gemini en H3 | Se muestra «ajustes entendidos» |
 | G6 | Generación | Prompts fijos versionados por estilo y *negative prompt* (sin personas, texto, logotipos nuevos, NSFW) | Prompts escritos en H1 (`presets.py`), sin probar | — |
 | G7 | Salida: imagen | Clasificador NSFW sobre cada una de las cinco salidas (SDXL no trae *safety checker* propio). Si una falla, se regenera con otra semilla hasta N veces; si no, la sesión queda `FAILED` (se mantiene el «cinco o nada») | Propuesto, H2 | Registro del filtro en los metadatos |
-| G8 | Salida: fidelidad | Recomposición de los píxeles del producto desde el original con la máscara, y verificación de que la región protegida no cambió (ΔE / SSIM dentro de la máscara bajo un umbral). Evita alterar logotipos, etiquetas o colores, es decir, publicidad engañosa | Propuesto, H2 | Métrica de fidelidad por variación |
+| G8 | Salida: fidelidad | Recomposición de los píxeles del producto desde el original con la máscara, y verificación de que la región protegida no cambió (ΔE / SSIM dentro de la máscara bajo un umbral). Evita alterar logotipos, etiquetas o colores, es decir, publicidad engañosa | **H1** sin modelos: recomposición siempre y métrica `protected_mean_abs_diff` (diferencia media por canal, 0 a 255; ΔE y SSIM cuando haya imágenes reales) | Métrica de fidelidad por variación |
 | G9 | Transparencia | Rótulo visible «Imagen generada con IA» opcional al descargar y metadato en el PNG (`Software`, `ai_generated=true`); en el Hito 1 todo resultado mock lleva la franja «SIMULACIÓN» | Rótulo mock **H1**; resto propuesto, H2 | Franja/metadato visible |
 | G10 | Agente | Herramientas de solo lectura, salida estructurada validada contra la base de datos, sin inferir motivos no escritos, fallback explícito | Validador **H1**; LLM en H3 | Resumen con `validation_status` |
 | G11 | Operación | Límite de rondas por cadena, límite de generaciones por cliente y por hora (429 «Alcanzaste el límite, inténtalo más tarde»), autenticación en GCP, retención limitada y borrado (`DELETE /sessions/{id}`) de fotos | Límite de 3 rondas y borrado **H1**; el resto propuesto, H6 | — |
-| G12 | Entrada: imagen | Calidad de la foto: umbrales de brillo y nitidez (varianza del laplaciano). Solo advierte, no bloquea | Propuesto, H2 | Aviso «La foto está muy oscura o borrosa» |
-| G13 | Segmentación | Heurística sobre la máscara: área protegida fuera de un rango o varios componentes grandes indican que no hay un producto principal. Se ofrece reintentar, subir máscara o continuar | Propuesto, H2 | Aviso antes de generar |
-| G14 | Generación | Timeout configurable por lote; al vencer, la sesión pasa a `FAILED` con un mensaje claro (503 si el worker no responde) | Propuesto, H2 | Mensaje «El servicio está ocupado, inténtalo más tarde» |
+| G12 | Entrada: imagen | Calidad de la foto: umbrales de brillo y nitidez (varianza del laplaciano). Solo advierte, no bloquea | **H1**: brillo medio y varianza del laplaciano; umbrales provisionales | Aviso «La foto está muy oscura o borrosa» |
+| G13 | Segmentación | Heurística sobre la máscara: área protegida fuera de un rango o varios componentes grandes indican que no hay un producto principal. Se ofrece reintentar, subir máscara o continuar | **H1**: fracción protegida fuera de 3 % a 85 % o dos o más objetos de 1 % o más; umbrales provisionales | Aviso antes de generar |
+| G14 | Generación | Timeout configurable por lote; al vencer, la sesión pasa a `FAILED` con un mensaje claro (503 si el worker no responde) | **H1**: 600 s por defecto; al consultar una sesión vencida pasa a `FAILED`, y un resultado que llega tarde se descarta | Mensaje «El servicio está ocupado, inténtalo más tarde» |
 
 ### Prioridad sugerida (costo/beneficio para la nota)
 
