@@ -1,0 +1,12 @@
+# Dependencias del VM de Colab para colab_job.py. torch y torchvision se usan los que trae
+# Colab (su versión queda en el manifiesto). Las de generación son las mismas que el worker
+# de Modal (deploy/modal/worker.py), así el adaptador se entrena y se sirve con la misma pila.
+diffusers==0.31.0
+transformers==4.46.3
+accelerate==1.1.1
+safetensors==0.4.5
+huggingface_hub==0.26.2
+peft==0.13.2
+datasets==3.1.0
+ftfy==6.3.1
+tensorboard
