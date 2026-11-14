@@ -19,7 +19,7 @@ El mapeo completo por pieza está en [01 — Arquitectura, sección F](01_ARQUIT
 
 ### Dónde
 
-- **Colab Pro (principal).** Cuenta de Pedro, con unas 140 unidades de cómputo. Permite GPU de 24 GB o más (L4, A100), cómodas para SDXL a 1024 px. El consumo por hora depende de la GPU y es mucho mayor en A100 que en L4 o T4: revisar en el panel de Colab cuántas unidades por hora gasta la GPU asignada antes de cada corrida larga. **Las unidades vencen** (habitualmente a los 90 días de la compra): confirmar la fecha con Pedro y planificar el entrenamiento antes.
+- **Colab Pro (principal).** Cuenta de Pedro: 217.84 unidades el 2026-11-14; la L4 gasta 1.94 por hora. Se maneja desde la laptop con el Google Colab CLI (`training/README.md`). Permite GPU de 24 GB o más (L4, A100), cómodas para SDXL a 1024 px. El consumo por hora depende de la GPU y es mucho mayor en A100 que en L4 o T4: revisar en el panel de Colab cuántas unidades por hora gasta la GPU asignada antes de cada corrida larga. **Las unidades vencen** (habitualmente a los 90 días de la compra): confirmar la fecha con Pedro y planificar el entrenamiento antes.
 - **Kaggle (respaldo gratuito).** T4 o P100 de 16 GB, unas 30 h por semana y sesiones de hasta 12 h. SDXL a 1024 px entra con `fp16`, *gradient checkpointing*, Adam en 8 bits y lote de 1, pero es lento. Sirve para el piloto o si se agotan las unidades.
 - **Modal (integración).** El smoke test de ADR-004 termina cargando el adaptador en el worker de Modal, que es donde se servirá: si no carga o no se ve en el pipeline de inpainting, se detecta ahí. Entrenar en Modal también es posible con los créditos (unos USD 1.5 a 3 por corrida en L4), pero compite con la inferencia.
 - **Laptop:** 8 GB no alcanzan para entrenar SDXL.
@@ -165,6 +165,23 @@ Lo que se ve:
 La evidencia de las corridas está en el volumen `productshot-hf-cache` (`experiments/<RUN_ID>`) y en `data/experiments/expansion/` de quien la bajó; `data/` no se versiona.
 
 Para el modo avanzado, si se adopta nueve canales, hay dos caminos: cargar el LoRA entrenado sobre SDXL base (el script oficial lo aplica solo en las proyecciones de atención, que tienen la misma forma; pero los pesos del UNet de nueve canales siguen entrenados aparte, así que la compatibilidad se demuestra en el smoke test, no se supone) o entrenarlo sobre el UNet de nueve canales con objetivo de inpainting (más trabajo). Ambos modos deben usar el mismo checkpoint para que la comparación aísle el LoRA.
+
+### Smoke test del LoRA en Colab (2026-11-14)
+
+`PYTHONPATH=backend python training/run_colab.py --stage smoke`, desde el commit `0cd76d1`, en el Colab Pro de Pedro manejado con el Google Colab CLI (`training/README.md`). L4 de 22 GB a **1.94 unidades por hora**; toda la corrida gastó unas 0.23 unidades (de 217.84). La laptop se congeló a mitad de corrida y el `finally` del driver no corrió: el VM siguió vivo, se bajó el resultado y se liberó a mano (`colab_assignments.py list` vacío, consumo 0). Es el caso que cubre `--cleanup`.
+
+- **Entorno:** torch 2.14.1+cu130 de Colab intacto; diffusers 0.31.0, transformers 4.46.3, peft 0.13.2, accelerate 1.1.1. `pip check` falla por paquetes de Colab que no se usan (gradio y gcsfs piden otras versiones de huggingface_hub y fsspec).
+- **Entrenamiento:** 20 imágenes generadas (4 productos × 5 estilos), 100 pasos a 1024 px, rank 16, bf16: 200 s, 11.0 GB de VRAM pico, adaptador de 44.5 MB con 560 capas LoRA en el UNet. Pesos finitos, no nulos y con el sha256 registrado. Sin pérdida de validación, 100 pasos no dicen si aprendió algo útil (la pérdida por paso pasó de 0.130 a 0.160 en promedio, sin significado con lote 1).
+
+| Verificación (misma semilla, LoRA en 0 y en 1) | Cuatro canales, 0.99 | Nueve canales, 0.85 |
+|---|---|---|
+| Capas cargadas | 560 de 560 | 560 de 560 |
+| Tensores (A y B) frente al archivo | 1120, sin faltantes, error relativo máx. 2.4e-5 | 1120, sin faltantes, error relativo máx. 2.4e-5 |
+| Cambio medio del fondo al encender el LoRA | 8.7 de 255 | **0.15 de 255** (0.6 % de los píxeles cambia más de 1/255) |
+
+**Lo que queda resuelto:** un LoRA entrenado sobre SDXL base carga completo en el UNet de nueve canales, sin claves faltantes y con los pesos dentro de tolerancia. La parte mecánica de P4 funciona.
+
+**Lo que no:** en nueve canales el LoRA casi no cambia la imagen, y la prueba no permite saber por qué. La imagen de verificación es una taza sintética sobre fondo liso, y con `strength` 0.85 ese modelo tiende a conservar la composición original; también es posible que el LoRA se transfiera débilmente, porque los pesos del UNet de nueve canales son distintos. Que `set_adapters` con peso 0 no apague el LoRA, o que el UNet de nueve canales no use esas capas, no tiene respaldo en el código de diffusers 0.31 y peft 0.13.2. El umbral de 0.5/255 del smoke test es heurístico. La verificación sigue en Modal, donde se servirá (ADR-009): con controles de repetibilidad (LoRA apagado dos veces), fotos con fondo texturizado y `strength` 0.85, 0.99 y 1.0.
 
 Costo esperado: unas 20 h de L4 para todo el proyecto (desarrollo, prueba con 10 usuarios, ensayos y demo) a cerca de USD 0.80 por hora, dentro de los USD 30 gratis de un mes. Es una estimación: el smoke test medirá el costo real por lote.
 

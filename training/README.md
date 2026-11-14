@@ -38,6 +38,8 @@ Comprueba la mecánica, no la calidad. Genera 20 imágenes con SDXL base (cuatro
 
 Falla (y el driver termina con código 1) si algún pipeline no tiene los canales esperados (4 y 9), no carga todas las capas del archivo, algún tensor cargado falta, cambia de forma o difiere más de 1 % del archivo, hay avisos de claves inesperadas o faltantes, ambos pipelines no tienen el mismo número de capas, o el fondo cambia menos de 0.5/255 al encender el LoRA. Que cambie no dice que mejore: eso se mide con el dataset real y la evaluación de `docs/06`. Este smoke test cubre Colab; falta cargar el adaptador en el worker de Modal (ADR-009), que es donde se sirve.
 
+Primera corrida (2026-11-14, `docs/05`): 0.23 unidades en L4. La carga pasó en ambos pipelines; falló el efecto en nueve canales (0.15/255). La imagen de verificación es una taza sintética sobre fondo liso, que con `strength` 0.85 el modelo de nueve canales casi no cambia: para distinguir anclaje de transferencia débil la verificación sigue en Modal, con controles y fotos con textura.
+
 ### Etapa `train`
 
 ```bash
