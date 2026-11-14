@@ -114,6 +114,8 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 
 - [x] Piezas intercambiables: interfaz `Repository`, raíz de composición por variables de entorno y contrato HTTP del worker con `RemoteGenerationBackend` (2026-11-13). Falta el ejecutor de Modal (P10), con el despliegue.
 - [ ] Worker con GPU L4 y endpoint web de UI y API en Modal; límite de gasto de USD 30 y secretos de Modal.
+- [ ] Cancelar la inferencia remota cuando vence G14: hoy la API abandona a los 540 s, pero el worker sigue generando (y cobrando GPU) hasta terminar el lote o llegar a su tope de 10 minutos.
+- [ ] Manejar las solicitudes largas al endpoint web de Modal: pasados 150 s Modal responde con una redirección 303 y `RemoteGenerationBackend` no la sigue (HTTPX no sigue redirecciones por defecto), así que intentaría leerla como la respuesta del contrato. Probarlo con un lote lento, con autenticación y dentro del presupuesto total de espera.
 - [ ] Probar el worker en la laptop (RTX 4060) con los mismos contratos.
 - [ ] Ensayar la demo completa en Modal, en menos de seis minutos y con el worker caliente, y grabar el video de respaldo.
 - [ ] Alternativa GCP (solo si hay créditos): adaptadores de Firestore y Cloud Storage, Dockerfile y Cloud Run, según `05_COLAB_Y_GCP.md`.

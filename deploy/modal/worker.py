@@ -11,9 +11,13 @@ Comandos (desde la raíz del repo, con `modal setup` hecho):
     modal run deploy/modal/worker.py::main --image foto.png --mask mascara.png
     modal deploy deploy/modal/worker.py              # endpoint permanente, escala a cero
 
+Dos clases: `Worker` (API y prueba de humo, tope de 10 min por llamada) y `Lab`
+(experimentos, tope de 60 min, siempre sobre SDXL base). Son contenedores distintos.
+
 Costos: la GPU solo se cobra mientras hay un contenedor vivo. `scaledown_window` lo
-apaga a los 2 minutos sin solicitudes y `max_containers=1` impide que se multiplique.
-Los pesos (~7 GB) quedan en un volumen, así que se descargan una sola vez.
+apaga a los 1 o 2 minutos sin solicitudes y `max_containers=1` impide que cada clase se
+multiplique (como máximo, un `Worker` y un `Lab` a la vez). Los pesos (~7 GB por modelo)
+quedan en un volumen, así que se descargan una sola vez.
 
 Secreto requerido: `productshot-worker` con `GENERATION_WORKER_TOKEN` (el mismo valor
 va en el `.env` de la API).
@@ -62,29 +66,35 @@ cache = modal.Volume.from_name("productshot-hf-cache", create_if_missing=True)
 secret = modal.Secret.from_name("productshot-worker")
 
 
+def _load_pieces(obj, model_id: str) -> None:
+    """Carga SDXL y rembg en `obj`; compartido por el worker HTTP y el de experimentos."""
+    from productshot.services.rembg_segmentation import RembgSegmentationService
+    from productshot.services.sdxl_generation import SdxlInpaintBackend, SdxlParams
+
+    obj.backend = SdxlInpaintBackend(SdxlParams(model_id=model_id))
+    obj.backend.load()
+    obj.segmenter = RembgSegmentationService()
+    obj.segmenter.load()
+    cache.commit()  # guarda los pesos descargados para el próximo arranque
+
+
 @app.cls(
     gpu="L4",
     volumes={CACHE: cache},
     secrets=[secret],
-    # Tope por llamada. El lote de la API dura ~2 min; los experimentos, hasta ~40 min.
-    timeout=3600,
+    # Tope por llamada: un lote de la API dura ~2 min y la API abandona a los 540 s
+    # (GENERATION_WORKER_TIMEOUT_S). Los experimentos largos van en `Lab`, no aquí.
+    timeout=600,
     scaledown_window=120,
     max_containers=1,
 )
 class Worker:
     @modal.enter()
     def load(self) -> None:
-        from productshot.services.rembg_segmentation import RembgSegmentationService
-        from productshot.services.sdxl_generation import SdxlInpaintBackend
-
-        from productshot.services.sdxl_generation import DEFAULT_MODEL_ID, SdxlParams
+        from productshot.services.sdxl_generation import DEFAULT_MODEL_ID
 
         # SDXL_MODEL_ID permite cambiar de checkpoint sin tocar código (P3, P4).
-        self.backend = SdxlInpaintBackend(SdxlParams(model_id=os.environ.get("SDXL_MODEL_ID", DEFAULT_MODEL_ID)))
-        self.backend.load()
-        self.segmenter = RembgSegmentationService()
-        self.segmenter.load()
-        cache.commit()  # guarda los pesos descargados para el próximo arranque
+        _load_pieces(self, os.environ.get("SDXL_MODEL_ID", DEFAULT_MODEL_ID))
 
     @modal.asgi_app()
     def web(self):
@@ -128,6 +138,25 @@ class Worker:
         }
 
 
+@app.cls(
+    gpu="L4",
+    volumes={CACHE: cache},
+    secrets=[secret],
+    # Solo experimentos (hasta ~40 min). Clase aparte para que el tope largo no alcance
+    # al worker HTTP y para que mover pipelines entre CPU y GPU no afecte a la API.
+    timeout=3600,
+    scaledown_window=60,
+    max_containers=1,
+)
+class Lab:
+    @modal.enter()
+    def load(self) -> None:
+        from productshot.services.sdxl_generation import DEFAULT_MODEL_ID
+
+        # La base de los experimentos es SIEMPRE SDXL base (cuatro canales), sin importar
+        # SDXL_MODEL_ID: así "A_base" no cambia de significado si se cambia el worker.
+        _load_pieces(self, DEFAULT_MODEL_ID)
+
     @modal.method()
     def experiment(self, cases: list[dict], configs: dict[str, dict], styles: list[str],
                    seeds: list[int], run_id: str) -> dict:
@@ -139,19 +168,22 @@ class Worker:
         plano NUEVO en una franja alrededor del producto (0 = no se prolongó la silueta).
         """
         import dataclasses
+        import gc
+        import importlib.metadata as md
 
         import torch
         from diffusers import StableDiffusionXLPipeline
-        from PIL import Image, ImageChops, ImageFilter
+        from PIL import ImageChops, ImageFilter
 
         from productshot.config import Settings
         from productshot.domain import Mode, Style
         from productshot.services.generation import GenerationRequest, VariationSpec
         from productshot.services.guardrails import enforce_fidelity
 
-        def png(img, side=512) -> bytes:
+        def png(img, side=None) -> bytes:
             img = img.copy()
-            img.thumbnail((side, side))
+            if side:
+                img.thumbnail((side, side))
             buf = io.BytesIO()
             img.save(buf, format="PNG")
             return buf.getvalue()
@@ -159,7 +191,15 @@ class Worker:
         def binary(mask_l, keep_black=True):
             return mask_l.point(lambda v: 255 if (v < 128) == keep_black else 0)
 
-        t2i = StableDiffusionXLPipeline.from_pipe(self.backend._pipe)
+        def check_channels(backend, expected: int) -> None:
+            got = backend._pipe.unet.config.in_channels
+            if got != expected:
+                raise ValueError(f"{backend.params.model_id}: UNet con {got} canales, se esperaban {expected}.")
+
+        check_channels(self.backend, 4)
+        if self.backend._pipe.device.type != "cuda":  # una llamada anterior no pudo restaurarla
+            self.backend._pipe.to("cuda")
+        t2i =StableDiffusionXLPipeline.from_pipe(self.backend._pipe)
         base = self.backend.params
         settings = Settings(_env_file=None)
         # Cada resultado se guarda en el volumen apenas sale: si el cliente local se cae, lo
@@ -169,6 +209,24 @@ class Worker:
 
         def save(name: str, data: bytes) -> None:
             (run_dir / name).write_bytes(data)
+
+        # 0) Manifiesto ANTES de generar: si la corrida se corta, igual se sabe con qué se hizo.
+        manifest = {
+            "run_id": run_id,
+            "base_revision": self.backend.model_revision,
+            "nine_revision": None,  # se completa al cargar el UNet de nueve canales
+            "params": dataclasses.asdict(base),
+            "configs": configs, "styles": styles, "seeds": seeds, "cases": cases,
+            "seed_rule": "la variación i (0, 1, ...) de cada lote usa seed + i",
+            "packages": {p: md.version(p) for p in ("torch", "diffusers", "transformers", "rembg")},
+            "gpu": torch.cuda.get_device_name(0),
+        }
+
+        def write_manifest() -> None:
+            (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False, default=str))
+            cache.commit()
+
+        write_manifest()
 
         # 1) Fotos y máscaras, una vez por caso (mismas semillas: mismas fotos en cada corrida).
         prepared = []
@@ -186,79 +244,126 @@ class Worker:
                 "case": case, "photo": photo, "mask": mask,
                 "area": max(1, sum(1 for v in product.getdata() if v)),
                 "band": ImageChops.subtract(near, edge),  # franja de ~4 a 40 px alrededor del producto
-                "entry": {"name": case["name"], "photo": png(photo), "mask": png(mask), "results": []},
+                "entry": {"name": case["name"], "results": []},
             })
-            save(f"{case['name']}__0_foto.png", prepared[-1]["entry"]["photo"])
-            save(f"{case['name']}__1_mascara.png", prepared[-1]["entry"]["mask"])
+            # Resolución completa: son la entrada de todas las configuraciones.
+            save(f"{case['name']}__0_foto.png", png(photo))
+            save(f"{case['name']}__1_mascara.png", png(mask))
         cache.commit()
 
-        def record(p, cfg_name, style, seed, generated, seconds):
+        def record(p, cfg_name, style, seed, seed_base, generated, seconds):
+            """`seed` es la semilla REAL de esta imagen; `seed_base`, la del lote (seed + i)."""
             final, fid = enforce_fidelity(p["photo"], p["mask"], generated, settings)
             fg = binary(self.segmenter.segment(final).mask)
             grown = ImageChops.multiply(fg, p["band"])
             row = {
-                "case": p["case"]["name"], "config": cfg_name, "style": style, "seed": seed,
+                "case": p["case"]["name"], "config": cfg_name, "style": style,
+                "seed": seed, "seed_base": seed_base,
                 "expansion": round(sum(1 for v in grown.getdata() if v) / p["area"], 3),
                 "drift": fid["protected_mean_abs_diff"], "seconds": seconds,
             }
             image_name = f"{row['case']}__{cfg_name}__{style}__s{seed}.png"
-            save(image_name, png(final))
+            save(image_name, png(final, side=512))  # miniatura para revisar; la entrada va completa
             with open(run_dir / "metrics.jsonl", "a", encoding="utf-8") as fh:
                 fh.write(json.dumps({**row, "image": image_name}, ensure_ascii=False) + "\n")
             p["entry"]["results"].append(row)
 
         # 2) Configuraciones. engine: "four" (SDXL base, 4 canales), "nine" (UNet de inpainting
         #    de 9 canales) o "composite" (fondo generado SIN producto y producto pegado encima).
-        nine = None
-        for cfg_name, cfg in configs.items():
-            cfg = dict(cfg)
-            engine = cfg.pop("engine", "four")
-            use_hint = cfg.pop("use_hint", False)
-            if engine == "nine" and nine is None:
-                from productshot.services.sdxl_generation import NINE_CHANNEL_MODEL_ID, SdxlInpaintBackend, SdxlParams
-
-                self.backend._pipe.to("cpu")  # libera la GPU para el segundo modelo
-                torch.cuda.empty_cache()
-                nine = SdxlInpaintBackend(SdxlParams(model_id=NINE_CHANNEL_MODEL_ID))
-                nine.load()
-                cache.commit()
-            if engine != "nine" and nine is not None:
-                raise ValueError("Las configuraciones de nueve canales deben ir al final.")
-            for p in prepared:
-                for seed in seeds:
-                    specs = tuple(
-                        VariationSpec(position=i + 1, style=Style(st), seed=seed + i) for i, st in enumerate(styles)
+        nine = backend = None
+        base_on_cpu = failed = False
+        try:
+            for cfg_name, cfg in configs.items():
+                cfg = dict(cfg)
+                engine = cfg.pop("engine", "four")
+                use_hint = cfg.pop("use_hint", False)
+                if engine == "nine" and nine is None:
+                    from productshot.services.sdxl_generation import (
+                        NINE_CHANNEL_MODEL_ID,
+                        SdxlInpaintBackend,
+                        SdxlParams,
                     )
-                    if engine == "composite":
-                        from productshot.services.generation import build_prompt
 
-                        for spec in specs:
-                            t0 = time.perf_counter()
-                            bg = t2i(
-                                prompt=build_prompt(spec.style, ()) + ", empty surface in the center, nothing on it",
-                                negative_prompt="product, object, mug, bottle, vase, box, people, text, watermark",
-                                width=1024, height=768, num_inference_steps=30,
-                                generator=torch.Generator("cuda").manual_seed(spec.seed),
-                            ).images[0].resize(p["photo"].size)
-                            record(p, cfg_name, spec.style.value, seed, bg, round(time.perf_counter() - t0, 2))
-                        continue
-                    backend = nine if engine == "nine" else self.backend
-                    params = dataclasses.replace(backend.params if engine == "nine" else base, **cfg)
-                    if use_hint:
-                        params = dataclasses.replace(params, prompt_prefix=p["case"]["hint"])
-                    previous, backend.params = backend.params, params
-                    try:
-                        arts = backend.generate(GenerationRequest(
-                            session_id="exp", mode=Mode.INTERMEDIATE, image=p["photo"], mask=p["mask"], specs=specs,
-                        ))
-                    finally:
-                        backend.params = previous
-                    for art in arts:
-                        record(p, cfg_name, art.style.value, seed, art.image, art.params["seconds"])
-            cache.commit()  # una configuración completa queda a salvo
+                    # Libera la GPU para el segundo modelo. `t2i` comparte componentes con la
+                    # base, por eso "composite" debe ir antes (lo exige el chequeo de abajo).
+                    base_on_cpu = True  # antes de moverla: si falla a medias, igual se restaura
+                    self.backend._pipe.to("cpu")
+                    torch.cuda.empty_cache()
+                    nine = SdxlInpaintBackend(SdxlParams(model_id=NINE_CHANNEL_MODEL_ID))
+                    nine.load()
+                    check_channels(nine, 9)
+                    manifest["nine_revision"] = nine.model_revision
+                    write_manifest()
+                if engine != "nine" and nine is not None:
+                    raise ValueError("Las configuraciones de nueve canales deben ir al final.")
+                for p in prepared:
+                    for seed in seeds:
+                        specs = tuple(
+                            VariationSpec(position=i + 1, style=Style(st), seed=seed + i) for i, st in enumerate(styles)
+                        )
+                        if engine == "composite":
+                            from productshot.services.generation import build_prompt
+
+                            for spec in specs:
+                                t0 = time.perf_counter()
+                                bg = t2i(
+                                    prompt=build_prompt(spec.style, ()) + ", empty surface in the center, nothing on it",
+                                    negative_prompt="product, object, mug, bottle, vase, box, people, text, watermark",
+                                    width=1024, height=768, num_inference_steps=30,
+                                    generator=torch.Generator("cuda").manual_seed(spec.seed),
+                                ).images[0].resize(p["photo"].size)
+                                record(p, cfg_name, spec.style.value, spec.seed, seed, bg,
+                                       round(time.perf_counter() - t0, 2))
+                        else:
+                            backend = nine if engine == "nine" else self.backend
+                            params = dataclasses.replace(backend.params if engine == "nine" else base, **cfg)
+                            if use_hint:
+                                params = dataclasses.replace(params, prompt_prefix=p["case"]["hint"])
+                            previous, backend.params = backend.params, params
+                            try:
+                                arts = backend.generate(GenerationRequest(
+                                    session_id="exp", mode=Mode.INTERMEDIATE, image=p["photo"], mask=p["mask"],
+                                    specs=specs,
+                                ))
+                            finally:
+                                backend.params = previous
+                            seed_of = {s.position: s.seed for s in specs}
+                            for art in arts:
+                                record(p, cfg_name, art.style.value, seed_of[art.position], seed,
+                                       art.image, art.params["seconds"])
+                        cache.commit()  # cada lote queda a salvo en el volumen
+        except BaseException:
+            failed = True
+            raise
+        finally:
+            # INTENTA dejar el contenedor como estaba: sin el segundo modelo y con la base de
+            # vuelta en la GPU. Cada paso se intenta aunque falle el anterior. Si la limpieza
+            # falla después de otro error, no lo tapa: se informa y se propaga el original.
+            # No está garantizado (un traceback puede retener un pipeline a medio cargar);
+            # en ese caso basta con dejar que el contenedor se apague (scaledown de 60 s).
+            cleanup_errors = []
+            try:
+                if nine is not None and nine._pipe is not None:
+                    nine._pipe.to("cpu")
+            except Exception as exc:
+                cleanup_errors.append(exc)
+            if nine is not None:
+                nine._pipe = None
+            nine = backend = None  # `backend` también apuntaba al de nueve canales
+            gc.collect()
+            torch.cuda.empty_cache()
+            try:
+                if base_on_cpu:
+                    self.backend._pipe.to("cuda")
+            except Exception as exc:
+                cleanup_errors.append(exc)
+            if cleanup_errors:
+                if not failed:
+                    raise cleanup_errors[0]
+                print(f"Limpieza fallida tras un error previo: {cleanup_errors!r}", flush=True)
         info = {
-            "base_revision": self.backend.model_revision,
-            "nine_revision": nine.model_revision if nine is not None else None,
+            "base_revision": manifest["base_revision"],
+            "nine_revision": manifest["nine_revision"],
             "configs": list(configs), "styles": styles, "seeds": seeds,
         }
         (run_dir / "done.json").write_text(json.dumps(info, indent=2))
@@ -309,7 +414,7 @@ def experiment(config_set: str = "nueve", styles: str = "studio,lifestyle", seed
     print(f"RUN_ID={run_id}", flush=True)
     style_list = [s.strip() for s in styles.split(",") if s.strip()]
     seed_list = [int(x) for x in seeds.split(",") if x.strip()]
-    Worker().experiment.remote(EXPERIMENT_CASES, configs, style_list, seed_list, run_id)
+    Lab().experiment.remote(EXPERIMENT_CASES, configs, style_list, seed_list, run_id)
     collect(run_id)
 
 
@@ -338,17 +443,22 @@ def summarize_run(run_dir: Path) -> None:
     print("Corrida completa." if done.exists() else "Corrida INCOMPLETA: solo lo guardado hasta el corte.")
     configs = list(dict.fromkeys(r["config"] for r in rows))
     combos = list(dict.fromkeys((r["style"], r["seed"]) for r in rows))
+    def cell(path: Path, size: tuple[int, int]):
+        # La entrada se guarda completa y los resultados en miniatura: todo a un mismo tamaño.
+        return Image.open(path).convert("RGB").resize(size)
+
     for case in dict.fromkeys(r["case"] for r in rows):
-        photo = Image.open(run_dir / f"{case}__0_foto.png").convert("RGB")
+        photo = Image.open(run_dir / f"{case}__0_foto.png")
+        photo.thumbnail((512, 512))
         w, h = photo.size
         sheet = Image.new("RGB", ((2 + len(combos)) * w, len(configs) * (h + 18)), "white")
         draw = ImageDraw.Draw(sheet)
         for i, name in enumerate(("0_foto", "1_mascara")):
-            sheet.paste(Image.open(run_dir / f"{case}__{name}.png").convert("RGB"), (i * w, 18))
+            sheet.paste(cell(run_dir / f"{case}__{name}.png", (w, h)), (i * w, 18))
         for r in (r for r in rows if r["case"] == case):
             c = 2 + combos.index((r["style"], r["seed"]))
             y = configs.index(r["config"]) * (h + 18)
-            sheet.paste(Image.open(run_dir / r["image"]).convert("RGB"), (c * w, y + 18))
+            sheet.paste(cell(run_dir / r["image"], (w, h)), (c * w, y + 18))
             draw.text((c * w + 4, y + 3), f"{r['config']} · {r['style']} · s{r['seed']} · exp {r['expansion']}", fill="black")
         sheet.save(run_dir / f"grilla_{case}.png")
     for cfg in configs:

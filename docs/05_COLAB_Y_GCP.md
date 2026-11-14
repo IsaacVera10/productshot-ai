@@ -97,11 +97,21 @@ Conclusiones, con la cautela de 8 imágenes por configuración y una semilla: **
 | A: base, cuatro canales | 0.117 (16) | 0.104 | Siluetas extra y objetos pegados detrás del producto |
 | D: `strength` 0.85 | 0.091 (16) | 0.114 | Igual que A; a veces una tapa u objeto detrás |
 | H: fondo generado sin producto y producto pegado encima | 0.005 (16) | 0.008 | Sin expansión por construcción, pero **el producto flota**: sin contacto ni sombra, con la perspectiva de la mesa equivocada |
-| F: UNet de nueve canales (`diffusers/stable-diffusion-xl-1.0-inpainting-0.1`) | 0.054 (6) | 0.054 | **Sin siluetas extra** en la taza ni en el jarrón; el producto se apoya en la mesa con sombra creíble |
+| F: UNet de nueve canales (`diffusers/stable-diffusion-xl-1.0-inpainting-0.1`) | 0.054 (6) | 0.054 | Taza: sin siluetas extra y con sombra creíble. Jarrón: el cuerpo no se duplica, pero **el ramo crece** más allá de su contorno original |
+| G: nueve canales con `strength` 0.85 | No se corrió | | |
 
-En el jarrón, la métrica marcó 0.14 y 0.16 para nueve canales, pero a la vista no hay expansión: `rembg` confunde el borde de las flores. La métrica sirve para ordenar, no como verdad; la revisión visual manda.
+Por producto, la media esconde resultados opuestos:
 
-**Recomendación:** pasar el modo intermedio al UNet de nueve canales (cambia P3 y ADR-004; se activa con `SDXL_MODEL_ID` sin tocar código). Para el modo avanzado hay dos caminos: cargar en el pipeline de nueve canales el LoRA entrenado sobre SDXL base (las capas de atención tienen la misma forma; la calidad hay que medirla en el smoke test del LoRA) o entrenar el LoRA directamente sobre el UNet de nueve canales con objetivo de inpainting (más trabajo). Ambos modos deben usar el mismo checkpoint para que la comparación aísle el LoRA. Falta completar nueve canales en el frasco y la caja.
+| Caso | A: base | F: nueve canales |
+|---|---|---|
+| Taza (2 estilos × 2 semillas) | 0.160, 0.134, 0.122, 0.033 | 0.000, 0.001, 0.015, 0.003 |
+| Jarrón (2 estilos, solo el lote con semilla base 500) | 0.069, 0.107 | 0.144, 0.162 |
+
+En la taza, nueve canales gana con claridad. En el jarrón pierde: la métrica sube y a la vista el ramo de flores se extiende hacia los lados y hacia arriba. La máscara de `rembg` incluye las flores, así que ese crecimiento también es expansión del "producto". Con dos productos, imágenes generadas por el mismo SDXL y una o dos semillas, la diferencia es descriptiva, no concluyente.
+
+Problemas de esta corrida, corregidos después en `worker.py`: la semilla registrada en `lifestyle` era la del lote y no la real (`seed + 1`: las imágenes marcadas `s500` y `s900` usaron 501 y 901); las fotos y máscaras se guardaron reducidas a 512 px; los SHA de los checkpoints solo se escribían al terminar, así que **no quedó registrada la revisión del UNet de nueve canales** usada aquí, y la de la base se supone igual a la de la prueba de humo (`4621659…`) pero ningún archivo de esta corrida lo confirma; y el experimento dejaba el pipeline base en CPU dentro del mismo contenedor que sirve la API. Ahora los experimentos corren en una clase aparte (`Lab`), siempre sobre SDXL base (verifica cuatro y nueve canales), escriben `manifest.json` antes de generar, guardan entrada a resolución completa y la semilla real de cada imagen, e intentan devolver la base a la GPU en un `finally` (si eso falla, el contenedor se descarta al apagarse).
+
+**Estado:** nueve canales es un candidato prometedor, no una decisión. Antes de proponer el cambio de P3 y ADR-004 falta: completar F y G en los cuatro casos con las dos semillas, repetir A frente a F con fotos caseras reales de los casos obligatorios y revisar contacto, sombras, texto y logotipos, no solo expansión. Para el modo avanzado, si se adopta nueve canales, hay dos caminos: cargar el LoRA entrenado sobre SDXL base (el script oficial lo aplica solo en las proyecciones de atención, que tienen la misma forma; pero los pesos del UNet de nueve canales siguen entrenados aparte, así que la compatibilidad se demuestra en el smoke test, no se supone) o entrenarlo sobre el UNet de nueve canales con objetivo de inpainting (más trabajo). Ambos modos deben usar el mismo checkpoint para que la comparación aísle el LoRA.
 
 Costo esperado: unas 20 h de L4 para todo el proyecto (desarrollo, prueba con 10 usuarios, ensayos y demo) a cerca de USD 0.80 por hora, dentro de los USD 30 gratis de un mes. Es una estimación: el smoke test medirá el costo real por lote.
 
@@ -125,7 +135,7 @@ Documentación: https://docs.cloud.google.com/run/docs/configuring/services/gpu 
 
 - Las alertas de presupuesto **no apagan nada**: en GCP hace falta una función que desactive la facturación al pasar el tope; en Modal, el límite de gasto de la cuenta.
 - Nunca dejar contenedores o instancias mínimas encendidas fuera de una demo.
-- Máximo de un worker con GPU a la vez y endpoints protegidos, para que nadie genere en masa.
+- Máximo de un worker con GPU a la vez y endpoints protegidos, para que nadie genere en masa. En Modal, `Worker` (API) y `Lab` (experimentos) son clases distintas con un contenedor como máximo cada una: no lanzar experimentos durante una demo, un ensayo o la prueba con usuarios, para no tener dos GPU encendidas a la vez.
 - Cachear pesos en un volumen o en la imagen; no descargarlos en cada solicitud.
 
 ## Secretos e identidad
