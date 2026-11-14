@@ -17,7 +17,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from PIL import Image
+from PIL import Image, ImageFilter
 
 from productshot.services.generation import GeneratedArtifact, GenerationRequest, build_prompt
 from productshot.services.presets import NEGATIVE_PROMPT
@@ -38,6 +38,12 @@ class SdxlParams:
     strength: float = 0.99
     target_side: int = 1024  # SDXL rinde mejor cerca de 1024 px
     mask_blur: int = 8  # suaviza el borde de la máscara para la integración (px a target_side)
+    # Agranda la región protegida N px (a target_side) para que el borde editable no toque el
+    # producto. Mitigación candidata contra la expansión de silueta; 0 = desactivada.
+    mask_dilate_px: int = 0
+    # Texto FIJO antepuesto al prompt (p. ej., la categoría del producto). Nunca texto libre
+    # del usuario (G5). Mitigación candidata contra la expansión de silueta.
+    prompt_prefix: str = ""
 
 
 def generation_size(size: tuple[int, int], target_side: int) -> tuple[int, int]:
@@ -87,12 +93,17 @@ class SdxlInpaintBackend:
         gen_size = generation_size(work_size, p.target_side)
         image = request.image.convert("RGB").resize(gen_size, Image.Resampling.LANCZOS)
         mask = request.mask.convert("L").resize(gen_size, Image.Resampling.BILINEAR)
+        if p.mask_dilate_px:
+            # Blanco = editable: un filtro de mínimo agranda lo negro (protegido).
+            mask = mask.filter(ImageFilter.MinFilter(2 * p.mask_dilate_px + 1))
         if p.mask_blur and hasattr(self._pipe, "mask_processor"):
             mask = self._pipe.mask_processor.blur(mask, blur_factor=p.mask_blur)
 
         results = []
         for spec in request.specs:
             prompt = build_prompt(spec.style, spec.adjustments)
+            if p.prompt_prefix:
+                prompt = f"{p.prompt_prefix}, {prompt}"
             t0 = time.perf_counter()
             _reset_peak_memory()
             out = self._pipe(
@@ -129,6 +140,9 @@ class SdxlInpaintBackend:
                         "steps": p.steps,
                         "guidance_scale": p.guidance_scale,
                         "strength": p.strength,
+                        "mask_blur": p.mask_blur,
+                        "mask_dilate_px": p.mask_dilate_px,
+                        "prompt_prefix": p.prompt_prefix,
                         "generation_size": list(gen_size),
                         "seconds": elapsed,
                         "peak_vram_gb": _peak_memory_gb(),

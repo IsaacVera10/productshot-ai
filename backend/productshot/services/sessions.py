@@ -53,7 +53,7 @@ from productshot.services.jobs import JobRunner
 from productshot.services.labels import stamp
 from productshot.services.presets import PROMPT_VERSION
 from productshot.services.rounds import RoundPlan, plan_next_round
-from productshot.services.segmentation import SegmentationService, render_mask_preview
+from productshot.services.segmentation import SegmentationService, SegmentationUnavailable, render_mask_preview
 from productshot.services.summary import STATUS_VERIFIED, SummaryService
 from productshot.storage.artifacts import ArtifactStore
 from productshot.storage.ports import Repository
@@ -169,7 +169,10 @@ class SessionService:
     def segment(self, session_id: str) -> Mask:
         self._check_mask_editable(session_id)
         image = self._load_image(self.repo.get_image(session_id).storage_key)
-        result = self.segmenter.segment(image)
+        try:
+            result = self.segmenter.segment(image)
+        except SegmentationUnavailable as exc:
+            raise DependencyUnavailable(str(exc)) from exc
         if result.mask.size != image.size:
             raise DependencyUnavailable("El segmentador devolvió una máscara con dimensiones incorrectas.")
         return self._store_mask(session_id, image, result.mask.convert("L"), "auto", result.simulated)

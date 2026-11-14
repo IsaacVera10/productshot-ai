@@ -72,7 +72,7 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 ## Hito 2 — Inpainting real (intermedio)
 
 - [ ] Puerta de decisión: medir memoria, arranque y lote completo en GCP, GPU local y Colab con benchmarks autorizados; elegir entornos según el resultado.
-- [ ] Probar `rembg` y la máscara. Reintento y `POST /sessions/{id}/mask` para máscaras manuales ya implementados (2026-11-12).
+- [ ] Probar `rembg` y la máscara. `RembgSegmentationService` (`isnet-general-use`) en el worker de Modal y `SEGMENTATION_BACKEND=remote` (2026-11-14); falta calibrar G13 con fotos reales. Reintento y `POST /sessions/{id}/mask` para máscaras manuales ya implementados (2026-11-12).
 - [ ] Ejecutar el candidato SDXL base con el pipeline de inpainting de cuatro canales; medir VRAM, latencia y calidad de integración. Prueba de humo en Modal hecha (2026-11-13): 9.5 GB, 50 s por lote de cinco en L4; falta la calidad con fotos reales, porque con un producto sintético el modelo prolonga la silueta (`05_COLAB_Y_GCP.md`).
 - [ ] Integrar preservación del producto y manejo explícito de sombras/bordes.
 - [ ] Generar cinco estilos por sesión; guardar checkpoint/revisión/seeds/prompts.

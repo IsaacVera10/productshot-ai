@@ -53,7 +53,7 @@ El worker está en `deploy/modal/worker.py` y usa `SdxlInpaintBackend` (`backend
 # una vez: el token lo comparten la API (.env) y el worker (secreto de Modal)
 modal secret create productshot-worker GENERATION_WORKER_TOKEN=<token>
 
-PYTHONPATH=backend modal run deploy/modal/worker.py      # prueba de humo: un lote de cinco, deja PNG y métricas en data/smoke/
+PYTHONPATH=backend modal run deploy/modal/worker.py::main  # prueba de humo: un lote de cinco, deja PNG y métricas en data/smoke/
 PYTHONPATH=backend modal deploy deploy/modal/worker.py   # endpoint permanente; escala a cero a los 2 minutos sin uso
 ```
 
@@ -73,6 +73,20 @@ Un lote de cinco con `stabilityai/stable-diffusion-xl-base-1.0@462165984030d8225
 | Costo | Unos minutos de L4, menos de USD 0.10 |
 
 Hallazgo de calidad: con el producto sintético, el modelo **prolonga la silueta del producto** en el fondo (un telón rojo detrás en estudio, un vaso en natural, una tetera en lifestyle, una tarjeta blanca en minimalista). Es el problema conocido de expansión de objeto en inpainting y es lo que el Hito 2 debe medir con fotos reales de los casos obligatorios. Opciones a probar en ese orden: describir el producto en el prompt, agrandar un poco la máscara protegida o difuminar menos su borde, bajar `strength` y, si no alcanza, el UNet de nueve canales (P4). Las imágenes y `metrics.json` quedan en `data/smoke/` (no versionado).
+
+### Experimento de expansión de silueta (2026-11-13)
+
+`PYTHONPATH=backend modal run deploy/modal/worker.py::experiment`. Cuatro fotos de producto generadas por el mismo SDXL (taza con logo, jarrón mate, frasco blanco sobre fondo claro, caja con texto), máscara de `rembg` (`isnet-general-use`), estilos estudio y lifestyle, una sola semilla. Métrica: fracción del área del producto que `rembg` detecta como primer plano NUEVO en una franja de 4 a 40 px alrededor del producto, ya recompuesto (0 = no se prolongó la silueta).
+
+| Configuración | Expansión media | Máxima | Lo que se ve |
+|---|---|---|---|
+| A: base (strength 0.99, borde difuminado 8 px) | 0.130 | 0.252 | Siluetas extra pegadas al producto en varios casos |
+| B: categoría del producto al inicio del prompt | 0.164 | 0.360 | **Peor en estudio:** dibuja un segundo producto detrás (taza doble, jarrón doble) |
+| C: margen protegido de 12 px sin difuminar | 0.139 | 0.255 | Menos siluetas, pero queda un halo del fondo original alrededor del producto |
+| D: strength 0.85 | 0.116 | 0.214 | Conserva más el fondo original; a veces agrega objetos detrás (una tapa dorada) |
+| E: B + C | 0.121 | 0.279 | Muy bien en lifestyle, mal en estudio |
+
+Conclusiones, con la cautela de 8 imágenes por configuración y una semilla: **ninguna mitigación sencilla resuelve la expansión con el UNet de cuatro canales**; nombrar el producto en el prompt la empeora en estudio, y el margen la cambia por un halo. Siguiente experimento: el UNet de inpainting de nueve canales (`diffusers/stable-diffusion-xl-1.0-inpainting-0.1`, P4) y, como referencia, generar el fondo sin producto y componer encima. Si el de nueve canales gana con claridad, hay que revisar ADR-004 (el LoRA se entrena sobre SDXL base). `rembg` separa bien la taza y el frasco, pero en el jarrón incluyó las flores y un cuenco aparte (G13 cuenta componentes y avisa). Las imágenes quedan en `data/experiments/expansion/` (no versionado); el experimento costó unos 15 minutos de L4.
 
 Costo esperado: unas 20 h de L4 para todo el proyecto (desarrollo, prueba con 10 usuarios, ensayos y demo) a cerca de USD 0.80 por hora, dentro de los USD 30 gratis de un mes. Es una estimación: el smoke test medirá el costo real por lote.
 

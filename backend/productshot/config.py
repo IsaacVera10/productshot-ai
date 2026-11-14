@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
     # Piezas intercambiables (ADR-009): `composition.py` elige el adaptador de cada una.
     generation_backend: Literal["mock", "remote"] = "mock"
-    segmentation_backend: Literal["mock"] = "mock"
+    segmentation_backend: Literal["mock", "remote"] = "mock"
     summary_backend: Literal["deterministic", "gemini"] = "deterministic"
     job_runner: Literal["thread", "inline"] = "thread"
 

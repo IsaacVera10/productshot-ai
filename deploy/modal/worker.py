@@ -5,8 +5,9 @@ worker que corre en la laptop; aquí solo cambia dónde se aloja.
 
 Comandos (desde la raíz del repo, con `modal setup` hecho):
 
-    modal run deploy/modal/worker.py                 # prueba de humo: un lote de cinco
-    modal run deploy/modal/worker.py --image foto.png --mask mascara.png
+    modal run deploy/modal/worker.py::main           # prueba de humo: un lote de cinco
+    modal run deploy/modal/worker.py::experiment     # experimento de expansión de silueta
+    modal run deploy/modal/worker.py::main --image foto.png --mask mascara.png
     modal deploy deploy/modal/worker.py              # endpoint permanente, escala a cero
 
 Costos: la GPU solo se cobra mientras hay un contenedor vivo. `scaledown_window` lo
@@ -47,8 +48,11 @@ image = (
         "pydantic-settings==2.16.2",
         "pillow==12.3.0",
         "httpx==0.28.1",
+        # Segmentación del producto (en CPU dentro del mismo contenedor)
+        "rembg==2.0.59",
+        "onnxruntime==1.19.2",
     )
-    .env({"HF_HOME": f"{CACHE}/hf", "HF_HUB_DISABLE_TELEMETRY": "1"})
+    .env({"HF_HOME": f"{CACHE}/hf", "U2NET_HOME": f"{CACHE}/u2net", "HF_HUB_DISABLE_TELEMETRY": "1"})
     .add_local_dir(ROOT / "backend" / "productshot", "/root/productshot")
 )
 
@@ -68,17 +72,22 @@ secret = modal.Secret.from_name("productshot-worker")
 class Worker:
     @modal.enter()
     def load(self) -> None:
+        from productshot.services.rembg_segmentation import RembgSegmentationService
         from productshot.services.sdxl_generation import SdxlInpaintBackend
 
         self.backend = SdxlInpaintBackend()
         self.backend.load()
+        self.segmenter = RembgSegmentationService()
+        self.segmenter.load()
         cache.commit()  # guarda los pesos descargados para el próximo arranque
 
     @modal.asgi_app()
     def web(self):
         from productshot.worker.app import create_worker_app
 
-        return create_worker_app(self.backend, token=os.environ.get("GENERATION_WORKER_TOKEN"))
+        return create_worker_app(
+            self.backend, token=os.environ.get("GENERATION_WORKER_TOKEN"), segmenter=self.segmenter
+        )
 
     @modal.method()
     def smoke(self, image_png: bytes, mask_png: bytes, mode: str = "intermediate") -> dict:
@@ -112,6 +121,131 @@ class Worker:
             "params": {k: arts[0].params[k] for k in ("steps", "guidance_scale", "strength")},
             "images": images,
         }
+
+
+    @modal.method()
+    def experiment(self, cases: list[dict], configs: dict[str, dict], styles: list[str]) -> dict:
+        """Expansión de silueta: fotos generadas por SDXL, máscara de rembg y varias mitigaciones.
+
+        Las fotos de producto las genera el propio SDXL (texto a imagen), así no se usan
+        imágenes de terceros. Para cada combinación devuelve la imagen recompuesta y la
+        métrica de expansión: fracción del área del producto que rembg detecta como primer
+        plano NUEVO en una franja alrededor del producto (0 = no se prolongó la silueta).
+        """
+        import dataclasses
+
+        import torch
+        from diffusers import StableDiffusionXLPipeline
+        from PIL import Image, ImageChops, ImageFilter
+
+        from productshot.config import Settings
+        from productshot.domain import Mode, Style
+        from productshot.services.generation import GenerationRequest, VariationSpec
+        from productshot.services.guardrails import enforce_fidelity
+
+        def png(img, side=512) -> bytes:
+            img = img.copy()
+            img.thumbnail((side, side))
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            return buf.getvalue()
+
+        def binary(mask_l, keep_black=True):
+            return mask_l.point(lambda v: 255 if (v < 128) == keep_black else 0)
+
+        t2i = StableDiffusionXLPipeline.from_pipe(self.backend._pipe)
+        base = self.backend.params
+        settings = Settings(_env_file=None)
+        out = {"cases": []}
+        for case in cases:
+            photo = t2i(
+                prompt=case["prompt"], negative_prompt="people, hands, text overlay, watermark, blurry",
+                width=1024, height=768, num_inference_steps=30,
+                generator=torch.Generator("cuda").manual_seed(case["seed"]),
+            ).images[0]
+            mask = self.segmenter.segment(photo).mask
+            product = binary(mask)  # 255 = producto
+            area = max(1, sum(1 for v in product.getdata() if v))
+            near = product.filter(ImageFilter.MaxFilter(81))
+            edge = product.filter(ImageFilter.MaxFilter(9))
+            band = ImageChops.subtract(near, edge)  # franja de ~4 a 40 px alrededor del producto
+            entry = {"name": case["name"], "photo": png(photo), "mask": png(mask), "results": []}
+            for cfg_name, cfg in configs.items():
+                cfg = dict(cfg)
+                if cfg.pop("use_hint", False):
+                    cfg["prompt_prefix"] = case["hint"]
+                self.backend.params = dataclasses.replace(base, **cfg)
+                specs = tuple(VariationSpec(position=i + 1, style=Style(st), seed=500 + i) for i, st in enumerate(styles))
+                arts = self.backend.generate(
+                    GenerationRequest(session_id="exp", mode=Mode.INTERMEDIATE, image=photo, mask=mask, specs=specs)
+                )
+                for art in arts:
+                    final, fid = enforce_fidelity(photo, mask, art.image, settings)
+                    fg = binary(self.segmenter.segment(final).mask)
+                    grown = ImageChops.multiply(fg, band)
+                    expansion = round(sum(1 for v in grown.getdata() if v) / area, 3)
+                    entry["results"].append({
+                        "config": cfg_name, "style": art.style.value, "expansion": expansion,
+                        "drift": fid["protected_mean_abs_diff"], "seconds": art.params["seconds"],
+                        "image": png(final),
+                    })
+            self.backend.params = base
+            out["cases"].append(entry)
+        return out
+
+
+EXPERIMENT_CASES = [
+    {"name": "taza_logo", "seed": 11, "hint": "a white ceramic mug",
+     "prompt": "smartphone photo of a white ceramic coffee mug with a small printed logo on a kitchen counter, natural light"},
+    {"name": "jarron_mate", "seed": 12, "hint": "a matte black ceramic vase",
+     "prompt": "amateur photo of a matte black ceramic vase on a wooden desk at home"},
+    {"name": "blanco_sobre_claro", "seed": 13, "hint": "a white plastic lotion bottle",
+     "prompt": "amateur photo of a white plastic lotion bottle on a light beige table"},
+    {"name": "caja_con_texto", "seed": 14, "hint": "a small cardboard tea box",
+     "prompt": "smartphone photo of a small cardboard tea box with small printed text on a table"},
+]
+EXPERIMENT_CONFIGS = {
+    "A_base": {},
+    "B_prefijo": {"use_hint": True},
+    "C_margen": {"mask_dilate_px": 12, "mask_blur": 0},
+    "D_strength_085": {"strength": 0.85},
+    "E_prefijo_margen": {"use_hint": True, "mask_dilate_px": 12, "mask_blur": 0},
+}
+
+
+@app.local_entrypoint()
+def experiment(styles: str = "studio,lifestyle", out: str = "") -> None:
+    """`PYTHONPATH=backend modal run deploy/modal/worker.py::experiment`"""
+    from PIL import Image, ImageDraw
+
+    style_list = [s.strip() for s in styles.split(",") if s.strip()]
+    result = Worker().experiment.remote(EXPERIMENT_CASES, EXPERIMENT_CONFIGS, style_list)
+    out_dir = Path(out or "data/experiments/expansion") / time.strftime("%Y%m%d-%H%M%S")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    table = []
+    for case in result["cases"]:
+        tiles = [("foto", case["photo"]), ("máscara rembg", case["mask"])]
+        tiles += [(f"{r['config']} · {r['style']} · exp {r['expansion']}", r["image"]) for r in case["results"]]
+        ims = [Image.open(io.BytesIO(b)).convert("RGB") for _, b in tiles]
+        w, h = ims[0].size
+        cols = 2 + len(style_list)
+        rows = len(EXPERIMENT_CONFIGS)
+        sheet = Image.new("RGB", (cols * w, rows * (h + 18)), "white")
+        draw = ImageDraw.Draw(sheet)
+        positions = [(0, 0), (1, 0)] + [(2 + i % len(style_list), i // len(style_list)) for i in range(len(case["results"]))]
+        for (label, _), im, (c, r) in zip(tiles, ims, positions):
+            sheet.paste(im, (c * w, r * (h + 18) + 18))
+            draw.text((c * w + 4, r * (h + 18) + 3), label, fill="black")
+        sheet.save(out_dir / f"{case['name']}.png")
+        for r in case["results"]:
+            table.append({"case": case["name"], **{k: v for k, v in r.items() if k != "image"}})
+    (out_dir / "metrics.json").write_text(json.dumps(table, indent=2, ensure_ascii=False))
+    by_cfg: dict[str, list[float]] = {}
+    for row in table:
+        by_cfg.setdefault(row["config"], []).append(row["expansion"])
+    for cfg, vals in by_cfg.items():
+        print(f"{cfg:18s} expansión media {sum(vals) / len(vals):.3f}  máx {max(vals):.3f}")
+    print(f"Resultados en {out_dir}")
 
 
 def _demo_product(size=(1024, 768)):

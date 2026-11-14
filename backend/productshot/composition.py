@@ -7,7 +7,7 @@ entorno, no código:
 | Pieza        | Variable             | Adaptadores hoy                    |
 |--------------|----------------------|------------------------------------|
 | Generación   | GENERATION_BACKEND   | mock, remote (worker HTTP)         |
-| Segmentación | SEGMENTATION_BACKEND | mock                               |
+| Segmentación | SEGMENTATION_BACKEND | mock, remote (rembg en el worker)  |
 | Resumen      | SUMMARY_BACKEND      | deterministic, gemini              |
 | Ejecutor     | JOB_RUNNER           | thread, inline                     |
 | Registro     | (fijo)               | SQLite (Firestore cuando haga falta) |
@@ -79,6 +79,14 @@ def build_generator(settings: Settings) -> GenerationBackend:
 def build_segmenter(settings: Settings) -> SegmentationService:
     if settings.segmentation_backend == "mock":
         return MockSegmentationService()
+    if settings.segmentation_backend == "remote":
+        if not settings.generation_worker_url:
+            raise ConfigError("SEGMENTATION_BACKEND=remote necesita GENERATION_WORKER_URL (el mismo worker segmenta).")
+        from productshot.services.remote_segmentation import RemoteSegmentationService
+
+        return RemoteSegmentationService(
+            settings.generation_worker_url, token=_secret(settings.generation_worker_token)
+        )
     raise ConfigError(f"SEGMENTATION_BACKEND desconocido: {settings.segmentation_backend!r}.")
 
 

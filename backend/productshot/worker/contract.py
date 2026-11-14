@@ -12,6 +12,7 @@ son unos pocos MB por lote, aceptable para el volumen del proyecto.
 Rutas:
 - `GET  /v1/health`   → `HealthOut`
 - `POST /v1/generate` → `GenerateOut` (cuerpo `GenerateIn`)
+- `POST /v1/segment`  → `SegmentOut` (cuerpo `SegmentIn`); 404 si el worker no segmenta
 
 Autenticación: `Authorization: Bearer <GENERATION_WORKER_TOKEN>` si el worker tiene token.
 """
@@ -30,6 +31,7 @@ from productshot.domain import VARIATIONS_PER_BATCH, Mode, Style
 CONTRACT_VERSION = "1"
 HEALTH_PATH = "/v1/health"
 GENERATE_PATH = "/v1/generate"
+SEGMENT_PATH = "/v1/segment"
 # Tope de decodificación para las imágenes que cruzan el contrato (en ambos sentidos).
 MAX_CONTRACT_PIXELS = 4096 * 4096
 
@@ -79,6 +81,21 @@ class HealthOut(BaseModel):
     backend: str
     model_revision: str
     simulated: bool
+    segmenter: str | None = None  # None: el worker no ofrece /v1/segment
+    segmenter_simulated: bool | None = None
+
+
+class SegmentIn(BaseModel):
+    contract_version: str = CONTRACT_VERSION
+    image_png_b64: str
+
+
+class SegmentOut(BaseModel):
+    contract_version: str = CONTRACT_VERSION
+    segmenter: str
+    simulated: bool
+    mask_png_b64: str  # "L": blanco = fondo editable, negro = producto
+    seconds: float | None = None
 
 
 def encode_png(image: Image.Image) -> str:

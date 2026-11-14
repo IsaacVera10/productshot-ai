@@ -20,6 +20,10 @@ class MaskResult:
     simulated: bool
 
 
+class SegmentationUnavailable(Exception):
+    """El segmentador no respondió o respondió mal. El mensaje se muestra a la persona."""
+
+
 class SegmentationService(Protocol):
     name: str
     simulated: bool
