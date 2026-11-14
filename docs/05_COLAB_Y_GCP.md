@@ -88,6 +88,21 @@ Hallazgo de calidad: con el producto sintético, el modelo **prolonga la silueta
 
 Conclusiones, con la cautela de 8 imágenes por configuración y una semilla: **ninguna mitigación sencilla resuelve la expansión con el UNet de cuatro canales**; nombrar el producto en el prompt la empeora en estudio, y el margen la cambia por un halo. Siguiente experimento: el UNet de inpainting de nueve canales (`diffusers/stable-diffusion-xl-1.0-inpainting-0.1`, P4) y, como referencia, generar el fondo sin producto y componer encima. Si el de nueve canales gana con claridad, hay que revisar ADR-004 (el LoRA se entrena sobre SDXL base). `rembg` separa bien la taza y el frasco, pero en el jarrón incluyó las flores y un cuenco aparte (G13 cuenta componentes y avisa). Las imágenes quedan en `data/experiments/expansion/` (no versionado); el experimento costó unos 15 minutos de L4.
 
+### UNet de nueve canales y fondo compuesto (2026-11-14)
+
+`PYTHONPATH=backend modal run --detach deploy/modal/worker.py::experiment --config-set nueve`, con las mismas cuatro fotos, dos semillas (500 y 900) y los estilos estudio y lifestyle. La corrida llegó al tope de 15 minutos de la función cuando iba por el UNet de nueve canales: base, `strength` 0.85 y fondo compuesto quedaron completos (16 imágenes cada uno) y el de nueve canales con 6 (taza y jarrón). Desde entonces cada resultado se guarda en el volumen apenas sale y el tope es de 60 minutos.
+
+| Configuración | Expansión media (n) | Mismo subconjunto que nueve canales (n = 6) | Lo que se ve |
+|---|---|---|---|
+| A: base, cuatro canales | 0.117 (16) | 0.104 | Siluetas extra y objetos pegados detrás del producto |
+| D: `strength` 0.85 | 0.091 (16) | 0.114 | Igual que A; a veces una tapa u objeto detrás |
+| H: fondo generado sin producto y producto pegado encima | 0.005 (16) | 0.008 | Sin expansión por construcción, pero **el producto flota**: sin contacto ni sombra, con la perspectiva de la mesa equivocada |
+| F: UNet de nueve canales (`diffusers/stable-diffusion-xl-1.0-inpainting-0.1`) | 0.054 (6) | 0.054 | **Sin siluetas extra** en la taza ni en el jarrón; el producto se apoya en la mesa con sombra creíble |
+
+En el jarrón, la métrica marcó 0.14 y 0.16 para nueve canales, pero a la vista no hay expansión: `rembg` confunde el borde de las flores. La métrica sirve para ordenar, no como verdad; la revisión visual manda.
+
+**Recomendación:** pasar el modo intermedio al UNet de nueve canales (cambia P3 y ADR-004; se activa con `SDXL_MODEL_ID` sin tocar código). Para el modo avanzado hay dos caminos: cargar en el pipeline de nueve canales el LoRA entrenado sobre SDXL base (las capas de atención tienen la misma forma; la calidad hay que medirla en el smoke test del LoRA) o entrenar el LoRA directamente sobre el UNet de nueve canales con objetivo de inpainting (más trabajo). Ambos modos deben usar el mismo checkpoint para que la comparación aísle el LoRA. Falta completar nueve canales en el frasco y la caja.
+
 Costo esperado: unas 20 h de L4 para todo el proyecto (desarrollo, prueba con 10 usuarios, ensayos y demo) a cerca de USD 0.80 por hora, dentro de los USD 30 gratis de un mes. Es una estimación: el smoke test medirá el costo real por lote.
 
 ## Alternativa: GCP
