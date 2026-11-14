@@ -34,7 +34,7 @@ El mapeo completo por pieza está en [01 — Arquitectura, sección F](01_ARQUIT
 4. Registrar `base_model_id`, **revisión exacta**, scripts y dependencias, rank, alpha, LR, pasos, semilla, curvas de pérdida, checkpoint y resultados en validación.
 5. Guardar checkpoints para reanudar (Kaggle corta a las 12 h y Colab por inactividad) y **exportar solo los adaptadores**.
 6. Publicar el adaptador y su manifiesto (revisión, checksum, checkpoint base) en un **repositorio privado de Hugging Face Hub**. El worker lo carga desde `LORA_ADAPTER_URI`, así que da igual dónde se entrenó.
-7. El dataset curado también va privado: BG60k es solo para uso académico y falta confirmar con sus autores si se pueden publicar ejemplos y pesos (P6).
+7. El dataset curado también va privado: BG60k es solo para uso académico, y el proyecto lo es; no se consultará a sus autores (P6).
 
 ## Despliegue principal: Modal
 
@@ -135,11 +135,34 @@ Lo que se ve en las grillas:
 
 Límites: la métrica cuenta cualquier primer plano en la franja (también objetos ajenos y pliegues de tela) y **no penaliza conservar el fondo original**, así que favorece justo el comportamiento conservador de G. Es un indicador auxiliar hasta contrastarlo con anotación humana. Son cuatro productos sintéticos con observaciones repetidas, no 16 independientes, y la máscara del jarrón protege también las flores y un cuenco separado. Estas imágenes son de desarrollo: sirven para elegir parámetros y no pueden usarse en la evaluación final (`06_EVALUACION_Y_ETICA.md`). Esta corrida guardó las salidas a 512 px y sin la segmentación final. El código actualizado guardará en las próximas corridas las salidas a resolución completa, la segmentación final, la franja, numerador y denominador de la métrica, el prompt efectivo de cada imagen, el checksum del modelo de `rembg`, y el commit del código con su diff si había cambios sin commit.
 
-**Estado:** el candidato es el checkpoint de inpainting de nueve canales con `strength` 0.85 (G), no F. Sigue siendo candidato, no decisión. Antes de proponer el cambio de P3 y ADR-004 falta:
+### `strength` intermedio en nueve canales (2026-11-14, corrida `nueve_strength`)
 
-1. Medir el cumplimiento del estilo, que G puede estar sacrificando: revisión ciega como medida principal y CLIP solo como apoyo calibrado contra ella (cada imagen contra las cinco descripciones de estilo). Probar `strength` intermedio (0.9 o 0.95) para buscar el punto entre no expandir y cumplir el estilo.
-2. Repetir A, D, F y G con fotos caseras reales de los casos obligatorios y los cinco estilos, evaluando por separado estilo, contacto y sombras, expansión y fidelidad (asa, logotipo, texto). El caso mate debe ser un objeto sencillo, sin flores.
-3. Demostrar en el smoke test del LoRA (P4) entrenamiento breve, exportación, recarga e inferencia del adaptador sobre nueve canales, con memoria y latencia del lote completo. Si no carga, el cambio de checkpoint no se puede hacer en ambos modos.
+`PYTHONPATH=backend modal run --detach deploy/modal/worker.py::experiment --config-set nueve_strength`, desde el commit limpio `5567737`: I (0.90) y J (0.95) con los mismos casos, estilos y semillas. A, F y G no se repitieron porque A y F ya se reprodujeron imagen a imagen. Primera corrida con la evidencia completa: la métrica se recalcula exacta desde los archivos guardados (segmentación final × franja) en 32 de 32 imágenes. La app estuvo viva 18.6 minutos (cerca de USD 0.25 de GPU si la L4 estuvo activa todo el intervalo; total sin verificar).
+
+| Configuración | Pasos efectivos (de 30) | Taza | Jarrón | Frasco | Caja | Media (mediana) | Gana a A |
+|---|---|---|---|---|---|---|---|
+| A: base, 0.99 | 29 | 0.112 | 0.108 | 0.123 | 0.123 | 0.117 (0.118) | |
+| F: nueve canales, 0.99 | 29 | 0.005 | 0.194 | 0.225 | 0.062 | 0.122 (0.070) | 9 de 16 |
+| J: nueve canales, 0.95 | 28 | 0.026 | 0.166 | 0.093 | 0.062 | 0.087 (0.075) | 10 de 16 |
+| I: nueve canales, 0.90 | 27 | 0.024 | 0.138 | 0.100 | 0.052 | 0.078 (0.061) | 12 de 16 |
+| G: nueve canales, 0.85 | 25 | 0.019 | 0.102 | 0.042 | 0.051 | 0.054 (0.055) | 13 de 16 |
+
+En conjunto, a menor `strength`, menor indicador, pero no en cada caso: en el frasco G queda muy por debajo de I y J, y en la taza y la caja las variantes de nueve canales están todas cerca. El pipeline usa `int(30 × strength)` pasos, así que las configuraciones también difieren en pasos, no solo en cuánto ruido parten.
+
+Lo que se ve:
+
+- **El estilo sí puede separar G de I y J.** En la taza "estudio" con semilla base 900, I y J dan fondo gris con focos y G una cocina con lámpara. En el frasco "estudio" con semilla 500, F elimina casi toda la tela de la foto original y G, I y J conservan sus pliegues.
+- **Las variantes de nueve canales tienden a conservar la composición de la foto:** ninguna logra en el frasco el fondo gris continuo del preset de estudio, y en la caja I y J casi no cambian entre estilos. Es plausible que venga de los latentes iniciales, que con `strength` < 1 parten de la imagen completa codificada más ruido (la imagen enmascarada que recibe el UNet, en cambio, borra el fondo editable). No está demostrado. El model card recomienda `strength` < 1 y advierte menor nitidez con 1.0, que serviría como diagnóstico.
+- No se puede decir que el estilo dependa más de la semilla que del `strength`: estudio usa las semillas 500 y 900 y lifestyle 501 y 901, así que al comparar estilos cambian a la vez prompt y ruido.
+- El ramo del jarrón crece en todas las variantes.
+
+**Estado:** con el indicador de expansión, G (0.85) sigue siendo el mejor, pero el cumplimiento del estilo puede invertir el orden frente a I (0.90). No se elige `strength` sin medir el estilo. Antes de proponer el cambio de P3 y ADR-004 falta:
+
+1. Medir el cumplimiento del estilo. Revisión ciega como medida principal: A, F, G, I y J al mismo tamaño y en orden aleatorio, evaluando por separado cumplimiento del preset (distinguir "estudio con focos visibles" de "fondo continuo de catálogo", que es lo que pide el preset), contacto y sombras, y expansión. CLIP en CPU como apoyo, con el protocolo fijado antes de calcular: el mismo modelo para todas las imágenes, cada una contra cinco descripciones paralelas basadas en los presets (sin categoría de producto ni adjetivos de calidad), el margen frente a los demás estilos y no solo el más parecido, las fotos originales como control y paráfrasis para comprobar estabilidad.
+2. Repetir con fotos caseras reales de los casos obligatorios y los cinco estilos, cruzando estilos y semillas, con un caso mate sencillo, sin flores.
+3. Demostrar en el smoke test del LoRA (P4) entrenamiento breve, exportación, recarga e inferencia del adaptador sobre nueve canales, con memoria y latencia del lote completo.
+
+La evidencia de las corridas está en el volumen `productshot-hf-cache` (`experiments/<RUN_ID>`) y en `data/experiments/expansion/` de quien la bajó; `data/` no se versiona.
 
 Para el modo avanzado, si se adopta nueve canales, hay dos caminos: cargar el LoRA entrenado sobre SDXL base (el script oficial lo aplica solo en las proyecciones de atención, que tienen la misma forma; pero los pesos del UNet de nueve canales siguen entrenados aparte, así que la compatibilidad se demuestra en el smoke test, no se supone) o entrenarlo sobre el UNet de nueve canales con objetivo de inpainting (más trabajo). Ambos modos deben usar el mismo checkpoint para que la comparación aísle el LoRA.
 

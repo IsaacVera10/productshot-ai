@@ -426,6 +426,12 @@ EXPERIMENT_SETS = {
         "F_nueve_canales": {"engine": "nine"},
         "G_nueve_strength_085": {"engine": "nine", "strength": 0.85},
     },
+    # 2026-11-14: punto intermedio entre F (0.99, expande) y G (0.85, pierde estilo). A, F y G
+    # no se repiten: son reproducibles imagen a imagen (corrida nueve_completo).
+    "nueve_strength": {
+        "I_nueve_strength_090": {"engine": "nine", "strength": 0.90},
+        "J_nueve_strength_095": {"engine": "nine", "strength": 0.95},
+    },
 }
 
 
