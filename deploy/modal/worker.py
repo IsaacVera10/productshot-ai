@@ -47,6 +47,7 @@ image = (
         "accelerate==1.1.1",
         "safetensors==0.4.5",
         "huggingface_hub==0.26.2",
+        "peft==0.13.2",  # carga del LoRA del modo avanzado (misma versión que el entrenamiento)
         # Contrato HTTP (mismas versiones que uv.lock)
         "fastapi==0.162.0",
         "pydantic==2.14.2",
@@ -159,8 +160,15 @@ class Lab:
 
     @modal.method()
     def experiment(self, cases: list[dict], configs: dict[str, dict], styles: list[str],
-                   seeds: list[int], run_id: str, code_version: dict | None = None) -> dict:
+                   seeds: list[int], run_id: str, code_version: dict | None = None,
+                   adapter: dict | None = None, measure_expansion: bool = True) -> dict:
         """Expansión de silueta: fotos generadas por SDXL, máscara de rembg y varias mitigaciones.
+
+        Con `adapter` ({"path" en el volumen, "sha256"}), las configuraciones con `"lora": peso`
+        cargan ese LoRA en su pipeline y generan en modo avanzado con ese peso; las que no
+        tienen `"lora"` usan el pipeline sin adaptador y deben ir antes en el mismo motor.
+        `measure_expansion=False` omite segmentar cada resultado y la métrica de expansión (rembg
+        sigue haciendo las máscaras de las fotos de entrada); sirve para comparar imágenes.
 
         Las fotos de producto las genera el propio SDXL (texto a imagen), así no se usan
         imágenes de terceros. Para cada combinación devuelve la imagen recompuesta y la
@@ -197,6 +205,32 @@ class Lab:
             path = Path(os.environ.get("U2NET_HOME", "")) / f"{model}.onnx"
             return hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
 
+        def verify_lora_load(backend) -> dict:
+            """Capas y tensores LoRA del UNet frente al archivo: el sha256 no prueba que se aplicaron."""
+            from safetensors.torch import load_file
+
+            expected = {}
+            for key, value in load_file(adapter["path"]).items():
+                if not key.startswith("unet."):
+                    continue
+                name = key[len("unet."):]
+                for old, new in ((".lora.down.weight", ".lora_A.estilo"), (".lora.up.weight", ".lora_B.estilo")):
+                    if name.endswith(old):
+                        expected[name[: -len(old)] + new] = value.float()
+            modules = dict(backend._pipe.unet.named_modules())
+            missing = [n for n in expected if n not in modules]
+            worst = 0.0
+            for n, t in expected.items():
+                if n in modules:
+                    got = modules[n].weight.detach().float().cpu()
+                    worst = max(worst, float((got - t).abs().max()) / (float(t.abs().max()) or 1.0))
+            layers = sum(1 for n in modules if n.endswith("lora_A.estilo"))
+            result = {"file_tensors": len(expected), "missing": len(missing), "unet_lora_layers": layers,
+                      "max_rel_err": worst}
+            if not expected or missing or layers * 2 != len(expected) or worst >= 0.01:
+                raise ValueError(f"El LoRA no cargó completo en {backend.params.model_id}: {result}")
+            return result
+
         def check_channels(backend, expected: int) -> None:
             got = backend._pipe.unet.config.in_channels
             if got != expected:
@@ -205,7 +239,7 @@ class Lab:
         check_channels(self.backend, 4)
         if self.backend._pipe.device.type != "cuda":  # una llamada anterior no pudo restaurarla
             self.backend._pipe.to("cuda")
-        t2i =StableDiffusionXLPipeline.from_pipe(self.backend._pipe)
+        t2i = StableDiffusionXLPipeline.from_pipe(self.backend._pipe)
         base = self.backend.params
         settings = Settings(_env_file=None)
         # Cada resultado se guarda en el volumen apenas sale: si el cliente local se cae, lo
@@ -224,7 +258,8 @@ class Lab:
             "params": dataclasses.asdict(base),
             "configs": configs, "styles": styles, "seeds": seeds, "cases": cases,
             "seed_rule": "la variación i (0, 1, ...) de cada lote usa seed + i",
-            "packages": {p: md.version(p) for p in ("torch", "diffusers", "transformers", "rembg", "onnxruntime")},
+            "packages": {p: md.version(p) for p in ("torch", "diffusers", "transformers", "peft", "rembg",
+                                                    "onnxruntime")},
             "gpu": torch.cuda.get_device_name(0),
             # Commit local y si había cambios sin commit (lo manda el entrypoint).
             "code_version": code_version,
@@ -235,7 +270,14 @@ class Lab:
             "segmenter": {"model": self.segmenter.model, "sha256": onnx_sha256(self.segmenter.model)},
             "metric": "expansion = expansion_px / area_px; expansion_px = primer plano de rembg en la "
                       "imagen final dentro de la franja (MaxFilter 81 menos MaxFilter 9 de la máscara)",
+            "measure_expansion": measure_expansion,
+            "adapter": adapter,
         }
+        if adapter:
+            cache.reload()  # el adaptador se subió al volumen justo antes de esta llamada
+            got = hashlib.sha256(Path(adapter["path"]).read_bytes()).hexdigest()
+            if got != adapter["sha256"]:
+                raise ValueError(f"El adaptador del volumen no coincide: {got} != {adapter['sha256']}")
 
         def write_manifest() -> None:
             (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False, default=str))
@@ -267,24 +309,29 @@ class Lab:
             save(f"{case['name']}__2_franja.png", png(prepared[-1]["band"]))
         cache.commit()
 
-        def record(p, cfg_name, style, seed, seed_base, generated, seconds, prompt, negative_prompt):
+        def record(p, cfg_name, style, seed, seed_base, generated, seconds, prompt, negative_prompt, lora=None):
             """`seed` es la semilla REAL de esta imagen; `seed_base`, la del lote (seed + i)."""
             final, fid = enforce_fidelity(p["photo"], p["mask"], generated, settings)
-            fg = binary(self.segmenter.segment(final).mask)
-            grown = ImageChops.multiply(fg, p["band"])
-            grown_px = sum(1 for v in grown.getdata() if v)
+            fg = None
+            grown_px = None
+            if measure_expansion:
+                fg = binary(self.segmenter.segment(final).mask)
+                grown = ImageChops.multiply(fg, p["band"])
+                grown_px = sum(1 for v in grown.getdata() if v)
             row = {
                 "case": p["case"]["name"], "config": cfg_name, "style": style,
                 "seed": seed, "seed_base": seed_base,
-                "expansion": round(grown_px / p["area"], 3),
+                "expansion": round(grown_px / p["area"], 3) if grown_px is not None else None,
                 "expansion_px": grown_px, "area_px": p["area"],
                 "drift": fid["protected_mean_abs_diff"], "seconds": seconds,
                 "prompt": prompt, "negative_prompt": negative_prompt,  # los efectivos de esta imagen
+                "lora": lora,  # None sin adaptador; si no, sha256 y peso aplicado
             }
             image_name = f"{row['case']}__{cfg_name}__{style}__s{seed}.png"
             # Resolución completa, más la segmentación final: la métrica se puede recalcular.
             save(image_name, png(final))
-            save(image_name.replace(".png", "__fg.png"), png(fg))
+            if fg is not None:
+                save(image_name.replace(".png", "__fg.png"), png(fg))
             with open(run_dir / "metrics.jsonl", "a", encoding="utf-8") as fh:
                 fh.write(json.dumps({**row, "image": image_name}, ensure_ascii=False) + "\n")
             p["entry"]["results"].append(row)
@@ -298,6 +345,13 @@ class Lab:
                 cfg = dict(cfg)
                 engine = cfg.pop("engine", "four")
                 use_hint = cfg.pop("use_hint", False)
+                lora_scale = cfg.pop("lora", None)
+                if engine not in ("four", "nine", "composite"):
+                    raise ValueError(f"{cfg_name}: motor desconocido {engine!r}")
+                if lora_scale is not None and (engine == "composite" or not adapter):
+                    raise ValueError(f"{cfg_name}: 'lora' necesita un adaptador y un motor de inpainting")
+                if engine == "composite" and self.backend.lora is not None:
+                    raise ValueError(f"{cfg_name}: 'composite' comparte el UNet de la base: debe ir antes del LoRA")
                 if engine == "nine" and nine is None:
                     from productshot.services.sdxl_generation import (
                         NINE_CHANNEL_MODEL_ID,
@@ -336,14 +390,24 @@ class Lab:
                                        round(time.perf_counter() - t0, 2), bg_prompt, bg_negative)
                         else:
                             backend = nine if engine == "nine" else self.backend
+                            if lora_scale is None and backend.lora is not None:
+                                raise ValueError(f"{cfg_name}: sin LoRA debe ir antes de cargarlo en ese motor")
+                            if lora_scale is not None and backend.lora is None:
+                                loaded = backend.attach_lora(adapter["path"])
+                                if loaded["sha256"] != adapter["sha256"]:
+                                    raise ValueError("El adaptador cargado no coincide con el esperado.")
+                                manifest.setdefault("lora_load", {})[engine] = verify_lora_load(backend)
+                                write_manifest()
                             params = dataclasses.replace(backend.params if engine == "nine" else base, **cfg)
+                            if lora_scale is not None:
+                                params = dataclasses.replace(params, lora_scale=float(lora_scale))
                             if use_hint:
                                 params = dataclasses.replace(params, prompt_prefix=p["case"]["hint"])
                             previous, backend.params = backend.params, params
                             try:
                                 arts = backend.generate(GenerationRequest(
-                                    session_id="exp", mode=Mode.INTERMEDIATE, image=p["photo"], mask=p["mask"],
-                                    specs=specs,
+                                    session_id="exp", mode=Mode.ADVANCED if lora_scale is not None else Mode.INTERMEDIATE,
+                                    image=p["photo"], mask=p["mask"], specs=specs,
                                 ))
                             finally:
                                 backend.params = previous
@@ -351,7 +415,7 @@ class Lab:
                             for art in arts:
                                 record(p, cfg_name, art.style.value, seed_of[art.position], seed,
                                        art.image, art.params["seconds"],
-                                       art.params["prompt"], art.params["negative_prompt"])
+                                       art.params["prompt"], art.params["negative_prompt"], art.params["lora"])
                         cache.commit()  # cada lote queda a salvo en el volumen
         except BaseException:
             failed = True
@@ -363,6 +427,10 @@ class Lab:
             # No está garantizado (un traceback puede retener un pipeline a medio cargar);
             # en ese caso basta con dejar que el contenedor se apague (scaledown de 60 s).
             cleanup_errors = []
+            try:
+                self.backend.detach_lora()  # la base vuelve a ser el checkpoint original
+            except Exception as exc:
+                cleanup_errors.append(exc)
             try:
                 if nine is not None and nine._pipe is not None:
                     nine._pipe.to("cpu")
@@ -385,7 +453,7 @@ class Lab:
         info = {
             "base_revision": manifest["base_revision"],
             "nine_revision": manifest["nine_revision"],
-            "configs": list(configs), "styles": styles, "seeds": seeds,
+            "configs": list(configs), "styles": styles, "seeds": seeds, "adapter": adapter,
         }
         (run_dir / "done.json").write_text(json.dumps(info, indent=2))
         cache.commit()
@@ -432,7 +500,46 @@ EXPERIMENT_SETS = {
         "I_nueve_strength_090": {"engine": "nine", "strength": 0.90},
         "J_nueve_strength_095": {"engine": "nine", "strength": 0.95},
     },
+    # 2026-11-14: verificación del LoRA del smoke test de Colab (P4, ADR-009). Controles por
+    # motor: sin adaptador, adaptador con peso 0 dos veces (repetibilidad) y peso 1. En nueve
+    # canales, además, strength 0.99 y 1.0. Con 1.0 los latentes parten de ruido puro, pero el
+    # UNet de nueve canales sigue recibiendo máscara e imagen enmascarada: es un diagnóstico del
+    # anclaje por los latentes iniciales, no elimina el condicionamiento por el producto.
+    # Orden obligatorio: en cada motor, lo que no lleva LoRA va antes de cargarlo.
+    "lora_check": {
+        "A_sin_lora": {},
+        "A_lora0": {"lora": 0.0},
+        "A_lora0_bis": {"lora": 0.0},
+        "A_lora1": {"lora": 1.0},
+        "G_sin_lora": {"engine": "nine", "strength": 0.85},
+        "G_lora0": {"engine": "nine", "strength": 0.85, "lora": 0.0},
+        "G_lora0_bis": {"engine": "nine", "strength": 0.85, "lora": 0.0},
+        "G_lora1": {"engine": "nine", "strength": 0.85, "lora": 1.0},
+        "F_lora0": {"engine": "nine", "strength": 0.99, "lora": 0.0},
+        "F_lora1": {"engine": "nine", "strength": 0.99, "lora": 1.0},
+        "K_lora0": {"engine": "nine", "strength": 1.0, "lora": 0.0},
+        "K_lora1": {"engine": "nine", "strength": 1.0, "lora": 1.0},
+    },
 }
+
+
+def _code_version() -> dict:
+    """Commit local, si había cambios sin commit y su diff (para el manifiesto)."""
+    import subprocess
+
+    def git(*args: str) -> str:
+        return subprocess.run(["git", *args], capture_output=True, text=True, cwd=ROOT, check=True).stdout
+
+    try:
+        dirty = bool(git("status", "--porcelain").strip())
+        return {
+            "commit": git("rev-parse", "HEAD").strip(),
+            "dirty": dirty,
+            # Con cambios sin commit, el diff permite reconstruir el código de la corrida.
+            "diff": git("diff", "HEAD") if dirty else None,
+        }
+    except (OSError, subprocess.CalledProcessError) as exc:
+        return {"commit": None, "dirty": None, "error": f"git no disponible: {exc}"}
 
 
 @app.local_entrypoint()
@@ -444,27 +551,44 @@ def experiment(config_set: str = "nueve", styles: str = "studio,lifestyle", seed
     Al terminar (o si la terminal se cayó), bajar los resultados con `worker.py::collect`.
     """
     configs = EXPERIMENT_SETS[config_set]
+    if any("lora" in c for c in configs.values()):
+        raise SystemExit("Ese conjunto usa un LoRA: lanzarlo con worker.py::lora_check --adapter ...")
     run_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{config_set}"
     print(f"RUN_ID={run_id}", flush=True)
     style_list = [s.strip() for s in styles.split(",") if s.strip()]
     seed_list = [int(x) for x in seeds.split(",") if x.strip()]
-    import subprocess
-
-    def git(*args: str) -> str:
-        return subprocess.run(["git", *args], capture_output=True, text=True, cwd=ROOT, check=True).stdout
-
-    try:
-        dirty = bool(git("status", "--porcelain").strip())
-        code_version = {
-            "commit": git("rev-parse", "HEAD").strip(),
-            "dirty": dirty,
-            # Con cambios sin commit, el diff permite reconstruir el código de la corrida.
-            "diff": git("diff", "HEAD") if dirty else None,
-        }
-    except (OSError, subprocess.CalledProcessError) as exc:
-        code_version = {"commit": None, "dirty": None, "error": f"git no disponible: {exc}"}
-    Lab().experiment.remote(EXPERIMENT_CASES, configs, style_list, seed_list, run_id, code_version)
+    Lab().experiment.remote(EXPERIMENT_CASES, configs, style_list, seed_list, run_id, _code_version())
     collect(run_id)
+
+
+@app.local_entrypoint()
+def lora_check(adapter: str, styles: str = "studio,lifestyle", seeds: str = "500") -> None:
+    """Verifica un LoRA en los pipelines de cuatro y nueve canales (conjunto `lora_check`):
+
+        PYTHONPATH=backend modal run --detach deploy/modal/worker.py::lora_check \\
+            --adapter data/lora/<RUN_ID>/pytorch_lora_weights.safetensors
+
+    Sube el adaptador al volumen, genera sin rembg (solo importan las imágenes) y al final
+    compara, en el fondo, sin LoRA / peso 0 / peso 0 otra vez / peso 1 (`lora_diffs.json`).
+    """
+    import hashlib
+    import subprocess
+    import sys
+
+    local = Path(adapter)
+    sha = hashlib.sha256(local.read_bytes()).hexdigest()
+    remote = f"lora/{sha[:16]}/{local.name}"
+    subprocess.run([sys.executable, "-m", "modal", "volume", "put", "--force", "productshot-hf-cache",
+                    str(local), remote], check=True)
+    run_id = f"{time.strftime('%Y%m%d-%H%M%S')}-lora_check"
+    print(f"RUN_ID={run_id}", flush=True)
+    style_list = [s.strip() for s in styles.split(",") if s.strip()]
+    seed_list = [int(x) for x in seeds.split(",") if x.strip()]
+    Lab().experiment.remote(
+        EXPERIMENT_CASES, EXPERIMENT_SETS["lora_check"], style_list, seed_list, run_id, _code_version(),
+        adapter={"path": f"{CACHE}/{remote}", "sha256": sha, "source": str(local)}, measure_expansion=False,
+    )
+    collect(run_id, out="data/experiments/lora")
 
 
 @app.local_entrypoint()
@@ -511,9 +635,118 @@ def summarize_run(run_dir: Path) -> None:
             draw.text((c * w + 4, y + 3), f"{r['config']} · {r['style']} · s{r['seed']} · exp {r['expansion']}", fill="black")
         sheet.save(run_dir / f"grilla_{case}.png")
     for cfg in configs:
-        vals = [r["expansion"] for r in rows if r["config"] == cfg]
-        print(f"{cfg:22s} n={len(vals):2d}  expansión media {sum(vals) / len(vals):.3f}  máx {max(vals):.3f}")
+        vals = [r["expansion"] for r in rows if r["config"] == cfg and r.get("expansion") is not None]
+        if vals:
+            print(f"{cfg:22s} n={len(vals):2d}  expansión media {sum(vals) / len(vals):.3f}  máx {max(vals):.3f}")
+    if any(r.get("lora") for r in rows):
+        summarize_lora(run_dir, rows)
     print(f"Resultados en {run_dir}")
+
+
+def lora_pairs(configs: list[str]) -> list[tuple[str, str, str]]:
+    """Comparaciones de `lora_check` por motor: (qué mide, config a, config b)."""
+    pairs = []
+    for name in configs:
+        if not name.endswith("_lora1"):
+            continue
+        prefix = name[: -len("_lora1")]
+        if f"{prefix}_sin_lora" in configs and f"{prefix}_lora0" in configs:
+            pairs.append(("cargar_con_peso_0", f"{prefix}_sin_lora", f"{prefix}_lora0"))
+        if f"{prefix}_lora0_bis" in configs:
+            pairs.append(("repetir_peso_0", f"{prefix}_lora0", f"{prefix}_lora0_bis"))
+        if f"{prefix}_lora0" in configs:
+            pairs.append(("efecto_lora", f"{prefix}_lora0", name))
+    return pairs
+
+
+def background_diff(a, b, mask) -> dict:
+    """Diferencia en el fondo (máscara blanca), en niveles de 0 a 255."""
+    import numpy as np
+
+    bg = np.asarray(mask.convert("L")) > 127
+    d = np.abs(np.asarray(a.convert("RGB"), dtype=np.float32) - np.asarray(b.convert("RGB"), dtype=np.float32))
+    d = d.mean(axis=2)[bg]
+    return {"mean": round(float(d.mean()), 3), "frac_gt1": round(float((d > 1).mean()), 4),
+            "frac_gt10": round(float((d > 10).mean()), 4)}
+
+
+def summarize_lora(run_dir: Path, rows: list[dict]) -> None:
+    """Escribe `lora_diffs.json` e imprime, por par de configuraciones, la diferencia media del fondo."""
+    from PIL import Image
+
+    configs = list(dict.fromkeys(r["config"] for r in rows))
+    by_key = {(r["case"], r["style"], r["seed"], r["config"]): r["image"] for r in rows}
+    out = []
+    for what, a, b in lora_pairs(configs):
+        for case, style, seed in dict.fromkeys((r["case"], r["style"], r["seed"]) for r in rows):
+            ia, ib = by_key.get((case, style, seed, a)), by_key.get((case, style, seed, b))
+            if not ia or not ib:
+                continue
+            mask = Image.open(run_dir / f"{case}__1_mascara.png")
+            diff = background_diff(Image.open(run_dir / ia), Image.open(run_dir / ib), mask)
+            out.append({"measure": what, "a": a, "b": b, "case": case, "style": style, "seed": seed, **diff})
+    # Cuánto conserva cada configuración del fondo de la foto original (cuantifica el anclaje).
+    for r in rows:
+        mask = Image.open(run_dir / f"{r['case']}__1_mascara.png")
+        photo = Image.open(run_dir / f"{r['case']}__0_foto.png")
+        diff = background_diff(Image.open(run_dir / r["image"]), photo, mask)
+        out.append({"measure": "cambio_frente_a_la_foto", "a": "foto", "b": r["config"], "case": r["case"],
+                    "style": r["style"], "seed": r["seed"], **diff})
+    verdicts = lora_verdicts(out, configs)
+    (run_dir / "lora_diffs.json").write_text(
+        json.dumps({"pairs": out, "verdicts": verdicts}, indent=2, ensure_ascii=False))
+    print("Diferencia media del fondo (0-255) por par:")
+    for what, a, b in lora_pairs(configs):
+        vals = [o["mean"] for o in out if o["a"] == a and o["b"] == b]
+        if vals:
+            print(f"  {what:18s} {a:12s} vs {b:12s} n={len(vals)}  media {sum(vals) / len(vals):.3f}  "
+                  f"mín {min(vals):.3f}  máx {max(vals):.3f}")
+    print("Cambio medio del fondo frente a la foto original (más bajo = más anclado):")
+    for cfg in configs:
+        vals = [o["mean"] for o in out if o["measure"] == "cambio_frente_a_la_foto" and o["b"] == cfg]
+        print(f"  {cfg:14s} {sum(vals) / len(vals):.2f}")
+    for prefix, v in verdicts.items():
+        ctrl = "sin control propio" if v["control_max"] is None else f"control máx. {v['control_max']:.3f}"
+        print(f"  {prefix}: {v['verdict']} (efecto medio {v['effect']:.3f}, rango {v['effect_min']:.3f} a "
+              f"{v['effect_max']:.3f}, {ctrl})")
+
+
+def lora_verdicts(out: list[dict], configs: list[str], ratio: float = 3.0) -> dict:
+    """Por motor: el efecto del LoRA solo es claro si su media supera `ratio` veces el MAYOR
+    valor individual de sus propios controles (cargar con peso 0 y repetir peso 0).
+
+    Un motor sin controles propios queda "sin controles propios": los de otro checkpoint no
+    sirven de referencia. Es una heurística agregada, no una prueba de significación.
+    """
+    def values(what: str, a: str, b: str) -> list[float]:
+        return [o["mean"] for o in out if o["measure"] == what and o["a"] == a and o["b"] == b]
+
+    controls: dict[str, float] = {}
+    for what, a, b in lora_pairs(configs):
+        if what != "efecto_lora":
+            vals = values(what, a, b)
+            if vals:
+                prefix = a.split("_")[0]
+                controls[prefix] = max(controls.get(prefix, 0.0), max(vals))
+    verdicts = {}
+    for what, a, b in lora_pairs(configs):
+        if what != "efecto_lora":
+            continue
+        vals = values(what, a, b)
+        if not vals:
+            continue
+        prefix = a.split("_")[0]
+        effect = sum(vals) / len(vals)
+        control = controls.get(prefix)
+        if control is None:
+            verdict = "sin controles propios"
+        elif effect > ratio * control and effect > 0.5:
+            verdict = "el LoRA cambia la imagen"
+        else:
+            verdict = "inconcluso"
+        verdicts[prefix] = {"effect": effect, "effect_min": min(vals), "effect_max": max(vals),
+                            "control_max": control, "verdict": verdict}
+    return verdicts
 
 
 def _demo_product(size=(1024, 768)):

@@ -105,10 +105,10 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 
 ## Hito 5 — Fine-tuning LoRA (Colab Pro de Pedro; Kaggle de respaldo)
 
-- [ ] Smoke test sobre SDXL base: entrenamiento corto, exportación, recarga e inferencia con el pipeline de inpainting (ADR-004).
-- [ ] Confirmar con Pedro cuántas unidades de Colab Pro quedan y cuándo vencen.
+- [x] Smoke test sobre SDXL base: entrenamiento corto en Colab, exportación, recarga e inferencia con los pipelines de inpainting de cuatro y nueve canales, verificada en Modal (2026-11-14, `docs/05`). Faltan memoria y latencia del lote completo con LoRA.
+- [ ] Confirmar con Pedro cuándo vencen sus unidades de Colab Pro (217.84 el 2026-11-14; la L4 gasta 1.94 por hora).
 - [ ] Checkpoints reanudables y exportación de pesos versionados a un repositorio privado de Hugging Face Hub, con manifiesto (ADR-009).
-- [ ] Inferencia con LoRA y comparación de memoria/estilos, evaluando cada estilo por separado.
+- [ ] Inferencia con LoRA y comparación de memoria/estilos, evaluando cada estilo por separado. El backend ya carga el adaptador (`attach_lora`; modo avanzado con `lora_scale`, intermedio con peso 0 en el mismo pipeline); falta que el worker HTTP lo cargue desde `LORA_ADAPTER_URI`.
 
 ## Hito 6 — Despliegue en Modal y piezas intercambiables (ADR-009)
 

@@ -183,6 +183,27 @@ Para el modo avanzado, si se adopta nueve canales, hay dos caminos: cargar el Lo
 
 **Lo que no:** en nueve canales el LoRA casi no cambia la imagen, y la prueba no permite saber por qué. La imagen de verificación es una taza sintética sobre fondo liso, y con `strength` 0.85 ese modelo tiende a conservar la composición original; también es posible que el LoRA se transfiera débilmente, porque los pesos del UNet de nueve canales son distintos. Que `set_adapters` con peso 0 no apague el LoRA, o que el UNet de nueve canales no use esas capas, no tiene respaldo en el código de diffusers 0.31 y peft 0.13.2. El umbral de 0.5/255 del smoke test es heurístico. La verificación sigue en Modal, donde se servirá (ADR-009): con controles de repetibilidad (LoRA apagado dos veces), fotos con fondo texturizado y `strength` 0.85, 0.99 y 1.0.
 
+### Verificación del LoRA en Modal (2026-11-14, corrida `lora_check`)
+
+`PYTHONPATH=backend modal run --detach deploy/modal/worker.py::lora_check --adapter data/lora/20261114-121343-smoke/pytorch_lora_weights.safetensors`, desde el commit limpio `d71cdf1`. El mismo adaptador del smoke test (sha256 `a16c35b6…`) cargado con `SdxlInpaintBackend.attach_lora` en la clase `Lab`, con las cuatro fotos de los experimentos (fondos con textura), estudio y lifestyle, semilla base 500: 12 configuraciones, 96 imágenes. Carga comprobada en ambos UNet: 560 capas y 1120 tensores, sin faltantes, error relativo máximo 2.4e-5 (torch 2.5.1, diffusers 0.31.0, peft 0.13.2).
+
+| Diferencia media del fondo (0 a 255), n = 8 | A: cuatro canales, 0.99 | G: nueve canales, 0.85 | F: nueve canales, 0.99 | K: nueve canales, 1.0 |
+|---|---|---|---|---|
+| Control: cargar el LoRA con peso 0 frente a sin LoRA | 0.94 (máx. 2.23) | 0.17 (máx. 0.23) | | |
+| Control: repetir peso 0 | 0.00 | 0.00 | | |
+| **Efecto del LoRA (peso 0 frente a 1)** | **13.3** (10.1 a 16.9) | **2.6** (1.0 a 3.9) | **6.2** (1.1 a 19.1) | **9.2** (3.8 a 16.1) |
+| Cambio frente al fondo de la foto original | 46 | 19 | 29 | 47 |
+
+- **El LoRA entrenado sobre SDXL base cambia la imagen en el UNet de nueve canales** con estas fotos. En A y G el efecto medio supera más de tres veces el mayor valor de sus controles; F y K no tienen controles propios (los de A son de otro checkpoint), aunque su efecto es del mismo orden.
+- El efecto medio en nueve canales crece con `strength`, igual que el cambio frente a la foto, pero no en cada imagen (G < F < K en 5 de los 8 pares). Con `strength` 1.0 la misma semilla no garantiza el mismo ruido inicial que con 0.99 (diffusers omite una codificación previa), así que F y K no son pares exactos entre sí; sí lo son el LoRA en 0 y en 1 dentro de cada configuración.
+- El resultado de Colab (0.15/255) queda compatible con una dependencia de la entrada (fondo liso) y del anclaje, pero su causa no está aislada: entre ambas corridas cambiaron imagen, máscara, semilla y versión de torch.
+- Cargar el adaptador con peso 0 no es exactamente neutro (0.94/255 en A), aunque es pequeño frente al efecto. Por eso el modo intermedio debe correr en el mismo pipeline con el LoRA en peso 0, como hace el backend, y no en un pipeline sin adaptador: así la comparación de `docs/06` solo cambia la escala del LoRA.
+- A la vista, el LoRA cambia detalles (accesorios del fondo, una ventana, la forma de un objeto) sin un cambio de estilo claro: es esperable con 100 pasos sobre 20 imágenes generadas. Si mejora la estética se mide con el dataset real y la evaluación de `docs/06`; el tamaño del cambio en píxeles no dice si es mejor.
+
+La app estuvo viva 41 minutos (12:50 a 13:31): la subida del adaptador con `modal volume put` tardó unos 6 minutos antes de pedir la GPU, y la generación sumó unos 16. El costo de GPU no está verificado; con unos 30 minutos de contenedor serían cerca de USD 0.40, por encima de los USD 0.30 estimados. Al terminar no quedó ningún contenedor.
+
+**Estado de P4:** compatibilidad de carga e inferencia demostrada en ambos UNet, con efecto observable. Faltan: memoria y latencia del lote completo de cinco estilos con el LoRA, que el worker HTTP cargue el adaptador (`LORA_ADAPTER_URI`, hoy arranca sin él) y la evaluación estética. Elegir `strength` sigue dependiendo del estilo y la integración, no del tamaño del efecto.
+
 Costo esperado: unas 20 h de L4 para todo el proyecto (desarrollo, prueba con 10 usuarios, ensayos y demo) a cerca de USD 0.80 por hora, dentro de los USD 30 gratis de un mes. Es una estimación: el smoke test medirá el costo real por lote.
 
 ## Alternativa: GCP
