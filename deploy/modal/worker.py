@@ -159,7 +159,7 @@ class Lab:
 
     @modal.method()
     def experiment(self, cases: list[dict], configs: dict[str, dict], styles: list[str],
-                   seeds: list[int], run_id: str) -> dict:
+                   seeds: list[int], run_id: str, code_version: dict | None = None) -> dict:
         """Expansión de silueta: fotos generadas por SDXL, máscara de rembg y varias mitigaciones.
 
         Las fotos de producto las genera el propio SDXL (texto a imagen), así no se usan
@@ -169,6 +169,7 @@ class Lab:
         """
         import dataclasses
         import gc
+        import hashlib
         import importlib.metadata as md
 
         import torch
@@ -177,8 +178,9 @@ class Lab:
 
         from productshot.config import Settings
         from productshot.domain import Mode, Style
-        from productshot.services.generation import GenerationRequest, VariationSpec
+        from productshot.services.generation import GenerationRequest, VariationSpec, build_prompt
         from productshot.services.guardrails import enforce_fidelity
+        from productshot.services.presets import NEGATIVE_PROMPT
 
         def png(img, side=None) -> bytes:
             img = img.copy()
@@ -190,6 +192,10 @@ class Lab:
 
         def binary(mask_l, keep_black=True):
             return mask_l.point(lambda v: 255 if (v < 128) == keep_black else 0)
+
+        def onnx_sha256(model: str) -> str | None:
+            path = Path(os.environ.get("U2NET_HOME", "")) / f"{model}.onnx"
+            return hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
 
         def check_channels(backend, expected: int) -> None:
             got = backend._pipe.unet.config.in_channels
@@ -218,8 +224,17 @@ class Lab:
             "params": dataclasses.asdict(base),
             "configs": configs, "styles": styles, "seeds": seeds, "cases": cases,
             "seed_rule": "la variación i (0, 1, ...) de cada lote usa seed + i",
-            "packages": {p: md.version(p) for p in ("torch", "diffusers", "transformers", "rembg")},
+            "packages": {p: md.version(p) for p in ("torch", "diffusers", "transformers", "rembg", "onnxruntime")},
             "gpu": torch.cuda.get_device_name(0),
+            # Commit local y si había cambios sin commit (lo manda el entrypoint).
+            "code_version": code_version,
+            # Presets base; el prompt EFECTIVO de cada imagen (con prefijos o el de "composite")
+            # va en su fila de metrics.jsonl.
+            "preset_prompts": {st: build_prompt(Style(st), ()) for st in styles},
+            "negative_prompt": NEGATIVE_PROMPT,
+            "segmenter": {"model": self.segmenter.model, "sha256": onnx_sha256(self.segmenter.model)},
+            "metric": "expansion = expansion_px / area_px; expansion_px = primer plano de rembg en la "
+                      "imagen final dentro de la franja (MaxFilter 81 menos MaxFilter 9 de la máscara)",
         }
 
         def write_manifest() -> None:
@@ -249,21 +264,27 @@ class Lab:
             # Resolución completa: son la entrada de todas las configuraciones.
             save(f"{case['name']}__0_foto.png", png(photo))
             save(f"{case['name']}__1_mascara.png", png(mask))
+            save(f"{case['name']}__2_franja.png", png(prepared[-1]["band"]))
         cache.commit()
 
-        def record(p, cfg_name, style, seed, seed_base, generated, seconds):
+        def record(p, cfg_name, style, seed, seed_base, generated, seconds, prompt, negative_prompt):
             """`seed` es la semilla REAL de esta imagen; `seed_base`, la del lote (seed + i)."""
             final, fid = enforce_fidelity(p["photo"], p["mask"], generated, settings)
             fg = binary(self.segmenter.segment(final).mask)
             grown = ImageChops.multiply(fg, p["band"])
+            grown_px = sum(1 for v in grown.getdata() if v)
             row = {
                 "case": p["case"]["name"], "config": cfg_name, "style": style,
                 "seed": seed, "seed_base": seed_base,
-                "expansion": round(sum(1 for v in grown.getdata() if v) / p["area"], 3),
+                "expansion": round(grown_px / p["area"], 3),
+                "expansion_px": grown_px, "area_px": p["area"],
                 "drift": fid["protected_mean_abs_diff"], "seconds": seconds,
+                "prompt": prompt, "negative_prompt": negative_prompt,  # los efectivos de esta imagen
             }
             image_name = f"{row['case']}__{cfg_name}__{style}__s{seed}.png"
-            save(image_name, png(final, side=512))  # miniatura para revisar; la entrada va completa
+            # Resolución completa, más la segmentación final: la métrica se puede recalcular.
+            save(image_name, png(final))
+            save(image_name.replace(".png", "__fg.png"), png(fg))
             with open(run_dir / "metrics.jsonl", "a", encoding="utf-8") as fh:
                 fh.write(json.dumps({**row, "image": image_name}, ensure_ascii=False) + "\n")
             p["entry"]["results"].append(row)
@@ -302,18 +323,17 @@ class Lab:
                             VariationSpec(position=i + 1, style=Style(st), seed=seed + i) for i, st in enumerate(styles)
                         )
                         if engine == "composite":
-                            from productshot.services.generation import build_prompt
-
                             for spec in specs:
                                 t0 = time.perf_counter()
+                                bg_prompt = build_prompt(spec.style, ()) + ", empty surface in the center, nothing on it"
+                                bg_negative = "product, object, mug, bottle, vase, box, people, text, watermark"
                                 bg = t2i(
-                                    prompt=build_prompt(spec.style, ()) + ", empty surface in the center, nothing on it",
-                                    negative_prompt="product, object, mug, bottle, vase, box, people, text, watermark",
+                                    prompt=bg_prompt, negative_prompt=bg_negative,
                                     width=1024, height=768, num_inference_steps=30,
                                     generator=torch.Generator("cuda").manual_seed(spec.seed),
                                 ).images[0].resize(p["photo"].size)
                                 record(p, cfg_name, spec.style.value, spec.seed, seed, bg,
-                                       round(time.perf_counter() - t0, 2))
+                                       round(time.perf_counter() - t0, 2), bg_prompt, bg_negative)
                         else:
                             backend = nine if engine == "nine" else self.backend
                             params = dataclasses.replace(backend.params if engine == "nine" else base, **cfg)
@@ -330,7 +350,8 @@ class Lab:
                             seed_of = {s.position: s.seed for s in specs}
                             for art in arts:
                                 record(p, cfg_name, art.style.value, seed_of[art.position], seed,
-                                       art.image, art.params["seconds"])
+                                       art.image, art.params["seconds"],
+                                       art.params["prompt"], art.params["negative_prompt"])
                         cache.commit()  # cada lote queda a salvo en el volumen
         except BaseException:
             failed = True
@@ -398,6 +419,13 @@ EXPERIMENT_SETS = {
         "F_nueve_canales": {"engine": "nine"},
         "G_nueve_strength_085": {"engine": "nine", "strength": 0.85},
     },
+    # 2026-11-14: completa la corrida "nueve", que se cortó en F. Repite A en la misma corrida
+    # para comparar pares (mismas fotos, máscaras y semillas) con el manifiesto nuevo.
+    "nueve_completo": {
+        "A_base": {},
+        "F_nueve_canales": {"engine": "nine"},
+        "G_nueve_strength_085": {"engine": "nine", "strength": 0.85},
+    },
 }
 
 
@@ -414,7 +442,22 @@ def experiment(config_set: str = "nueve", styles: str = "studio,lifestyle", seed
     print(f"RUN_ID={run_id}", flush=True)
     style_list = [s.strip() for s in styles.split(",") if s.strip()]
     seed_list = [int(x) for x in seeds.split(",") if x.strip()]
-    Lab().experiment.remote(EXPERIMENT_CASES, configs, style_list, seed_list, run_id)
+    import subprocess
+
+    def git(*args: str) -> str:
+        return subprocess.run(["git", *args], capture_output=True, text=True, cwd=ROOT, check=True).stdout
+
+    try:
+        dirty = bool(git("status", "--porcelain").strip())
+        code_version = {
+            "commit": git("rev-parse", "HEAD").strip(),
+            "dirty": dirty,
+            # Con cambios sin commit, el diff permite reconstruir el código de la corrida.
+            "diff": git("diff", "HEAD") if dirty else None,
+        }
+    except (OSError, subprocess.CalledProcessError) as exc:
+        code_version = {"commit": None, "dirty": None, "error": f"git no disponible: {exc}"}
+    Lab().experiment.remote(EXPERIMENT_CASES, configs, style_list, seed_list, run_id, code_version)
     collect(run_id)
 
 
