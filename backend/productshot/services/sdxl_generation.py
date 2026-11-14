@@ -25,6 +25,8 @@ from productshot.services.presets import NEGATIVE_PROMPT
 log = logging.getLogger(__name__)
 
 DEFAULT_MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
+# UNet entrenado para inpainting (nueve canales de entrada). Candidato de P4, en evaluación.
+NINE_CHANNEL_MODEL_ID = "diffusers/stable-diffusion-xl-1.0-inpainting-0.1"
 
 
 @dataclass(frozen=True)

@@ -88,6 +88,61 @@ Hallazgo de calidad: con el producto sintético, el modelo **prolonga la silueta
 
 Conclusiones, con la cautela de 8 imágenes por configuración y una semilla: **ninguna mitigación sencilla resuelve la expansión con el UNet de cuatro canales**; nombrar el producto en el prompt la empeora en estudio, y el margen la cambia por un halo. Siguiente experimento: el UNet de inpainting de nueve canales (`diffusers/stable-diffusion-xl-1.0-inpainting-0.1`, P4) y, como referencia, generar el fondo sin producto y componer encima. Si el de nueve canales gana con claridad, hay que revisar ADR-004 (el LoRA se entrena sobre SDXL base). `rembg` separa bien la taza y el frasco, pero en el jarrón incluyó las flores y un cuenco aparte (G13 cuenta componentes y avisa). Las imágenes quedan en `data/experiments/expansion/` (no versionado); el experimento costó unos 15 minutos de L4.
 
+### UNet de nueve canales y fondo compuesto (2026-11-14)
+
+`PYTHONPATH=backend modal run --detach deploy/modal/worker.py::experiment --config-set nueve`, con las mismas cuatro fotos, dos semillas (500 y 900) y los estilos estudio y lifestyle. La corrida llegó al tope de 15 minutos de la función cuando iba por el UNet de nueve canales: base, `strength` 0.85 y fondo compuesto quedaron completos (16 imágenes cada uno) y el de nueve canales con 6 (taza y jarrón). Desde entonces cada resultado se guarda en el volumen apenas sale y el tope es de 60 minutos.
+
+| Configuración | Expansión media (n) | Mismo subconjunto que nueve canales (n = 6) | Lo que se ve |
+|---|---|---|---|
+| A: base, cuatro canales | 0.117 (16) | 0.104 | Siluetas extra y objetos pegados detrás del producto |
+| D: `strength` 0.85 | 0.091 (16) | 0.114 | Igual que A; a veces una tapa u objeto detrás |
+| H: fondo generado sin producto y producto pegado encima | 0.005 (16) | 0.008 | Sin expansión por construcción, pero **el producto flota**: sin contacto ni sombra, con la perspectiva de la mesa equivocada |
+| F: UNet de nueve canales (`diffusers/stable-diffusion-xl-1.0-inpainting-0.1`) | 0.054 (6) | 0.054 | Taza: sin siluetas extra y con sombra creíble. Jarrón: el cuerpo no se duplica, pero **el ramo crece** más allá de su contorno original |
+| G: nueve canales con `strength` 0.85 | No se corrió | | |
+
+Por producto, la media esconde resultados opuestos:
+
+| Caso | A: base | F: nueve canales |
+|---|---|---|
+| Taza (2 estilos × 2 semillas) | 0.160, 0.134, 0.122, 0.033 | 0.000, 0.001, 0.015, 0.003 |
+| Jarrón (2 estilos, solo el lote con semilla base 500) | 0.069, 0.107 | 0.144, 0.162 |
+
+En la taza, nueve canales gana con claridad. En el jarrón pierde: la métrica sube y a la vista el ramo de flores se extiende hacia los lados y hacia arriba. La máscara de `rembg` incluye las flores, así que ese crecimiento también es expansión del "producto". Con dos productos, imágenes generadas por el mismo SDXL y una o dos semillas, la diferencia es descriptiva, no concluyente.
+
+Problemas de esta corrida, corregidos después en `worker.py`: la semilla registrada en `lifestyle` era la del lote y no la real (`seed + 1`: las imágenes marcadas `s500` y `s900` usaron 501 y 901); las fotos y máscaras se guardaron reducidas a 512 px; los SHA de los checkpoints solo se escribían al terminar, así que **no quedó registrada la revisión del UNet de nueve canales** usada aquí, y la de la base se supone igual a la de la prueba de humo (`4621659…`) pero ningún archivo de esta corrida lo confirma; y el experimento dejaba el pipeline base en CPU dentro del mismo contenedor que sirve la API. Ahora los experimentos corren en una clase aparte (`Lab`), siempre sobre SDXL base (verifica cuatro y nueve canales), escriben `manifest.json` antes de generar, guardan entrada a resolución completa y la semilla real de cada imagen, e intentan devolver la base a la GPU en un `finally` (si eso falla, el contenedor se descarta al apagarse).
+
+### Nueve canales completo (2026-11-14, corrida `nueve_completo`)
+
+`PYTHONPATH=backend modal run --detach deploy/modal/worker.py::experiment --config-set nueve_completo`: A, F y G sobre los cuatro casos, estilos estudio y lifestyle, semillas base 500 y 900 (n = 16 por configuración). Primera corrida con la clase `Lab` y `manifest.json`: SDXL base `462165984030d82259a11f4367a4eed129e94a7b`, nueve canales `115134f363124c53c7d878647567d04daf26e41e`, torch 2.5.1, diffusers 0.31.0, L4. Reproducible: A coincide en 16 de 16 imágenes con la corrida anterior y F en las 6 que ya existían. La app estuvo viva 28 minutos (10:21 a 10:49; el inpainting suma 7.8 min y el resto, sin medir por separado, incluye generar las fotos, cargar los modelos, `rembg` en CPU, guardar y bajar los resultados), así que la GPU costó cerca de USD 0.37 si la L4 estuvo activa todo ese intervalo; Modal también cobra CPU y memoria, y el costo total no está verificado en la facturación. Al terminar no quedó ningún contenedor (`modal container list`).
+
+| Caso (media de 4) | A: base, cuatro canales, 0.99 | F: nueve canales, 0.99 | G: nueve canales, 0.85 |
+|---|---|---|---|
+| Taza | 0.112 | 0.005 | 0.019 |
+| Jarrón (con flores) | 0.108 | 0.194 | 0.102 |
+| Frasco blanco | 0.123 | 0.225 | 0.042 |
+| Caja con texto | 0.123 | 0.062 | 0.051 |
+| **Media (mediana)** | 0.117 (0.118) | 0.122 (0.070) | 0.054 (0.055) |
+| Pares que gana frente a A | | 9 de 16 | 13 de 16 |
+
+Contra D de la corrida anterior (cuatro canales con el mismo `strength` 0.85, media 0.091), G gana 12 pares, empata 1 y pierde 3; en el jarrón queda un poco peor (0.102 frente a 0.097). Bajar `strength` no explica toda la mejora, pero G cambia el checkpoint completo, no solo la capa de entrada: la ventaja es del **checkpoint de inpainting**, no se puede atribuir solo a los canales.
+
+Lo que se ve en las grillas:
+
+- **F es irregular:** bien en la taza y la caja, pero en lifestyle llena la escena de objetos pegados al producto (frasco, 0.52) y en el jarrón agranda mucho el ramo.
+- **G integra mejor en estos ejemplos:** la caja y el frasco se apoyan en la superficie con sombra y sin siluetas extra. El ramo del jarrón todavía crece.
+- **A inventa escenas que no cuadran con el producto:** el frasco acostado en diagonal delante de un estudio con focos, la caja que parece flotar delante de trípodes. F y G conservaron mejor el ángulo y la superficie en estos casos (observación, no propiedad general).
+- **G pierde estilo:** conserva más del fondo original, y en la taza sus dos imágenes "estudio" son interiores domésticos en vez del fondo gris continuo del preset. Es el costo de bajar `strength`.
+
+Límites: la métrica cuenta cualquier primer plano en la franja (también objetos ajenos y pliegues de tela) y **no penaliza conservar el fondo original**, así que favorece justo el comportamiento conservador de G. Es un indicador auxiliar hasta contrastarlo con anotación humana. Son cuatro productos sintéticos con observaciones repetidas, no 16 independientes, y la máscara del jarrón protege también las flores y un cuenco separado. Estas imágenes son de desarrollo: sirven para elegir parámetros y no pueden usarse en la evaluación final (`06_EVALUACION_Y_ETICA.md`). Esta corrida guardó las salidas a 512 px y sin la segmentación final. El código actualizado guardará en las próximas corridas las salidas a resolución completa, la segmentación final, la franja, numerador y denominador de la métrica, el prompt efectivo de cada imagen, el checksum del modelo de `rembg`, y el commit del código con su diff si había cambios sin commit.
+
+**Estado:** el candidato es el checkpoint de inpainting de nueve canales con `strength` 0.85 (G), no F. Sigue siendo candidato, no decisión. Antes de proponer el cambio de P3 y ADR-004 falta:
+
+1. Medir el cumplimiento del estilo, que G puede estar sacrificando: revisión ciega como medida principal y CLIP solo como apoyo calibrado contra ella (cada imagen contra las cinco descripciones de estilo). Probar `strength` intermedio (0.9 o 0.95) para buscar el punto entre no expandir y cumplir el estilo.
+2. Repetir A, D, F y G con fotos caseras reales de los casos obligatorios y los cinco estilos, evaluando por separado estilo, contacto y sombras, expansión y fidelidad (asa, logotipo, texto). El caso mate debe ser un objeto sencillo, sin flores.
+3. Demostrar en el smoke test del LoRA (P4) entrenamiento breve, exportación, recarga e inferencia del adaptador sobre nueve canales, con memoria y latencia del lote completo. Si no carga, el cambio de checkpoint no se puede hacer en ambos modos.
+
+Para el modo avanzado, si se adopta nueve canales, hay dos caminos: cargar el LoRA entrenado sobre SDXL base (el script oficial lo aplica solo en las proyecciones de atención, que tienen la misma forma; pero los pesos del UNet de nueve canales siguen entrenados aparte, así que la compatibilidad se demuestra en el smoke test, no se supone) o entrenarlo sobre el UNet de nueve canales con objetivo de inpainting (más trabajo). Ambos modos deben usar el mismo checkpoint para que la comparación aísle el LoRA.
+
 Costo esperado: unas 20 h de L4 para todo el proyecto (desarrollo, prueba con 10 usuarios, ensayos y demo) a cerca de USD 0.80 por hora, dentro de los USD 30 gratis de un mes. Es una estimación: el smoke test medirá el costo real por lote.
 
 ## Alternativa: GCP
@@ -110,7 +165,7 @@ Documentación: https://docs.cloud.google.com/run/docs/configuring/services/gpu 
 
 - Las alertas de presupuesto **no apagan nada**: en GCP hace falta una función que desactive la facturación al pasar el tope; en Modal, el límite de gasto de la cuenta.
 - Nunca dejar contenedores o instancias mínimas encendidas fuera de una demo.
-- Máximo de un worker con GPU a la vez y endpoints protegidos, para que nadie genere en masa.
+- Máximo de un worker con GPU a la vez y endpoints protegidos, para que nadie genere en masa. En Modal, `Worker` (API) y `Lab` (experimentos) son clases distintas con un contenedor como máximo cada una: no lanzar experimentos durante una demo, un ensayo o la prueba con usuarios, para no tener dos GPU encendidas a la vez.
 - Cachear pesos en un volumen o en la imagen; no descargarlos en cada solicitud.
 
 ## Secretos e identidad
