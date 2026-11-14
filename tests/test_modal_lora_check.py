@@ -69,7 +69,7 @@ def test_background_diff_ignores_the_product():
     assert d["mean"] == round(30 / 7, 3) and d["frac_gt10"] == round(1 / 7, 4)
 
 
-def test_verdict_requires_effect_well_above_controls():
+def test_verdict_requires_effect_well_above_own_controls():
     ns = load_pure("lora_pairs", "lora_verdicts")
     configs = ["A_sin_lora", "A_lora0", "A_lora0_bis", "A_lora1", "K_lora0", "K_lora1"]
 
@@ -78,13 +78,14 @@ def test_verdict_requires_effect_well_above_controls():
 
     out = [
         pair("cargar_con_peso_0", "A_sin_lora", "A_lora0", 0.05),
-        pair("repetir_peso_0", "A_lora0", "A_lora0_bis", 0.10),
+        pair("cargar_con_peso_0", "A_sin_lora", "A_lora0", 2.0),  # el máximo individual manda
+        pair("repetir_peso_0", "A_lora0", "A_lora0_bis", 0.0),
         pair("efecto_lora", "A_lora0", "A_lora1", 8.0),
-        pair("efecto_lora", "K_lora0", "K_lora1", 0.2),  # sin controles propios: usa los de A
+        pair("efecto_lora", "K_lora0", "K_lora1", 9.0),
     ]
     v = ns["lora_verdicts"](out, configs)
-    assert v["A"]["verdict"] == "el LoRA cambia la imagen" and v["A"]["own_controls"]
-    assert v["K"]["verdict"] == "inconcluso" and v["K"]["control"] == 0.10 and not v["K"]["own_controls"]
-    # Si los controles son comparables al efecto, no se concluye nada.
-    out[1] = pair("repetir_peso_0", "A_lora0", "A_lora0_bis", 4.0)
+    assert v["A"]["verdict"] == "el LoRA cambia la imagen" and v["A"]["control_max"] == 2.0
+    # K no hereda los controles de A: otro checkpoint.
+    assert v["K"]["verdict"] == "sin controles propios" and v["K"]["control_max"] is None
+    out[3] = pair("efecto_lora", "A_lora0", "A_lora1", 5.0)  # 5 < 3 × 2
     assert ns["lora_verdicts"](out, configs)["A"]["verdict"] == "inconcluso"

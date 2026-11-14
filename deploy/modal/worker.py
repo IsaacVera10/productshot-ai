@@ -706,38 +706,46 @@ def summarize_lora(run_dir: Path, rows: list[dict]) -> None:
         vals = [o["mean"] for o in out if o["measure"] == "cambio_frente_a_la_foto" and o["b"] == cfg]
         print(f"  {cfg:14s} {sum(vals) / len(vals):.2f}")
     for prefix, v in verdicts.items():
-        print(f"  {prefix}: {v['verdict']} (efecto {v['effect']:.3f}, control máx. {v['control']:.3f})")
+        ctrl = "sin control propio" if v["control_max"] is None else f"control máx. {v['control_max']:.3f}"
+        print(f"  {prefix}: {v['verdict']} (efecto medio {v['effect']:.3f}, rango {v['effect_min']:.3f} a "
+              f"{v['effect_max']:.3f}, {ctrl})")
 
 
 def lora_verdicts(out: list[dict], configs: list[str], ratio: float = 3.0) -> dict:
-    """Por motor: el efecto del LoRA solo es concluyente si supera `ratio` veces al mayor control.
+    """Por motor: el efecto del LoRA solo es claro si su media supera `ratio` veces el MAYOR
+    valor individual de sus propios controles (cargar con peso 0 y repetir peso 0).
 
-    Controles: cargar con peso 0 frente a sin LoRA, y repetir peso 0 (repetibilidad). Si un motor
-    no tiene controles propios, usa el mayor control de los demás (mismo pipeline de inferencia).
+    Un motor sin controles propios queda "sin controles propios": los de otro checkpoint no
+    sirven de referencia. Es una heurística agregada, no una prueba de significación.
     """
-    def mean_of(what: str, a: str, b: str) -> float | None:
-        vals = [o["mean"] for o in out if o["measure"] == what and o["a"] == a and o["b"] == b]
-        return sum(vals) / len(vals) if vals else None
+    def values(what: str, a: str, b: str) -> list[float]:
+        return [o["mean"] for o in out if o["measure"] == what and o["a"] == a and o["b"] == b]
 
-    controls = {}
+    controls: dict[str, float] = {}
     for what, a, b in lora_pairs(configs):
         if what != "efecto_lora":
-            m = mean_of(what, a, b)
-            if m is not None:
-                controls[a.split("_")[0]] = max(controls.get(a.split("_")[0], 0.0), m)
-    fallback = max(controls.values()) if controls else None
+            vals = values(what, a, b)
+            if vals:
+                prefix = a.split("_")[0]
+                controls[prefix] = max(controls.get(prefix, 0.0), max(vals))
     verdicts = {}
     for what, a, b in lora_pairs(configs):
         if what != "efecto_lora":
             continue
-        prefix = a.split("_")[0]
-        effect = mean_of(what, a, b)
-        control = controls.get(prefix, fallback)
-        if effect is None or control is None:
+        vals = values(what, a, b)
+        if not vals:
             continue
-        ok = effect > ratio * control and effect > 0.5
-        verdicts[prefix] = {"effect": effect, "control": control, "own_controls": prefix in controls,
-                            "verdict": "el LoRA cambia la imagen" if ok else "inconcluso"}
+        prefix = a.split("_")[0]
+        effect = sum(vals) / len(vals)
+        control = controls.get(prefix)
+        if control is None:
+            verdict = "sin controles propios"
+        elif effect > ratio * control and effect > 0.5:
+            verdict = "el LoRA cambia la imagen"
+        else:
+            verdict = "inconcluso"
+        verdicts[prefix] = {"effect": effect, "effect_min": min(vals), "effect_max": max(vals),
+                            "control_max": control, "verdict": verdict}
     return verdicts
 
 
