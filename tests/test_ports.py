@@ -224,3 +224,60 @@ def test_secrets_are_not_exposed(tmp_path, make_client):
     assert "secreto" not in repr(s)
     health = make_client().get("/api/v1/healthz").text
     assert "secreto" not in health and "http" not in health
+
+
+# --- segmentación por el worker ---
+
+
+def remote_segmenter(segmenter=None, *, token: str | None = TOKEN):
+    from productshot.services.remote_segmentation import RemoteSegmentationService
+    from productshot.services.segmentation import MockSegmentationService
+
+    app = create_worker_app(MockGenerationBackend(), token=TOKEN, segmenter=segmenter or MockSegmentationService())
+    client = httpx.Client(base_url="http://worker", transport=worker_transport(app))
+    return RemoteSegmentationService("http://worker", token=token, client=client)
+
+
+def test_remote_segmentation_through_the_worker(make_client):
+    seg = remote_segmenter()
+    assert seg.simulated is True  # el worker declara su segmentador mock
+    client = make_client(segmenter=seg)
+    s = ready_session(client)
+    assert s["mask"]["simulated"] is True and s["mask"]["source"] == "auto"
+
+
+def test_real_segmenter_mask_is_marked_not_simulated(make_client):
+    from productshot.services.segmentation import MaskResult
+
+    class Real:
+        name, simulated = "fake-real", False
+
+        def segment(self, image):
+            mask = Image.new("L", image.size, 255)
+            mask.paste(0, (image.width // 4, image.height // 4, 3 * image.width // 4, 3 * image.height // 4))
+            return MaskResult(mask=mask, simulated=False)
+
+    client = make_client(segmenter=remote_segmenter(Real()))
+    sid = create_session(client).json()["id"]
+    body = client.post(f"/api/v1/sessions/{sid}/segment").json()
+    assert body["mask"]["simulated"] is False
+
+
+def test_worker_without_segmenter_gives_503(make_client):
+    from productshot.services.remote_segmentation import RemoteSegmentationService
+
+    app = create_worker_app(MockGenerationBackend(), token=TOKEN)  # sin segmentador
+    seg = RemoteSegmentationService("http://worker", token=TOKEN,
+                                    client=httpx.Client(base_url="http://worker", transport=worker_transport(app)))
+    client = make_client(segmenter=seg)
+    sid = create_session(client).json()["id"]
+    r = client.post(f"/api/v1/sessions/{sid}/segment")
+    assert r.status_code == 503 and "no ofrece segmentación" in r.json()["error"]["message"]
+    assert client.get(f"/api/v1/sessions/{sid}").json()["status"] == "UPLOADED"
+
+
+def test_remote_segmentation_requires_worker_url(tmp_path):
+    from productshot.composition import build_segmenter
+
+    with pytest.raises(ConfigError, match="GENERATION_WORKER_URL"):
+        build_segmenter(_settings(tmp_path, segmentation_backend="remote"))

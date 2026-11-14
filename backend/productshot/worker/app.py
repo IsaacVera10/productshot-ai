@@ -16,15 +16,19 @@ import logging
 from fastapi import FastAPI, Header, HTTPException
 
 from productshot.services.generation import GenerationBackend, GenerationRequest, VariationSpec
+from productshot.services.segmentation import SegmentationService
 from productshot.worker.contract import (
     CONTRACT_VERSION,
     GENERATE_PATH,
     HEALTH_PATH,
+    SEGMENT_PATH,
     ArtifactOut,
     ContractError,
     GenerateIn,
     GenerateOut,
     HealthOut,
+    SegmentIn,
+    SegmentOut,
     decode_png,
     encode_png,
 )
@@ -32,7 +36,9 @@ from productshot.worker.contract import (
 log = logging.getLogger(__name__)
 
 
-def create_worker_app(backend: GenerationBackend, token: str | None = None) -> FastAPI:
+def create_worker_app(
+    backend: GenerationBackend, token: str | None = None, segmenter: SegmentationService | None = None
+) -> FastAPI:
     app = FastAPI(title="ProductShot AI worker", version=CONTRACT_VERSION, docs_url=None, redoc_url=None)
 
     def _check_auth(authorization: str | None) -> None:
@@ -43,7 +49,28 @@ def create_worker_app(backend: GenerationBackend, token: str | None = None) -> F
             raise HTTPException(status_code=401, detail="Token del worker inválido.")
 
     def _health() -> HealthOut:
-        return HealthOut(backend=backend.name, model_revision=backend.model_revision, simulated=backend.simulated)
+        return HealthOut(
+            backend=backend.name, model_revision=backend.model_revision, simulated=backend.simulated,
+            segmenter=segmenter.name if segmenter else None,
+            segmenter_simulated=segmenter.simulated if segmenter else None,
+        )
+
+    @app.post(SEGMENT_PATH, response_model=SegmentOut)
+    def segment(body: SegmentIn, authorization: str | None = Header(default=None)) -> SegmentOut:
+        _check_auth(authorization)
+        if segmenter is None:
+            raise HTTPException(status_code=404, detail="Este worker no segmenta.")
+        if body.contract_version != CONTRACT_VERSION:
+            raise HTTPException(status_code=409, detail=f"Versión de contrato no soportada: {body.contract_version}.")
+        try:
+            image = decode_png(body.image_png_b64, "RGB")
+        except ContractError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        result = segmenter.segment(image)
+        return SegmentOut(
+            segmenter=segmenter.name, simulated=result.simulated, mask_png_b64=encode_png(result.mask.convert("L")),
+            seconds=getattr(segmenter, "last_seconds", None),
+        )
 
     @app.get(HEALTH_PATH, response_model=HealthOut)
     def health(authorization: str | None = Header(default=None)) -> HealthOut:
@@ -98,6 +125,7 @@ def run() -> None:
 
     from productshot.config import Settings
     from productshot.services.generation import MockGenerationBackend
+    from productshot.services.segmentation import MockSegmentationService
 
     def sdxl():
         # Necesita torch y diffusers con CUDA (laptop con la RTX 4060 o cualquier GPU).
@@ -113,8 +141,20 @@ def run() -> None:
     name = os.environ.get("WORKER_BACKEND", "mock")
     if name not in backends:
         raise SystemExit(f"WORKER_BACKEND desconocido: {name!r}. Disponibles: {sorted(backends)}.")
+    def rembg():
+        # Necesita rembg y onnxruntime; corre en CPU o GPU.
+        from productshot.services.rembg_segmentation import RembgSegmentationService
+
+        segmenter = RembgSegmentationService()
+        segmenter.load()
+        return segmenter
+
+    segmenters = {"mock": MockSegmentationService, "rembg": rembg, "none": lambda: None}
+    seg_name = os.environ.get("WORKER_SEGMENTER", "mock")
+    if seg_name not in segmenters:
+        raise SystemExit(f"WORKER_SEGMENTER desconocido: {seg_name!r}. Disponibles: {sorted(segmenters)}.")
     token = settings.generation_worker_token.get_secret_value() if settings.generation_worker_token else None
-    app = create_worker_app(backends[name](), token=token)
+    app = create_worker_app(backends[name](), token=token, segmenter=segmenters[seg_name]())
     uvicorn.run(app, host=settings.worker_host, port=settings.worker_port)
 
 

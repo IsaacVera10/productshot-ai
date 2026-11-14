@@ -60,3 +60,19 @@ def test_works_behind_the_orchestrator(make_client):
     assert len(s["variations"]) == 5
     assert s["simulated"] is True  # la máscara sigue siendo la elipse simulada
     assert s["variations"][0]["generation"]["model_revision"].endswith("@abc123")
+
+
+def test_mitigation_knobs_change_prompt_and_mask():
+    pipe = FakePipe()
+    b = SdxlInpaintBackend(SdxlParams(steps=4, mask_blur=0, mask_dilate_px=5, prompt_prefix="a ceramic mug"),
+                           pipeline_factory=lambda p: (pipe, "abc"))
+    req = request()
+    mask = Image.new("L", (640, 480), 255)
+    mask.paste(0, (300, 200, 340, 280))
+    req = GenerationRequest(session_id="s", mode=req.mode, image=req.image, mask=mask, specs=req.specs)
+    arts = b.generate(req)
+    assert pipe.calls[0]["prompt"].startswith("a ceramic mug, ")
+    sent = pipe.calls[0]["mask_image"]
+    black = sum(1 for v in sent.getdata() if v == 0)
+    assert black > (40 * 1.6) * (80 * 1.6)  # el producto escalado a 1024 px, más el margen
+    assert arts[0].params["mask_dilate_px"] == 5
