@@ -78,7 +78,7 @@ Personas emprendedoras suben una foto casera de un artículo pequeño y obtienen
 
 **Niveles elegidos:** intermedio y avanzado. El modo `advanced` se presenta como modalidad utilizable y como experimento con pregunta propia: ¿entrenar un LoRA con estética comercial mejora las imágenes frente al modo intermedio?
 
-**Plan B:** si la docente no acepta el LoRA como nivel avanzado o este no resulta viable técnicamente, implementar básico + intermedio, que también cumple la regla de dos de tres enfoques. Que el LoRA no mejore los resultados no activa el plan B: es un resultado negativo que se reporta como evidencia.
+**Plan B:** si el LoRA no resulta viable técnicamente (el equipo decidió el 2026-11-14 no esperar una confirmación escrita de la docente), implementar básico + intermedio, que también cumple la regla de dos de tres enfoques. Que el LoRA no mejore los resultados no activa el plan B: es un resultado negativo que se reporta como evidencia.
 
 ## Objetivo de adaptación del LoRA
 
@@ -95,7 +95,7 @@ Se entrena un solo LoRA condicionado por captions que nombran el estilo, porque 
 | Evaluación de segmentación | Finegrain Product Masks Lite | No se usa para entrenar |
 | Prueba | Fotos caseras más los casos obligatorios de `04_ROADMAP_Y_TESTS.md` | Autorización que cubra las fotografías, no solo la propiedad del objeto |
 
-Si los permisos o el acceso a BG60k no se confirman, la alternativa es ABO + CommonCatalog, con más trabajo de curación. La selección se decidió por consenso del equipo (ADR-006).
+Si el acceso reproducible a BG60k no se confirma (los permisos de publicación no se consultan: es un trabajo académico), la alternativa es ABO + CommonCatalog, con más trabajo de curación. La selección se decidió por consenso del equipo (ADR-006).
 
 Los conjuntos no comparten productos, y las variantes casi duplicadas de un producto se agrupan en la misma partición. El análisis exploratorio se realiza en cualquier caso, porque el dataset es obligatorio. Si un estilo no tiene datos suficientes, el aprendizaje se limita a los estilos cubiertos: los demás se siguen generando con las capacidades del modelo preentrenado, y esa diferencia se declara.
 

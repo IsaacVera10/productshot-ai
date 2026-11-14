@@ -95,9 +95,9 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 
 ## Hito 4 — Dataset y análisis exploratorio
 
-- [ ] Revisar la respuesta docente a la propuesta; si no se acepta el LoRA, aplicar el plan B (ADR-002).
+- [x] Respuesta docente sobre el LoRA: el equipo decidió no esperarla (2026-11-14); el plan B (ADR-002) queda solo para inviabilidad técnica.
 - [ ] Definir el protocolo experimental antes de reservar el conjunto de prueba.
-- [ ] Consultar a los autores de BG60k sobre la publicación de ejemplos y de los pesos, y confirmar un acceso reproducible (ADR-006).
+- [ ] Confirmar un acceso reproducible a BG60k (ADR-006). No se consulta a sus autores por permisos: es un trabajo académico (decisión del 2026-11-14).
 - [ ] Inspeccionar una muestra estratificada y medir la cobertura por estilo; usar CommonCatalog solo ante un déficit demostrado, y ABO + CommonCatalog si BG60k no se confirma.
 - [ ] Filtrar por producto único, máscara íntegra, fondo visible, resolución y ausencia de collages, con OCR fuera del producto y revisión visual.
 - [ ] Definir la rúbrica de estilos y armar un piloto de 100–200 imágenes por estilo, con captions asistidos por BLIP y plantilla, revisados a mano.
