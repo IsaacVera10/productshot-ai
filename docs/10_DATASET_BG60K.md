@@ -132,3 +132,49 @@ Las hojas de contacto muestran la imagen junto a su superposición (fondo en mag
 - Antes de congelar la política se mide la cobertura por estilo, tanto de los candidatos aceptados como de los rechazados, por familia y por alerta, con revisión humana de ambos lados. Ninguna alerta leve se admite automáticamente.
 - `near` entra solo con tope fijado antes de seleccionar y declarado en el informe. `out` y `unclassified` quedan fuera.
 - Los topes del piloto se cuentan por familias de categorías, por ejemplo teléfonos nuevos y de segunda mano juntos, con un mapa versionado, y se comprueba que la mezcla de familias sea comparable entre estilos.
+
+## Etapas 4 y 5: embeddings en Colab
+
+La GPU de la laptop no se usa, para no recalentarla. El trabajo se reparte así:
+- **En la laptop:** se arma un paquete de imágenes reducidas.
+- **En el Colab Pro de Pedro:** se calculan los embeddings, con el mismo driver del LoRA, que garantiza un VM único, presupuesto de tiempo y apagado.
+- **De vuelta en la laptop:** se analizan los resultados.
+
+```bash
+uv run --group dataset python training/bg60k_pack.py
+PYTHONPATH=backend python training/run_colab.py --stage embed --pack data/bg60k/pack.tar --max-minutes 30
+```
+
+**Paquete** (`training/bg60k_pack.py`). Incluye todos los candidatos `core` y `near`, con y sin alertas, porque la cobertura por estilo se mide en aceptados y rechazados. Deja una copia por imagen repetida y registra el mapa de duplicados. Cada candidato lleva:
+- la foto completa a 224 px (Lanczos, JPEG 92), para CLIP;
+- solo los candidatos sin alertas: el recorte del producto sobre gris 128, con padding a cuadrado y sin recorte central, para DINOv2;
+- 128 originales de referencia, para comparar este preprocesado con el oficial de CLIP.
+
+La firma del preprocesado queda en `preprocess.json`: una corrida con otros parámetros no reutiliza archivos viejos. Las escrituras son atómicas, y al reanudar se valida cada JPEG.
+
+**Trabajo en el VM** (`training/colab_embed.py`):
+- **Entrada:** comprueba que el paquete coincida con el sha256 calculado en la laptop. Registra la revisión exacta (SHA) de `openai/clip-vit-large-patch14` y de `facebook/dinov2-base`, y las versiones de torch, transformers y Pillow del VM.
+- **CLIP:** usa las proyecciones del modelo directamente, para no depender de lo que devuelva `get_*_features` en cada versión de transformers. Las imágenes se procesan con autocast fp16 y el texto en fp32.
+- **Comprobaciones previas:** antes del lote completo prueba 64 imágenes (dimensiones, valores finitos, normas) y compara las 128 referencias contra sus originales.
+- **DINOv2:** normalización ImageNet manual sobre el recorte de 224, usando el `pooler_output`.
+- **Resultado:** guarda `clip.npz` antes de empezar DINOv2, para no perder CLIP si DINOv2 falla.
+
+El driver exige que `clip.npz`, `dino.npz` e `index.json` coincidan con su sha256. Además valida el contenido: ids iguales a los del índice y sin repetidos, dimensiones, valores finitos y normas.
+
+**Estilo** (`training/bg60k_style_prompts.toml`, revisado con Codex):
+- Tres paráfrasis por estilo, paralelas a los presets. Su prototipo es la media de los embeddings de texto normalizados, renormalizada.
+- `minimal` insiste en el espacio vacío y en la ausencia de accesorios, para separarse de un estudio claro.
+- `other` son subclases independientes (degradado, neón, negro puro, collage, póster, comida, salpicaduras). Funcionan como un veto calibrado por separado, más un umbral absoluto del mejor estilo, porque un margen alto no garantiza que algún estilo encaje.
+- CLIP solo propone el estilo. La decisión es humana y ciega.
+
+**Identidad:** DINOv2 base es el punto de partida. Su suficiencia se mide con pares difíciles: el mismo producto con cambios grandes, y productos distintos muy parecidos. Large se prueba sobre ese conjunto antes de recalcular todo. Las aristas por pHash también se calibran, porque pueden fusionar familias aunque DINOv2 esté bien.
+
+### Resultado de los embeddings (2026-11-15)
+
+Corrida `20261115-022838-embed` en una L4 del Colab Pro de Pedro: unos 8 minutos desde que se pidió el VM y **0,23 unidades** (de 217,61 a 217,38). El VM quedó liberado.
+
+- **Subida por partes.** El primer intento falló al subir el paquete (error 500), sin costo apreciable. El CLI de Colab 0.8.0 sube cada archivo en una sola petición JSON en base64, y 792 MB no pasan. Desde entonces el driver lo sube en partes de 32 MB y el VM las une y verifica el sha256.
+- **Entorno del VM:** torch 2.14.1+cu130, transformers 5.22.1 (la versión en la que `get_*_features` ya no devuelve un tensor, como anticipó Codex), Pillow 11.3.0 y Python 3.13.
+- **Modelos:** `openai/clip-vit-large-patch14@32bd64288804d66eefd0ccbe215aa642df71cc41` y `facebook/dinov2-base@f9e44c814b77203eaa57a6bdbbd535f21ede1415`.
+- **CLIP:** 29 600 fotos en 217 s. **DINOv2:** 18 602 recortes en 51 s. Ambos de 768 dimensiones, con valores finitos y normas entre 0,9999998 y 1,0000001.
+- **Preprocesado frente al oficial.** Se comparó el embedding CLIP de la foto reducida del paquete (Lanczos más JPEG 92) con el del PNG original pasado por el procesador oficial. En 128 referencias, el coseno dio media 0,949, percentil 5 de 0,915 y mínimo 0,866. La diferencia no es despreciable, y puede mover decisiones de estilo cercanas a un umbral. Esta corrida guardó solo los cosenos, no los embeddings de los originales: para medir si cambia el estilo asignado, la próxima corrida debe guardar ambos.

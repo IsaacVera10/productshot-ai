@@ -7,6 +7,7 @@ Colab Pro (`colab --auth=oauth2 whoami`).
     PYTHONPATH=backend python training/run_colab.py --stage smoke --dry-run   # solo muestra el plan
     PYTHONPATH=backend python training/run_colab.py --stage smoke             # gasta unidades
     PYTHONPATH=backend python training/run_colab.py --stage train --dataset-tar ds.tar --steps 1500
+    PYTHONPATH=backend python training/run_colab.py --stage embed --pack data/bg60k/pack.tar --max-minutes 30
     PYTHONPATH=backend python training/run_colab.py --cleanup                 # libera VM huérfanos
 
 Pasos: comprobar que la cuenta no tiene VM asignados -> `colab new --gpu L4` -> subir la
@@ -41,6 +42,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 JOB_SCRIPT = ROOT / "training" / "colab_job.py"
+EMBED_SCRIPT = ROOT / "training" / "colab_embed.py"
+STYLE_PROMPTS = ROOT / "training" / "bg60k_style_prompts.toml"
 REQUIREMENTS = ROOT / "training" / "requirements-colab.txt"
 ASSIGNMENTS = ROOT / "training" / "colab_assignments.py"
 
@@ -59,7 +62,12 @@ SMOKE_PRODUCTS = [
     "a matte black ceramic vase",
 ]
 
-RESERVE_S = 10 * 60  # para bajar el resultado y apagar después del trabajo
+CLIP_MODEL = "openai/clip-vit-large-patch14"
+DINO_MODEL = "facebook/dinov2-base"
+
+RESERVE_S = 10 * 60
+# El CLI sube cada archivo en una sola petición en base64: los grandes van en partes.
+PART_BYTES = 32 * 1024 * 1024  # para bajar el resultado y apagar después del trabajo
 
 
 class Failure(Exception):
@@ -68,11 +76,22 @@ class Failure(Exception):
 
 def build_config(stage: str, run_id: str, steps: int | None = None, rank: int = 16,
                  learning_rate: float = 1e-4, dataset_remote: str | None = None,
-                 deadline_unix: float | None = None) -> dict:
+                 deadline_unix: float | None = None, pack_sha256: str | None = None) -> dict:
     """Configuración que se sube como /content/job.json. Pura: se prueba sin Colab."""
     from productshot.domain import Style
     from productshot.services.presets import NEGATIVE_PROMPT, PRESETS
 
+    if stage == "embed":
+        import tomllib
+        return {
+            "run_id": run_id,
+            "stage": stage,
+            "deadline_unix": deadline_unix,
+            "pack_sha256": pack_sha256,
+            "models": {"clip": {"id": CLIP_MODEL, "revision": "main"},
+                       "dino": {"id": DINO_MODEL, "revision": "main"}},
+            "prompts": tomllib.loads(STYLE_PROMPTS.read_text(encoding="utf-8")),
+        }
     if stage not in ("smoke", "train"):
         raise ValueError(f"Etapa desconocida: {stage}")
     if stage == "train" and not dataset_remote:
@@ -133,6 +152,9 @@ def check_result(out_dir: Path, run_id: str) -> dict:
         raise Failure(f"El manifiesto es de otra corrida: {manifest.get('run_id')} != {run_id}")
     if manifest.get("status") != "ok":
         raise Failure(f"El trabajo remoto no terminó bien: {manifest.get('status')}")
+    if manifest.get("stage") == "embed":
+        check_embeddings(out_dir, manifest)
+        return manifest
     weights = out_dir / "pytorch_lora_weights.safetensors"
     if not weights.exists():
         raise Failure("Falta el adaptador: solo se recuperó el manifiesto.")
@@ -142,6 +164,47 @@ def check_result(out_dir: Path, run_id: str) -> dict:
     if manifest.get("config", {}).get("verify", {}).get("enabled") and manifest.get("verify", {}).get("passed") is not True:
         raise Failure(f"La verificación no pasó: {manifest.get('verify', {}).get('failures')}")
     return manifest
+
+
+def check_embeddings(out_dir: Path, manifest: dict) -> None:
+    """Integridad y contenido de los embeddings: ids, dimensiones, valores finitos y normas."""
+    import numpy as np
+
+    for name, expected in manifest.get("files", {}).items():
+        path = out_dir / name
+        if not path.exists():
+            raise Failure(f"Falta {name}: solo se recuperó el manifiesto.")
+        if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+            raise Failure(f"{name} no coincide con el sha256 registrado en el VM.")
+    if set(manifest.get("files", {})) != {"clip.npz", "dino.npz", "index.json"}:
+        raise Failure("El manifiesto no lista los tres archivos esperados.")
+
+    index = json.loads((out_dir / "index.json").read_text(encoding="utf-8"))
+    ids = [item["id"] for item in index["items"]]
+    cut_ids = [item["id"] for item in index["items"] if item["cutout"]]
+    clip, dino = np.load(out_dir / "clip.npz"), np.load(out_dir / "dino.npz")
+    if clip["ids"].tolist() != ids or dino["ids"].tolist() != cut_ids or len(set(ids)) != len(ids):
+        raise Failure("Los ids de los embeddings no coinciden con el índice del paquete.")
+    blocks = {"clip_image": clip["clip_image"], "clip_text": clip["clip_text"], "dino": dino["dino"]}
+    if clip["clip_image"].shape[1] != clip["clip_text"].shape[1]:
+        raise Failure("CLIP de imagen y de texto tienen dimensiones distintas.")
+    if len(clip["prompt_group"]) != len(clip["clip_text"]):
+        raise Failure("Las descripciones no coinciden con sus embeddings.")
+    for name, block in blocks.items():
+        block = block.astype(np.float32)
+        norms = np.linalg.norm(block, axis=1)
+        if not np.isfinite(block).all() or np.abs(norms - 1).max() > 1e-2:
+            raise Failure(f"{name}: valores no finitos o normas lejos de 1.")
+
+
+def split_parts(path: Path, folder: Path, size: int = PART_BYTES) -> list[Path]:
+    parts = []
+    with path.open("rb") as src:
+        while chunk := src.read(size):
+            part = folder / f"{path.name}.part{len(parts):03d}"
+            part.write_bytes(chunk)
+            parts.append(part)
+    return parts
 
 
 def colab_bin() -> str:
@@ -259,7 +322,7 @@ def cleanup(dry_run: bool) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--stage", choices=("smoke", "train"))
+    ap.add_argument("--stage", choices=("smoke", "train", "embed"))
     ap.add_argument("--cleanup", action="store_true", help="libera TODOS los VM asignados a la cuenta")
     ap.add_argument("--gpu", default="L4", help="T4, L4, A100 o H100; cada una gasta distinto")
     ap.add_argument("--session", default="productshot-lora")
@@ -267,10 +330,11 @@ def main() -> int:
     ap.add_argument("--rank", type=int, default=16)
     ap.add_argument("--learning-rate", type=float, default=1e-4)
     ap.add_argument("--dataset-tar", type=Path, help="tar de una carpeta imagefolder con metadata.jsonl")
+    ap.add_argument("--pack", type=Path, help="paquete de bg60k_pack.py (etapa embed)")
     ap.add_argument("--max-minutes", type=float, default=50.0, help="presupuesto total desde que se pide el VM")
     ap.add_argument("--idle-timeout", type=float, default=900.0,
                     help="segundos sin salida antes de que `colab exec` deje de esperar")
-    ap.add_argument("--out", type=Path, default=ROOT / "data" / "lora")
+    ap.add_argument("--out", type=Path, help="por defecto data/lora o, en embed, data/bg60k/embeddings")
     ap.add_argument("--keep", action="store_true", help="no detener el VM al terminar (gasta unidades)")
     ap.add_argument("--dry-run", action="store_true", help="muestra los comandos sin ejecutarlos")
     args = ap.parse_args()
@@ -279,19 +343,28 @@ def main() -> int:
         return cleanup(args.dry_run)
     if not args.stage:
         ap.error("falta --stage (o --cleanup)")
+    if args.stage == "embed" and not args.pack:
+        ap.error("la etapa embed necesita --pack")
     if args.max_minutes * 60 <= RESERVE_S + 5 * 60:
         ap.error("--max-minutes debe dejar al menos 5 minutos además de la reserva de 10")
 
     run_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{args.stage}"
-    out_dir = args.out / run_id
+    embed = args.stage == "embed"
+    out_root = args.out or ROOT / "data" / ("bg60k/embeddings" if embed else "lora")
+    out_dir = out_root / run_id
     state_dir = Path(tempfile.mkdtemp(prefix="colab-state-")) if args.dry_run else out_dir
     if not args.dry_run:
         out_dir.mkdir(parents=True, exist_ok=True)
     deadline = time.time() + args.max_minutes * 60
     colab = Colab(args.session, state_dir / "colab-state.json", deadline, args.dry_run)
     remote_tar = "dataset.tar" if args.dataset_tar else None
+    pack_sha = hashlib.sha256(args.pack.read_bytes()).hexdigest() if embed else None
     cfg = build_config(args.stage, run_id, args.steps, args.rank, args.learning_rate, remote_tar,
-                       deadline_unix=deadline - RESERVE_S)
+                       deadline_unix=deadline - RESERVE_S, pack_sha256=pack_sha)
+    parts_dir = Path(tempfile.mkdtemp(prefix="colab-parts-"))
+    pack_parts = split_parts(args.pack, parts_dir) if embed and not args.dry_run else []
+    if embed:
+        cfg["pack_parts"] = len(pack_parts)
     print(f"RUN_ID={run_id}", flush=True)
 
     before_list = colab.assignments()
@@ -310,15 +383,20 @@ def main() -> int:
         # El stop se intenta aunque `new` falle a medias: el servidor pudo asignar el VM igual.
         colab("new", "--gpu", args.gpu, timeout=600)
         colab("usage", session=False, check=False, timeout=60)  # tasa de consumo de esta GPU
-        colab("upload", str(REQUIREMENTS), "/content/requirements-colab.txt", timeout=180)
+        if not embed:
+            colab("upload", str(REQUIREMENTS), "/content/requirements-colab.txt", timeout=180)
         with tempfile.TemporaryDirectory() as tmp:
             job = Path(tmp) / "job.json"
             job.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
             colab("upload", str(job), "/content/job.json", timeout=180)
         if args.dataset_tar:
             colab("upload", str(args.dataset_tar), f"/content/{remote_tar}", timeout=1800)
+        for part in pack_parts:
+            colab("upload", str(part), f"/content/{part.name.replace(args.pack.name, 'pack.tar')}", timeout=300)
+        if embed and args.dry_run:
+            colab("upload", f"{args.pack}.part000", "/content/pack.tar.part000", timeout=300)
         try:
-            colab("exec", "-f", str(JOB_SCRIPT), "--timeout", str(args.idle_timeout), check=False,
+            colab("exec", "-f", str(EMBED_SCRIPT if embed else JOB_SCRIPT), "--timeout", str(args.idle_timeout), check=False,
                   timeout=colab.remaining(reserve=RESERVE_S - 120))
         finally:
             # Lo que haya, aunque el trabajo falle: el manifiesto trae el error.
@@ -332,8 +410,12 @@ def main() -> int:
                       check=False, timeout=120, budget=False)
         if not args.dry_run:
             manifest = check_result(out_dir, run_id)
-            verify = manifest.get("verify", {})
-            print(f"[driver] OK. Verificación: {json.dumps(verify.get('pipelines', {}), ensure_ascii=False)[:2000]}")
+            if embed:
+                summary = {k: manifest[k] for k in ("pack", "reference_check", "clip_image", "dino")}
+                print(f"[driver] OK. Embeddings: {json.dumps(summary, ensure_ascii=False)[:2000]}")
+            else:
+                verify = manifest.get("verify", {})
+                print(f"[driver] OK. Verificación: {json.dumps(verify.get('pipelines', {}), ensure_ascii=False)[:2000]}")
             print(f"Resultados en {out_dir}", flush=True)
     except Failure as exc:
         print(f"[driver] FALLA: {exc}", flush=True)
@@ -349,6 +431,7 @@ def main() -> int:
             released = False
         colab("sessions", session=False, check=False, timeout=60, budget=False)
         colab("usage", session=False, check=False, timeout=60, budget=False)
+        shutil.rmtree(parts_dir, ignore_errors=True)
     return code if released else 3
 
 
