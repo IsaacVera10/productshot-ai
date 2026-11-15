@@ -86,7 +86,7 @@ def write_category_review(rows: list[dict], path: Path = REVIEW) -> None:
     counts = Counter((r["category"], r["niche"], r["niche_rule"]) for r in rows)
     clean = Counter(r["category"] for r in rows if not r["alerts"])
     with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
+        writer = csv.writer(f, lineterminator="\n")
         writer.writerow(["category", "pairs", "pairs_without_alerts", "niche", "rule"])
         for (category, niche, rule), n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0][0])):
             writer.writerow([category, n, clean[category], niche, rule])
