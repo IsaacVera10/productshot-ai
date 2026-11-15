@@ -1,0 +1,171 @@
+# Nicho de BG60k por categoría (etapa 2 de docs/10).
+# Se aplica en orden: `exact` primero, después las palabras clave de `out`, `near` y `core`.
+# core: pequeño, rígido y opaco por categoría; si es mate se revisa imagen por imagen (docs/00).
+# near: tamaño parecido, pero blando, transparente, reflectante o de joyería; entra con tope.
+# out: grande, ropa puesta, personas, alimentos preparados o frescos, seres vivos o no es un producto.
+
+[exact]
+"glass" = ["near", "vidrio transparente"]
+"cup" = ["core", "taza o vaso"]
+"Ceramic or Mug" = ["core", "taza"]
+"plastic cup" = ["core", "vaso"]
+"thermos cup" = ["core", "termo"]
+"Kettle or cup" = ["core", "taza o hervidor"]
+"Sport Bottle" = ["core", "botella deportiva"]
+"object" = ["unclassified", "nombre ambiguo"]
+"Accessories" = ["unclassified", "nombre ambiguo"]
+"accessories" = ["unclassified", "nombre ambiguo"]
+"apparel" = ["out", "ropa"]
+"Ornaments" = ["core", "decoración"]
+"decorative ornaments" = ["core", "decoración"]
+"Set or gift box" = ["core", "caja de regalo"]
+"Snack gift pack" = ["core", "alimento envasado"]
+"Combination dry goods gift box" = ["core", "alimento envasado"]
+"Early childhood education" = ["unclassified", "nombre ambiguo"]
+"This booklet or notes" = ["core", "papelería"]
+"notebook" = ["unclassified", "cuaderno o laptop"]
+"Game notebook" = ["core", "laptop"]
+"second hand notebook" = ["core", "laptop"]
+"Desktop" = ["out", "computadora de escritorio"]
+"assembling computer" = ["out", "computadora de escritorio"]
+"One machine" = ["out", "computadora todo en uno"]
+"Chassis" = ["out", "gabinete de computadora"]
+"server" = ["out", "servidor"]
+"monitor" = ["out", "grande"]
+"Showcase" = ["out", "vitrina"]
+"Door" = ["out", "grande"]
+"tire" = ["out", "grande"]
+"Float" = ["unclassified", "nombre ambiguo"]
+"Rhizome" = ["out", "alimento fresco"]
+"Solanum melons" = ["out", "alimento fresco"]
+"Broken wall or refined pieces" = ["unclassified", "nombre ambiguo"]
+"Food and medicine come from the same source" = ["unclassified", "nombre ambiguo"]
+"bag" = ["near", "bolso"]
+"Storage bag or bag" = ["core", "organizador"]
+"Wear equipment" = ["unclassified", "nombre ambiguo"]
+"Mobile Communications" = ["unclassified", "nombre ambiguo"]
+"5G or 4G Internet access" = ["unclassified", "nombre ambiguo"]
+"smart home" = ["unclassified", "nombre ambiguo"]
+"Instrumentation" = ["unclassified", "nombre ambiguo"]
+"Disposable items" = ["unclassified", "nombre ambiguo"]
+"creative accessories" = ["unclassified", "nombre ambiguo"]
+"Cartoon peripherals" = ["core", "figura o juguete"]
+"Movie peripherals" = ["core", "figura o juguete"]
+"Trend blind box" = ["core", "figura o juguete"]
+"Gundam or deformed model" = ["core", "figura o juguete"]
+"car model" = ["core", "modelo a escala"]
+"everlasting flower" = ["core", "decoración"]
+"vase floral arrangement" = ["core", "decoración"]
+"Green potted plants" = ["out", "planta viva"]
+"flowers" = ["out", "flores vivas"]
+"flower delivery" = ["out", "flores vivas"]
+"Small leaf rosewood" = ["core", "artesanía"]
+"Bodhi" = ["core", "artesanía"]
+"Agarwood" = ["core", "artesanía"]
+"Hetian jade pendant" = ["near", "joyería"]
+"handle or steering wheel" = ["core", "control de videojuego"]
+"Mahjong Pai Gow" = ["core", "juego de mesa"]
+"Draw paper" = ["core", "papel"]
+"Paper" = ["core", "papel"]
+"Washing or ironing" = ["unclassified", "nombre ambiguo"]
+"daily care" = ["unclassified", "nombre ambiguo"]
+"improve sleeping" = ["unclassified", "nombre ambiguo"]
+"desk lamp" = ["core", "lámpara pequeña"]
+"Furniture Hardware" = ["core", "herrajes"]
+"laundry beads" = ["core", "detergente"]
+"Air Cushion BB or BB Cream" = ["core", "cosmético"]
+"Warm milk sterilization" = ["core", "esterilizador de biberones"]
+"Milk pot" = ["core", "olla"]
+"Car keychain or bag" = ["core", "llavero"]
+"Tremella earrings" = ["out", "hongo comestible"]
+"Rice wine" = ["near", "botella"]
+"electric fan" = ["near", "tamaño variable, a menudo de pie"]
+"faucet" = ["near", "cromado reflectante"]
+"shower head" = ["near", "cromado reflectante"]
+"Taiwan fishing rod" = ["near", "largo y delgado"]
+"Shoebox" = ["core", "caja"]
+"instant food" = ["out", "suele mostrarse el plato preparado"]
+
+[keywords]
+out = [
+  # grandes
+  "air conditioner", "air conditioning", "refrigerator", "freezer", "washing machine", "dryer",
+  "tv", "television", "projector screen", "sofa", "bed", "mattress", "wardrobe", "cabinet",
+  "table", "desk", "chair", "stool", "bookcase", "bookshelf", "shelves", "shelf", "sideboard",
+  "toilet", "sink", "washbasin", "bath heater", "water heater", "range hood", "stove", "dishwasher",
+  "cooking center", "water purifier", "water dispenser", "treadmill", "massage chair", "wheelchair",
+  "bicycle", "bike", "motorcycle", "electric car", "tricycle", "road vehicles", "baby cart",
+  "safety seats", "ladder", "carpet", "furniture", "door", "fish tank", "aquarium", "tent",
+  "ceiling", "chandelier", "outdoor lighting", "garden lights", "sweeping robot", "floor washing",
+  "vacuum cleaner", "clothes dryer", "dehumidifier", "air purifier", "file cabinets", "full-length mirror",
+  "electric piano", "twist car", "children scooter", "scooter", "rocking chair", "recliner",
+  "mobile air conditioning", "oxygen", "commercial", "industrial", "storage rack", "multifunctional storage rack",
+  "heater", "fan light", "printer", "shredder", "whiteboard", "safe or box",
+  # ropa puesta y personas
+  "t-shirt", "shirt", "underwear", "pants", "jeans", "skirt", "dress", "bra", "camisole", "pajamas",
+  "jacket", "sportswear", "swimsuit", "jumpsuit", "rompers", "suit", "clothes", "shorts", "scarves",
+  "shawl", "sweatpants", "clothing", "room", "diapers", "pull-up pants", "sanitary napkin", "maternity",
+  # alimentos frescos o preparados
+  "dishes", "dumplings", "wontons", "fresh cake", "ice cream", "hot pot", "beef", "mutton", "pork",
+  "chicken", "fish", "shrimp", "shellfish", "seafood", "sea cucumber", "eggs", "fruit", "durian",
+  "apple", "grapes", "peach", "cherry", "melon", "kiwi", "orange", "vegetables", "meat",
+  "zongzi", "moon cake", "noodles", "rice", "flour", "bird nest", "mushrooms", "jelly", "pudding",
+  # seres vivos y no productos
+  "live", "living body", "pet", "investment", "funds", "seeds", "philosophy", "picture books",
+  "parking sign", "medical", "medicine",
+]
+near = [
+  "shoes", "sneakers", "slippers", "sandals", "boots", "socks",
+  "bag", "handbag", "backpack", "wallet", "briefcase", "clutch", "suitcase", "luggage", "belt",
+  "watch", "bracelet", "anklet", "necklace", "pendant", "ring", "earring", "chain", "jewelry",
+  "jade", "gold", "silver", "diamond", "pearl", "platinum", "beads",
+  "liquor", "wine", "beer", "whisky", "brandy", "cognac", "drinks", "drinking water", "milk",
+  "sunglasses", "glasses", "goggles", "mirror", "perfume", "toilet water",
+  "hat", "cap", "umbrella", "hairpin", "hair ties", "towel", "quilt", "pillow", "cushion", "sheets",
+  "four piece set", "mat", "stuffed", "doll", "helmet", "glove", "balls", "basketball",
+  # alimentos que suelen mostrarse servidos o sin envase; el envase se rescata en la revisión
+  "tea", "pu'er", "longjing", "tieguanyin", "oolong", "coffee", "snacks", "biscuits", "puffed",
+  "pastries", "pastry", "candy", "chocolate", "nuts", "dried", "cured", "candied", "cereal",
+  "grains", "cheese", "tofu",
+]
+core = [
+  "phone", "headphones", "headset", "earphone", "speaker", "audio", "keyboard", "mouse", "router",
+  "u disk", "ssd", "drive", "memory", "storage card", "graphics card", "cpu", "cable", "charger",
+  "power", "camera", "lens", "tablet", "laptop", "game console", "game peripherals", "microphone",
+  "mp3", "player", "recorder", "recording pen", "dictionary", "docking station", "enclosure",
+  "radiator", "heat sink", "polaroid", "action camera", "telescope", "smart bracelet", "projector",
+  "electronic scale", "thermometer", "remote control", "socket", "switch", "lock", "led", "lamp",
+  "light source", "downlight", "spotlight", "mood lighting", "alarm clock", "wall clock", "music box",
+  "pens", "stationery", "file management", "office", "accounting supplies", "painting tools",
+  "four treasures", "notes", "booklet", "calligraphy", "photo frame", "candle", "incense",
+  "ornament", "decorative", "vase", "wall stickers", "blocks", "toys", "toy", "model", "blind box",
+  "chess", "card sports", "game",
+  "lotion", "cream", "essence", "toner", "cleansing", "makeup", "lipstick", "lip gloss", "eye shadow",
+  "powder", "foundation", "primer", "bb", "mask", "shampoo", "body wash", "shower", "soap",
+  "toothpaste", "toothbrush", "hand cream", "emollient", "skin care", "sun protection", "hair dye",
+  "hairspray", "styling", "cotton pad", "wipes", "beauty device", "shaver", "hair dryer", "clipper",
+  "curling", "straightening", "massager", "fascia gun", "atomizer", "humidifier",
+  "cup", "mug", "teapot", "tea set", "tea tray", "tea accessories", "tea bar", "kettle", "bowl", "plate",
+  "dish", "tableware", "cutlery", "chopsticks", "knife", "chopping board", "wok", "pan", "pot",
+  "casserole", "steamer", "tureen", "crisper", "lunch box", "storage box", "storage", "box",
+  "rice cooker", "electric cooker", "pressure cooker", "air fryer", "coffee machine", "juicer",
+  "food processor", "wall breaking", "soymilk", "micro-wave", "microwave", "oven", "baking pan",
+  "barbecue", "bbq", "induction cooker", "sealer", "kitchen", "condiment", "bottle nipple",
+  "sterilization", "teether",
+  "honey", "wolfberry", "ginseng", "astragalus", "vitamins", "calcium", "probiotics", "protein",
+  "collagen", "coenzyme", "lutein", "glucosamine", "minerals", "dha", "nutrition", "instant food",
+  "baking ingredients", "edible oil", "milk powder", "cat dry food",
+  "bathroom supplies", "faucet", "shower head", "floor drain", "angle valve", "bathing", "towel rack",
+  "garbage can", "trash bag", "mop", "broom", "cleaning", "rag", "dish soap", "laundry",
+  "detergent", "disinfectant", "deodorization", "formaldehyde", "mosquito", "activated carbon",
+  "lighter", "cigarette", "rolling paper", "tools", "tool", "hardware", "whetstone", "electrical",
+  "car perfume", "car mount", "car charger", "car keychain", "car washer", "steering wheel cover",
+  "mobile phone", "fishing", "badminton", "ping pong", "racket", "paddle", "dumbbel", "swimming",
+  "electric fan", "cooling fan", "fan", "electric kettle", "health pot", "hair", "footbath",
+  "electric toothbrush", "electronic locks", "surveillance", "driving recorder", "watch accessories",
+  "smart watch accessories", "headphone accessories", "tablet accessories", "projection accessories",
+  "bicycle accessories", "shoe accessories", "jewelry accessories", "tv accessories", "picnic",
+  "bbq utensils", "travel", "outdoor", "wedding", "festival", "soft bullet", "water gun",
+  "airplane", "stress relief", "play house", "gardening", "nose and throat", "health monitoring",
+  "health tea", "herbal", "brewed",
+]
