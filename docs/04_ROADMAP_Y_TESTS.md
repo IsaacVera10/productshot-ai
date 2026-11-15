@@ -12,7 +12,7 @@
 | 3 — Agente | Por definir | Por definir |
 | 4 — Dataset y análisis exploratorio | Por definir | Por definir |
 | 5 — Fine-tuning LoRA | Por definir | Por definir |
-| 6 — GCP y respaldo | Por definir | Por definir |
+| 6 — GCP y respaldo | Aaron Camacho (`09_PLAN_AARON_MODAL.md`) | Por definir |
 | 7 — Evaluación, video e informe | Por definir | Por definir |
 
 Los Hitos 2 y 3 pueden avanzar en paralelo. El Hito 7 depende de los modelos reales, no de que el Hito 6 esté terminado.
@@ -98,6 +98,7 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 - [x] Respuesta docente sobre el LoRA: el equipo decidió no esperarla (2026-11-14); el plan B (ADR-002) queda solo para inviabilidad técnica.
 - [ ] Definir el protocolo experimental antes de reservar el conjunto de prueba.
 - [ ] Confirmar un acceso reproducible a BG60k (ADR-006). No se consulta a sus autores por permisos: es un trabajo académico (decisión del 2026-11-14).
+    Descarga del 2026-11-14 desde el JD Whale Disk del repositorio de BG60k: llegaron 19 de 22 zip, todos íntegros. Faltan `bg60k_imgs_2`, `bg60k_masks_1` y `bg60k_masks_4`. Los zip se reparten por `id mod 10`, así que quedan 44 304 de 63 293 pares imagen y máscara completos (70 %, grupos 0, 3, 5, 6, 7, 8 y 9), sin sesgo de categoría. Alcanza para el piloto; los grupos 1, 2 y 4 se excluyen del manifiesto.
 - [ ] Inspeccionar una muestra estratificada y medir la cobertura por estilo; usar CommonCatalog solo ante un déficit demostrado, y ABO + CommonCatalog si BG60k no se confirma.
 - [ ] Filtrar por producto único, máscara íntegra, fondo visible, resolución y ausencia de collages, con OCR fuera del producto y revisión visual.
 - [ ] Definir la rúbrica de estilos y armar un piloto de 100–200 imágenes por estilo, con captions asistidos por BLIP y plantilla, revisados a mano.
@@ -113,7 +114,7 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 ## Hito 6 — Despliegue en Modal y piezas intercambiables (ADR-009)
 
 - [x] Piezas intercambiables: interfaz `Repository`, raíz de composición por variables de entorno y contrato HTTP del worker con `RemoteGenerationBackend` (2026-11-13). Falta el ejecutor de Modal (P10), con el despliegue.
-- [ ] Worker con GPU L4 y endpoint web de UI y API en Modal; límite de gasto de USD 30 y secretos de Modal.
+- [ ] Worker con GPU L4 y endpoint web de UI y API en Modal; límite de gasto de USD 30 y secretos de Modal. Asignado a Aaron con el plan de `09_PLAN_AARON_MODAL.md` (2026-11-14).
 - [ ] Cancelar la inferencia remota cuando vence G14: hoy la API abandona a los 540 s, pero el worker sigue generando (y cobrando GPU) hasta terminar el lote o llegar a su tope de 10 minutos.
 - [ ] Manejar las solicitudes largas al endpoint web de Modal: pasados 150 s Modal responde con una redirección 303 y `RemoteGenerationBackend` no la sigue (HTTPX no sigue redirecciones por defecto), así que intentaría leerla como la respuesta del contrato. Probarlo con un lote lento, con autenticación y dentro del presupuesto total de espera.
 - [ ] Probar el worker en la laptop (RTX 4060) con los mismos contratos.
