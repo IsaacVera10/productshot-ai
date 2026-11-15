@@ -59,6 +59,7 @@ Modal es el despliegue principal, GCP una alternativa compatible y la laptop el 
 - [07 — Enunciado Proyecto 2](docs/07_ENUNCIADO_PROYECTO_2.md)
 - [08 — Propuesta: iteraciones y guardrails](docs/08_ITERACIONES_Y_GUARDRAILS.md) (aceptado: iteraciones por rondas y guardrails G1 a G14)
 - [09: Plan de Aaron para el despliegue en Modal](docs/09_PLAN_AARON_MODAL.md) (Hito 6, en paralelo con el dataset y el LoRA)
+- [10: Curación de BG60k para el LoRA](docs/10_DATASET_BG60K.md) (Hito 4: manifiesto, filtros, identidad de producto, estilos y particiones)
 - [Rúbrica de evaluación](docs/Evaluación_Rúbrica_Proyecto2.md)
 
 **Fuente primaria:** `Evaluación_Enunciado Proyecto2.pdf`. El archivo `docs/07_ENUNCIADO_PROYECTO_2.md` reproduce el contenido textual del documento original en Markdown para consulta. Ante discrepancias prevalece el PDF oficial.
