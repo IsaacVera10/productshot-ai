@@ -435,7 +435,9 @@ def verify(cfg: dict) -> dict:
                 "background_mean_abs_diff_lora_on_vs_off": round(diff, 3),
                 "warnings": own_warnings, "checks": checks,
             }
-            failures += [f"{name}: {k}" for k, ok in checks.items() if not ok]
+            required = cfg["verify"].get("effect_required", True)
+            failures += [f"{name}: {k}" for k, ok in checks.items()
+                         if not ok and (required or k != "el_lora_cambia_la_imagen")]
             log(f"  {in_channels} canales, {len(lora_a)}/{file_layers} capas, error máx. "
                 f"{loaded['max_rel_err']:.2e}, fondo {diff:.2f}/255, fallas: {[k for k, ok in checks.items() if not ok]}")
             del pipe

@@ -176,6 +176,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     audit = json.loads(audit_path.read_text())
+    if audit["provenance"] != provenance or set(map(int, audit["initial_split"])) != {r["id"] for r in items}:
+        raise SystemExit("Cambiaron las entradas desde el plan (procedencia, selección o exclusiones).")
     reviewed = {tuple(sorted((p["a"], p["b"]))) for p in audit["pairs"]}
     decided = labels(decisions)
     pending = reviewed - set(decided)
@@ -191,7 +193,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{len(new)} pares nuevos tras mover componentes: revísalos y vuelve a correr apply.")
         return 0
 
-    residual_pairs = [p for p in audit["pairs"] if p["source"] == "residual"]
+    residual_pairs = [p for p in audit["pairs"] if p["source"] == "residual" and split[p["a"]] != split[p["b"]]]
     positives = sum(decided[tuple(sorted((p["a"], p["b"])))] in MATCH for p in residual_pairs)
     out = REVIEW / "split.csv"
     with out.open("w", newline="", encoding="utf-8") as f:

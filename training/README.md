@@ -43,7 +43,7 @@ Primera corrida (2026-11-14, `docs/05`): 0.23 unidades en L4. La carga pasó en 
 ### Etapa `train`
 
 ```bash
-PYTHONPATH=backend python training/run_colab.py --stage train --dataset-tar dataset.tar --steps 1500
+PYTHONPATH=backend python training/run_colab.py --stage train --dataset-tar data/bg60k/export/dataset.tar --steps 1200 --max-minutes 90
 ```
 
 `dataset.tar` es una carpeta imagefolder: las imágenes y un `metadata.jsonl` con `{"file_name": ..., "text": ...}` por línea, donde `text` es el preset del estilo más la descripción del producto. Guarda checkpoints cada cuarto del entrenamiento y el resultado incluye los pesos de todos, para elegir uno validando por estilo. El tar se sube en partes de 32 MiB y el VM comprueba su sha256. El dataset de BG60k sale de `training/bg60k_export.py`. Cada corrida pide un VM nuevo, así que no reanuda un entrenamiento cortado: para eso habría que subir el checkpoint (pendiente).

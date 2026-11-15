@@ -127,6 +127,8 @@ def build_config(stage: str, run_id: str, steps: int | None = None, rank: int = 
             "style": "studio",
             "seed": 1234,
             "min_background_diff": 0.5,  # de 255: por debajo, el LoRA no hace nada visible
+            # La taza sintética comprueba la carga; en train el efecto se mide con val, no aquí.
+            "effect_required": smoke,
             # Cada pipeline con su configuración candidata (docs/05): A y G.
             "pipelines": {
                 "cuatro_canales": {"model": BASE_MODEL, "revision": BASE_REVISION,
