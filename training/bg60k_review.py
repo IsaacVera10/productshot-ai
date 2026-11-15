@@ -2,6 +2,7 @@
 
     uv run --group dataset python training/bg60k_review.py sample          # arma la muestra una vez
     uv run --group dataset python training/bg60k_review.py serve --reviewer isaac
+    uv run --group dataset python training/bg60k_review.py serve --audit split   # pares del split (etapa 9)
 
 Abre http://127.0.0.1:8765. La página no muestra el coseno ni la banda, para no sesgar. Cada
 decisión se agrega a `data/bg60k/review/identity_decisions.csv` (si se corrige un par, vale la
@@ -189,12 +190,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--reviewer", default="isaac")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--audit", choices=("identity", "split"), default="identity")
     args = parser.parse_args(argv)
     review = args.data / "review"
     review.mkdir(parents=True, exist_ok=True)
-    sample_path = review / "identity_sample.json"
+    sample_path = review / {"identity": "identity_sample.json", "split": "split_audit.json"}[args.audit]
 
     if args.command == "sample":
+        if args.audit == "split":
+            raise SystemExit("Los pares del split los arma bg60k_split.py plan.")
         if sample_path.exists():
             raise SystemExit(f"{sample_path} ya existe: la muestra no se rehace para no perder la trazabilidad.")
         sample = build_sample(args.data / "identity_neighbors.parquet", args.seed)
@@ -204,7 +208,7 @@ def main(argv: list[str] | None = None) -> int:
 
     sample = json.loads(sample_path.read_text())
     images = Images(args.data / "candidates.parquet", args.raw)
-    handler = make_handler(sample, images, review / "identity_decisions.csv", args.reviewer)
+    handler = make_handler(sample, images, review / f"{args.audit}_decisions.csv", args.reviewer)
     server = HTTPServer(("127.0.0.1", args.port), handler)
     print(f"Revisión en http://127.0.0.1:{args.port} (Ctrl+C para terminar)")
     try:
