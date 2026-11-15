@@ -25,6 +25,12 @@ dependencies = [
 # training = ["peft", "datasets"]
 
 [dependency-groups]
+# Curación de BG60k (docs/10): `uv run --group dataset python training/bg60k_manifest.py`.
+dataset = [
+    "numpy>=2.0",
+    "pyarrow>=17",
+    "scipy>=1.13",
+]
 # `uv sync` instala este grupo por defecto.
 dev = ["pytest>=8.0,<10.0"]
 

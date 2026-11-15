@@ -96,9 +96,9 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 ## Hito 4 — Dataset y análisis exploratorio
 
 - [x] Respuesta docente sobre el LoRA: el equipo decidió no esperarla (2026-11-14); el plan B (ADR-002) queda solo para inviabilidad técnica.
-- [ ] Definir el protocolo experimental antes de reservar el conjunto de prueba.
+- [ ] Definir el protocolo experimental antes de reservar el conjunto de prueba. Protocolo de curación y particiones en `10_DATASET_BG60K.md` (2026-11-15); falta el de la comparación final con fotos caseras.
 - [ ] Confirmar un acceso reproducible a BG60k (ADR-006). No se consulta a sus autores por permisos: es un trabajo académico (decisión del 2026-11-14).
-    Descarga del 2026-11-14 desde el JD Whale Disk del repositorio de BG60k: llegaron 19 de 22 zip, todos íntegros. Faltan `bg60k_imgs_2`, `bg60k_masks_1` y `bg60k_masks_4`. Los zip se reparten por `id mod 10`, así que quedan 44 304 de 63 293 pares imagen y máscara completos (70 %, grupos 0, 3, 5, 6, 7, 8 y 9), sin sesgo de categoría. Alcanza para el piloto; los grupos 1, 2 y 4 se excluyen del manifiesto.
+    Descarga del 2026-11-14 desde el JD Whale Disk del repositorio de BG60k: llegaron 19 de 22 zip. Faltan `bg60k_imgs_2`, `bg60k_masks_1` y `bg60k_masks_4`. Los zip se reparten por `id mod 10`, así que quedan 44 304 de 63 293 pares imagen y máscara completos (70 %, grupos 0, 3, 5, 6, 7, 8 y 9). En las 136 categorías con al menos 100 imágenes, las desviaciones de disponibilidad son compatibles con una selección aleatoria del mismo tamaño; eso no prueba ausencia de sesgo en categorías raras ni en estilos. Alcanza para el piloto; los grupos 1, 2 y 4 se excluyen del manifiesto. Protocolo de curación, revisado con Codex: `10_DATASET_BG60K.md`.
 - [ ] Inspeccionar una muestra estratificada y medir la cobertura por estilo; usar CommonCatalog solo ante un déficit demostrado, y ABO + CommonCatalog si BG60k no se confirma.
 - [ ] Filtrar por producto único, máscara íntegra, fondo visible, resolución y ausencia de collages, con OCR fuera del producto y revisión visual.
 - [ ] Definir la rúbrica de estilos y armar un piloto de 100–200 imágenes por estilo, con captions asistidos por BLIP y plantilla, revisados a mano.
