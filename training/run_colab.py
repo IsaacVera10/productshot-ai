@@ -365,6 +365,10 @@ def main() -> int:
     pack_parts = split_parts(args.pack, parts_dir) if embed and not args.dry_run else []
     if embed:
         cfg["pack_parts"] = len(pack_parts)
+    dataset_parts = split_parts(args.dataset_tar, parts_dir) if args.dataset_tar and not args.dry_run else []
+    if args.dataset_tar:
+        cfg["dataset"]["parts"] = len(dataset_parts)
+        cfg["dataset"]["sha256"] = hashlib.sha256(args.dataset_tar.read_bytes()).hexdigest()
     print(f"RUN_ID={run_id}", flush=True)
 
     before_list = colab.assignments()
@@ -389,8 +393,8 @@ def main() -> int:
             job = Path(tmp) / "job.json"
             job.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
             colab("upload", str(job), "/content/job.json", timeout=180)
-        if args.dataset_tar:
-            colab("upload", str(args.dataset_tar), f"/content/{remote_tar}", timeout=1800)
+        for part in dataset_parts:
+            colab("upload", str(part), f"/content/{part.name.replace(args.dataset_tar.name, remote_tar)}", timeout=300)
         for part in pack_parts:
             colab("upload", str(part), f"/content/{part.name.replace(args.pack.name, 'pack.tar')}", timeout=300)
         if embed and args.dry_run:

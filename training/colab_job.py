@@ -200,6 +200,14 @@ def build_dataset(cfg: dict) -> dict:
     ds = cfg["dataset"]
     if ds["kind"] == "upload":
         tar_path = CONTENT / ds["remote_tar"]
+        if ds.get("parts"):
+            with tar_path.open("wb") as dst:
+                for k in range(ds["parts"]):
+                    part = CONTENT / f"{ds['remote_tar']}.part{k:03d}"
+                    dst.write(part.read_bytes())
+                    part.unlink()
+        if ds.get("sha256") and sha256(tar_path) != ds["sha256"]:
+            raise RuntimeError("El dataset subido no coincide con el sha256 de la laptop.")
         DATA.mkdir(parents=True, exist_ok=True)
         with tarfile.open(tar_path) as tar:
             tar.extractall(DATA, filter="data")
@@ -248,13 +256,12 @@ def train(cfg: dict) -> dict:
         "--train_data_dir", str(DATA),
         "--caption_column", "text",
         "--resolution", str(t["resolution"]),
-        "--random_flip",
         "--train_batch_size", "1",
         "--gradient_accumulation_steps", str(t["grad_accum"]),
         "--gradient_checkpointing",
         "--max_train_steps", str(t["steps"]),
         "--checkpointing_steps", str(t["checkpointing_steps"]),
-        "--checkpoints_total_limit", "2",
+        "--checkpoints_total_limit", "8",
         "--resume_from_checkpoint", "latest",
         "--learning_rate", str(t["learning_rate"]),
         "--lr_scheduler", "constant",
@@ -458,11 +465,10 @@ def package(manifest_path: Path) -> None:
             tar.add(weights, arcname=weights.name)
         if (TRAIN_OUT / "logs").exists():
             tar.add(TRAIN_OUT / "logs", arcname="logs")
-        checkpoints = sorted(TRAIN_OUT.glob("checkpoint-*"), key=lambda d: int(d.name.split("-")[1]))
-        if checkpoints:
-            last = checkpoints[-1] / "pytorch_lora_weights.safetensors"
-            if last.exists():
-                tar.add(last, arcname=f"{checkpoints[-1].name}_pytorch_lora_weights.safetensors")
+        for checkpoint in sorted(TRAIN_OUT.glob("checkpoint-*"), key=lambda d: int(d.name.split("-")[1])):
+            weights = checkpoint / "pytorch_lora_weights.safetensors"
+            if weights.exists():
+                tar.add(weights, arcname=f"{checkpoint.name}_pytorch_lora_weights.safetensors")
 
 
 def main() -> None:

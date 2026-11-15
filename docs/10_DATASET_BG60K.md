@@ -37,13 +37,13 @@
 - **Umbrales:** los de máscara empiezan como alertas y se calibran con revisión visual. La nitidez no se usa como filtro global, porque `warm` y `lifestyle` piden desenfoque de fondo (`presets.py`); solo se mide la del producto.
 - **Estilo:** la etiqueta final es humana. Además de los ejemplos con margen alto, la revisión incluye márgenes bajos. La evaluación del LoRA no se apoya solo en el mismo CLIP que eligió los ejemplos: la medida principal es humana y ciega (`06_EVALUACION_Y_ETICA.md`).
 - **Identidad:** BG60k no trae identidad de producto. Los grupos salen de aristas por pHash del recorte y por coseno de DINOv2 ≥ τ, unidas por union-find. τ se calibra con pares revisados a mano en bandas de similitud, con pares de mismo producto con cambios grandes y con productos distintos muy parecidos. Como union-find encadena (A~B y B~C unen A con C), se revisan los componentes grandes y las aristas que conectan subgrupos. Un grupo nunca se divide para cumplir cuotas. Las variantes de color de un mismo modelo se agrupan como familia cuando se reconocen.
-- **Afirmación permitida en el informe** (tras ejecutar la auditoría): «piloto seleccionado con un radio de exclusión de identidad visual y particiones auditadas por revisión humana de vecinos entre particiones, sin coincidencias de identidad detectadas en esa auditoría; persiste riesgo de variantes no detectadas». Reemplaza a la de grupos de similitud visual: la revisión de identidad (abajo) mostró que no se pueden formar esos grupos con un umbral.
+- **Afirmación permitida en el informe**: «piloto seleccionado por revisión humana con un radio de exclusión de identidad visual; aceptadas depuradas en una segunda pasada asistida; particiones auditadas con una pasada asistida sobre vecinos entre particiones, con los casos dudosos tratados como coincidencias; persiste riesgo de variantes no detectadas». Reemplaza a la anterior, que suponía una auditoría hecha por una persona (ver «Resultados del piloto, el split y la exportación»).
 - **Equilibrio:** las categorías se reparten entre estilos para que el LoRA no asocie un estilo con un tipo de producto.
 - **Pruebas:** el test de BG60k es estético y reservado. Las fotos caseras se dividen en desarrollo (para elegir checkpoint, `strength`, escala y duración) y prueba final, que no se usa para ajustar nada.
 
-## Entrenamiento (cambios pendientes en `training/`)
+## Entrenamiento (ajustes en `training/`)
 
-- Quitar `--random_flip` de `colab_job.py`: voltea textos y logos.
+- Hecho: `colab_job.py` ya no usa `--random_flip` (voltea textos y logos), guarda hasta 8 checkpoints y el resultado trae los pesos de todos, para validarlos por estilo. `run_colab.py` sube el dataset en partes de 32 MiB y el VM verifica su sha256.
 - 1500 pasos sobre unas 600 imágenes de train son unas 2,5 épocas con lote 1. La duración se elige validando checkpoints por estilo, no a priori. Rank 16 y LR 1e-4 son el punto de partida del smoke test, no un óptimo.
 - Ampliar `--max-minutes` (hoy 50, con 10 de reserva): por el smoke test (200 s por 100 pasos), 1500 pasos son unos 50 minutos solo de entrenamiento.
 - 1024 px por continuidad con el smoke test: el script oficial reescala con interpolación bilineal (800 → 1024, 1,28×) y recorta al cuadrado. Si el LoRA aprende desenfoque, se mide; no se supone.
@@ -248,8 +248,31 @@ Ningún umbral intermedio separa identidad de categoría. Hay además mismos pro
 
    El radio de 0,75 es provisional y no es una garantía: 25487–4260 pasaría igual. Se eligió porque, aceptando todo, los radios de 0,75 a 0,90 alcanzan la misma disponibilidad: 150 por estilo, de 75 a 89 familias por estilo y 30 `near` (17 en lifestyle), con entre 2 681 y 3 734 candidatos aún en cola. Que alcance después de la revisión humana se comprueba al terminarla. El orden de los turnos influye poco (al empezar por otro estilo cambiaron dos imágenes): se fija y se declara.
 2. **Revisión humana del piloto** (`training/bg60k_pilot_review.py`, página local). Cada candidato se acepta o se rechaza con un motivo: no corresponde al estilo, no es mate, más de un producto, comida, texto en el fondo u otro. Un rechazo hace que la misma cola presente el siguiente. El estado se reconstruye reproduciendo el registro de decisiones, y el proceso se detiene si cambió la configuración. La procedencia (hashes de candidatos, puntajes, embeddings y familias, más la configuración) queda en `pilot_provenance.json`.
-3. **Split y auditoría** (pendiente):
+3. **Split y auditoría** (`training/bg60k_split.py`; resultados abajo):
    - **Split:** aleatorio por estilo, con semilla fija.
    - **Auditoría:** para cada imagen de val y test, sus 10 vecinos DINOv2 recalculados en train; entre val y test, en ambos sentidos. Se suma todo par entre particiones que tenga ids a 10 o menos, o pHash < 15 (la **unión** de ambas señales). La revisión es ciega, en la misma página.
    - **Coincidencias:** las confirmadas forman componentes (solo con etiquetas humanas, sin encadenar por similitud) y cada componente va entero a una partición. Se recalcula y se repite hasta no encontrar coincidencias nuevas.
    - **Riesgo residual:** se estima con una muestra aleatoria de pares entre particiones fuera de los auditados, guardando su probabilidad de selección. Con 100 pares y ningún positivo, la cota superior unilateral al 95 % es 2,95 % de los pares, demasiado amplia para afirmar que no hay fuga.
+
+## Resultados del piloto, el split y la exportación (2026-11-15)
+
+**Revisión del piloto.** Isaac tomó 2 706 decisiones (408 aceptadas, 1 990 rechazadas, la gran mayoría por no corresponder al estilo) y la cortó antes de la meta de 150 por estilo: 61 en estudio, 62 en natural, 63 en cálido, 145 en lifestyle y 77 en minimalista. En los últimos minutos el ritmo pasó de unas 18 a más de 100 decisiones por minuto; los rechazos rápidos solo descartan candidatos, pero las aceptadas de ese tramo tenían más errores.
+
+**Segunda pasada sobre las aceptadas (asistida).** Se revisaron las 408 en hojas de miniaturas y se excluyeron 78 que no cumplen los criterios: fondo fuera de la paleta (20), transparente (20), más de un producto (23) y comida o bebida servida (15). Quedan en `training/review/pilot_exclusions.csv`, aparte del registro de decisiones, que no se toca. Isaac no devolvió ninguna.
+
+**Selección.** Las aceptadas menos las exclusiones, recortadas a 60 por estilo en orden de aceptación (afecta a lifestyle y minimalista): 257 imágenes.
+
+**Split.** 80/10/10 por estilo con semilla 0. La auditoría tuvo 488 pares entre particiones (10 vecinos DINOv2 por imagen de val y test, más ids a 10 o menos o pHash < 15) y 100 pares al azar de los 10 487 restantes. La pasada fue asistida (revisor `asistido` en `split_decisions.csv`): 586 pares distintos y 2 dudosos (1728–45185, pulseras de cuentas; 37868–53718, papel), que se trataron como coincidencias y se movieron enteros a train. Eso generó 1 par nuevo, distinto. En la muestra aleatoria no hubo positivos (cota superior al 95 %: 2,95 % de los pares). Resultado en `training/review/split.csv`:
+
+| Estilo | Train | Val | Test |
+|---|---|---|---|
+| Estudio | 36 | 4 | 4 |
+| Natural | 42 | 5 | 5 |
+| Cálido | 36 | 3 | 4 |
+| Lifestyle | 48 | 6 | 6 |
+| Minimalista | 47 | 5 | 6 |
+| **Total** | **209** | **23** | **25** |
+
+Val y test son chicos: sirven para elegir checkpoint y para una evaluación agregada (cada producto de test con los cinco estilos y varias semillas); los resultados por estilo son indicativos.
+
+**Captions y exportación** (`training/bg60k_export.py`). Caption = preset del estilo (el mismo prompt de la generación) + producto en inglés, que sale de la categoría de BG60k reducida a un sustantivo en `training/bg60k_captions.toml` (con correcciones por id). Los captions quedan en `training/review/captions.csv`. `data/bg60k/export/dataset.tar` (solo train, 73 MB, fotos originales sin recomprimir) y `data/bg60k/export/eval/` (val y test con foto y recorte) no se versionan; los sha256 están en `export.json`.
