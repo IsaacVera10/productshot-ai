@@ -205,3 +205,18 @@ Estos dos últimos dependen más de la revisión humana o de mejores descripcion
 Un umbral único de DINOv2 no separa identidad de categoría: si es conservador, une categorías enteras por encadenamiento.
 
 Hay una señal complementaria: **ids cercanos**. Entre los vecinos más cercanos, la fracción a 10 ids o menos va de 0,03 (coseno < 0,7) a 0,26 (≥ 0,95), frente a 0,0003 al azar. BG60k parece guardar juntas varias imágenes de una misma publicación. Esa señal cubre solo una parte de los casos, así que sirve como arista adicional y no reemplaza a la revisión.
+
+### Revisión humana de identidad
+
+```bash
+uv run --group dataset python training/bg60k_review.py sample       # una vez; no se rehace
+uv run --group dataset python training/bg60k_review.py serve --reviewer <nombre>
+```
+
+Es una página local en `http://127.0.0.1:8765`: las imágenes de BG60k no salen de la laptop. La muestra (`data/bg60k/review/identity_sample.json`, semilla 0) tiene 320 pares de vecinos más cercanos de DINOv2:
+- 40 por banda de coseno: [0,6, 0,7), [0,7, 0,8), [0,8, 0,85), [0,85, 0,9), [0,9, 0,95), [0,95, 0,98) y [0,98, 1];
+- 40 pares con pHash del recorte a una distancia de 6 o menos.
+
+Guarda el tamaño de cada estrato para poder ponderar después. La revisión es ciega: la página no muestra el coseno ni la banda, y el orden es aleatorio. Las etiquetas son *mismo producto*, *variante del mismo modelo* (color, talla o empaque), *distinto* y *no sé*. Cada decisión se agrega a `identity_decisions.csv` con la hora y quién revisó; si se corrige un par, vale la última.
+
+Con estas etiquetas se calibran τ de DINOv2, el pHash y la arista por ids cercanos antes de formar los grupos. Las variantes se agrupan como familia (docs/10, reglas).
