@@ -8,6 +8,7 @@ Colab Pro (`colab --auth=oauth2 whoami`).
     PYTHONPATH=backend python training/run_colab.py --stage smoke             # gasta unidades
     PYTHONPATH=backend python training/run_colab.py --stage train --dataset-tar ds.tar --steps 1500
     PYTHONPATH=backend python training/run_colab.py --stage embed --pack data/bg60k/pack.tar --max-minutes 30
+    PYTHONPATH=backend python training/run_colab.py --stage eval --adapters data/lora/<RUN_ID> --max-minutes 120
     PYTHONPATH=backend python training/run_colab.py --cleanup                 # libera VM huérfanos
 
 Pasos: comprobar que la cuenta no tiene VM asignados -> `colab new --gpu L4` -> subir la
@@ -30,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import shutil
@@ -43,6 +45,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 JOB_SCRIPT = ROOT / "training" / "colab_job.py"
 EMBED_SCRIPT = ROOT / "training" / "colab_embed.py"
+EVAL_SCRIPT = ROOT / "training" / "colab_eval.py"
+EVAL_SPLIT = ROOT / "data" / "bg60k" / "export" / "eval" / "val"
+TRAIN_TAR = ROOT / "data" / "bg60k" / "export" / "dataset.tar"
 STYLE_PROMPTS = ROOT / "training" / "bg60k_style_prompts.toml"
 REQUIREMENTS = ROOT / "training" / "requirements-colab.txt"
 ASSIGNMENTS = ROOT / "training" / "colab_assignments.py"
@@ -64,6 +69,9 @@ SMOKE_PRODUCTS = [
 
 CLIP_MODEL = "openai/clip-vit-large-patch14"
 DINO_MODEL = "facebook/dinov2-base"
+# Las mismas revisiones que los embeddings de BG60k (20261115-022838-embed).
+CLIP_REVISION = "32bd64288804d66eefd0ccbe215aa642df71cc41"
+DINO_REVISION = "f9e44c814b77203eaa57a6bdbbd535f21ede1415"
 
 RESERVE_S = 10 * 60
 # El CLI sube cada archivo en una sola petición en base64: los grandes van en partes.
@@ -76,7 +84,8 @@ class Failure(Exception):
 
 def build_config(stage: str, run_id: str, steps: int | None = None, rank: int = 16,
                  learning_rate: float = 1e-4, dataset_remote: str | None = None,
-                 deadline_unix: float | None = None, pack_sha256: str | None = None) -> dict:
+                 deadline_unix: float | None = None, pack_sha256: str | None = None,
+                 adapters: dict | None = None) -> dict:
     """Configuración que se sube como /content/job.json. Pura: se prueba sin Colab."""
     from productshot.domain import Style
     from productshot.services.presets import NEGATIVE_PROMPT, PRESETS
@@ -92,6 +101,8 @@ def build_config(stage: str, run_id: str, steps: int | None = None, rank: int = 
                        "dino": {"id": DINO_MODEL, "revision": "main"}},
             "prompts": tomllib.loads(STYLE_PROMPTS.read_text(encoding="utf-8")),
         }
+    if stage == "eval":
+        return eval_config(run_id, adapters or {}, deadline_unix)
     if stage not in ("smoke", "train"):
         raise ValueError(f"Etapa desconocida: {stage}")
     if stage == "train" and not dataset_remote:
@@ -140,6 +151,74 @@ def build_config(stage: str, run_id: str, steps: int | None = None, rank: int = 
     }
 
 
+def eval_config(run_id: str, adapters: dict, deadline_unix: float | None) -> dict:
+    """Mismo pipeline, prompts y parámetros que producción (SdxlParams); solo cambia el LoRA."""
+    from productshot.domain import Style
+    from productshot.services.presets import NEGATIVE_PROMPT, PRESETS
+    from productshot.services.sdxl_generation import DEFAULT_MODEL_ID, SdxlParams
+
+    if not adapters:
+        raise ValueError("La etapa eval necesita adaptadores (--adapters).")
+    p = SdxlParams()
+    if p.model_id != DEFAULT_MODEL_ID or p.model_id != BASE_MODEL or p.mask_dilate_px or p.prompt_prefix:
+        raise ValueError("La configuración de producción cambió: revisar la evaluación antes de correrla.")
+    return {
+        "run_id": run_id,
+        "stage": "eval",
+        "deadline_unix": deadline_unix,
+        "diffusers_version": DIFFUSERS_VERSION,
+        "base_model": BASE_MODEL,
+        "base_revision": BASE_REVISION,
+        # Producción resuelve esta revisión al cargar; la evaluación fija BASE_REVISION (docs/05).
+        "production_revision": p.revision,
+        "negative_prompt": NEGATIVE_PROMPT,
+        "style_prompts": {s.value: PRESETS[s].prompt for s in Style},
+        "generation": {"steps": p.steps, "guidance_scale": p.guidance_scale, "strength": p.strength,
+                       "target_side": p.target_side, "mask_blur": p.mask_blur, "lora_scale": p.lora_scale},
+        "adapters": adapters,
+        "models": {"clip": {"id": CLIP_MODEL, "revision": CLIP_REVISION},
+                   "dino": {"id": DINO_MODEL, "revision": DINO_REVISION}},
+        # Igual que bg60k_pack.py, para que CLIP y DINOv2 vean lo mismo que en los embeddings.
+        "preprocess": {"side": 224, "neutral": 128, "jpeg_quality": 92},
+        "order_seed": 0,
+        "seed_rule": "int(sha256(f'{id}:{style}')[:8], 16)",
+    }
+
+
+def collect_adapters(run_dir: Path) -> dict[str, Path]:
+    """Checkpoints de una corrida de entrenamiento, del más temprano al más tardío."""
+    found = {}
+    for path in run_dir.glob("checkpoint-*_pytorch_lora_weights.safetensors"):
+        found[f"ckpt{int(path.name.split('_')[0].split('-')[1])}"] = path
+    if not found:
+        raise SystemExit(f"No hay checkpoints en {run_dir}")
+    return dict(sorted(found.items(), key=lambda kv: int(kv[0][4:])))
+
+
+def build_eval_tar(dest: Path, split_dir: Path, train_tar: Path, adapters: dict[str, Path]) -> dict:
+    """val (foto, recorte y eval.jsonl), fotos de train con su estilo y los adaptadores."""
+    with tarfile.open(dest, "w") as tar:
+        for path in sorted(split_dir.iterdir()):
+            tar.add(path, arcname=f"val/{path.name}")
+        with tarfile.open(train_tar) as src:
+            for member in src.getmembers():
+                if member.isfile():
+                    info = tarfile.TarInfo(f"train/{member.name}")
+                    info.size, info.mtime, info.mode = member.size, member.mtime, member.mode
+                    tar.addfile(info, src.extractfile(member))
+        for name, path in adapters.items():
+            tar.add(path, arcname=f"adapters/{name}.safetensors")
+    return {name: {"file": f"adapters/{name}.safetensors", "source": path.name,
+                   "sha256": hashlib.sha256(path.read_bytes()).hexdigest()} for name, path in adapters.items()}
+
+
+def eval_report():
+    spec = importlib.util.spec_from_file_location("lora_eval_report", ROOT / "training" / "lora_eval_report.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def check_result(out_dir: Path, run_id: str) -> dict:
     """Exige el resultado completo de ESTA corrida. Pura: se prueba sin Colab.
 
@@ -156,6 +235,20 @@ def check_result(out_dir: Path, run_id: str) -> dict:
         raise Failure(f"El trabajo remoto no terminó bien: {manifest.get('status')}")
     if manifest.get("stage") == "embed":
         check_embeddings(out_dir, manifest)
+        return manifest
+    if manifest.get("stage") == "eval":
+        for name, expected in manifest.get("files", {}).items():
+            path = out_dir / name
+            if not path.exists() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+                raise Failure(f"{name} falta o no coincide con el sha256 registrado en el VM.")
+        if set(manifest.get("files", {})) != {"metrics.jsonl", "style_refs.npz"}:
+            raise Failure("El manifiesto de eval no lista metrics.jsonl y style_refs.npz.")
+        if not manifest.get("completed"):
+            raise Failure("La evaluación no completó ningún producto.")
+        try:
+            eval_report().validate(out_dir, manifest)
+        except (ValueError, OSError, KeyError) as exc:
+            raise Failure(f"Resultado de eval inválido: {exc}") from exc
         return manifest
     weights = out_dir / "pytorch_lora_weights.safetensors"
     if not weights.exists():
@@ -324,7 +417,7 @@ def cleanup(dry_run: bool) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--stage", choices=("smoke", "train", "embed"))
+    ap.add_argument("--stage", choices=("smoke", "train", "embed", "eval"))
     ap.add_argument("--cleanup", action="store_true", help="libera TODOS los VM asignados a la cuenta")
     ap.add_argument("--gpu", default="L4", help="T4, L4, A100 o H100; cada una gasta distinto")
     ap.add_argument("--session", default="productshot-lora")
@@ -333,6 +426,7 @@ def main() -> int:
     ap.add_argument("--learning-rate", type=float, default=1e-4)
     ap.add_argument("--dataset-tar", type=Path, help="tar de una carpeta imagefolder con metadata.jsonl")
     ap.add_argument("--pack", type=Path, help="paquete de bg60k_pack.py (etapa embed)")
+    ap.add_argument("--adapters", type=Path, help="carpeta de una corrida train con sus checkpoints (etapa eval)")
     ap.add_argument("--max-minutes", type=float, default=50.0, help="presupuesto total desde que se pide el VM")
     ap.add_argument("--idle-timeout", type=float, default=900.0,
                     help="segundos sin salida antes de que `colab exec` deje de esperar")
@@ -347,12 +441,15 @@ def main() -> int:
         ap.error("falta --stage (o --cleanup)")
     if args.stage == "embed" and not args.pack:
         ap.error("la etapa embed necesita --pack")
+    if args.stage == "eval" and not args.adapters:
+        ap.error("la etapa eval necesita --adapters")
     if args.max_minutes * 60 <= RESERVE_S + 5 * 60:
         ap.error("--max-minutes debe dejar al menos 5 minutos además de la reserva de 10")
 
     run_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{args.stage}"
     embed = args.stage == "embed"
-    out_root = args.out or ROOT / "data" / ("bg60k/embeddings" if embed else "lora")
+    evaluate = args.stage == "eval"
+    out_root = args.out or (args.adapters / "eval" if evaluate else ROOT / "data" / ("bg60k/embeddings" if embed else "lora"))
     out_dir = out_root / run_id
     state_dir = Path(tempfile.mkdtemp(prefix="colab-state-")) if args.dry_run else out_dir
     if not args.dry_run:
@@ -361,9 +458,17 @@ def main() -> int:
     colab = Colab(args.session, state_dir / "colab-state.json", deadline, args.dry_run)
     remote_tar = "dataset.tar" if args.dataset_tar else None
     pack_sha = hashlib.sha256(args.pack.read_bytes()).hexdigest() if embed else None
-    cfg = build_config(args.stage, run_id, args.steps, args.rank, args.learning_rate, remote_tar,
-                       deadline_unix=deadline - RESERVE_S, pack_sha256=pack_sha)
     parts_dir = Path(tempfile.mkdtemp(prefix="colab-parts-"))
+    adapters, eval_parts = None, []
+    if evaluate:
+        eval_tar = parts_dir / "eval.tar"
+        adapters = build_eval_tar(eval_tar, EVAL_SPLIT, TRAIN_TAR, collect_adapters(args.adapters))
+    cfg = build_config(args.stage, run_id, args.steps, args.rank, args.learning_rate, remote_tar,
+                       deadline_unix=deadline - RESERVE_S, pack_sha256=pack_sha, adapters=adapters)
+    if evaluate:
+        eval_parts = split_parts(eval_tar, parts_dir) if not args.dry_run else []
+        cfg["eval_tar"] = {"parts": len(eval_parts), "sha256": hashlib.sha256(eval_tar.read_bytes()).hexdigest()}
+        cfg["adapters_run"] = args.adapters.name
     pack_parts = split_parts(args.pack, parts_dir) if embed and not args.dry_run else []
     if embed:
         cfg["pack_parts"] = len(pack_parts)
@@ -391,23 +496,27 @@ def main() -> int:
         colab("usage", session=False, check=False, timeout=60)  # tasa de consumo de esta GPU
         if not embed:
             colab("upload", str(REQUIREMENTS), "/content/requirements-colab.txt", timeout=180)
+        if evaluate:
+            colab("upload", str(JOB_SCRIPT), "/content/colab_job.py", timeout=180)
         with tempfile.TemporaryDirectory() as tmp:
             job = Path(tmp) / "job.json"
             job.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
             colab("upload", str(job), "/content/job.json", timeout=180)
         for part in dataset_parts:
             colab("upload", str(part), f"/content/{part.name.replace(args.dataset_tar.name, remote_tar)}", timeout=300)
+        for part in eval_parts:
+            colab("upload", str(part), f"/content/{part.name}", timeout=300)
         for part in pack_parts:
             colab("upload", str(part), f"/content/{part.name.replace(args.pack.name, 'pack.tar')}", timeout=300)
         if embed and args.dry_run:
             colab("upload", f"{args.pack}.part000", "/content/pack.tar.part000", timeout=300)
         try:
-            colab("exec", "-f", str(EMBED_SCRIPT if embed else JOB_SCRIPT), "--timeout", str(args.idle_timeout), check=False,
+            colab("exec", "-f", str(EMBED_SCRIPT if embed else EVAL_SCRIPT if evaluate else JOB_SCRIPT), "--timeout", str(args.idle_timeout), check=False,
                   timeout=colab.remaining(reserve=RESERVE_S - 120))
         finally:
             # Lo que haya, aunque el trabajo falle: el manifiesto trae el error.
             colab("download", "/content/out/result.tar.gz", str(out_dir / "result.tar.gz"),
-                  check=False, timeout=420, budget=False)
+                  check=False, timeout=900 if evaluate else 420, budget=False)
             if (out_dir / "result.tar.gz").exists():
                 with tarfile.open(out_dir / "result.tar.gz") as tar:
                     tar.extractall(out_dir, filter="data")
@@ -419,6 +528,9 @@ def main() -> int:
             if embed:
                 summary = {k: manifest[k] for k in ("pack", "reference_check", "clip_image", "dino")}
                 print(f"[driver] OK. Embeddings: {json.dumps(summary, ensure_ascii=False)[:2000]}")
+            elif evaluate:
+                print(f"[driver] OK. {len(manifest['completed'])} productos evaluados (parcial: {manifest.get('partial')}), "
+                      f"referencias de estilo: {json.dumps(manifest.get('style_references'), ensure_ascii=False)[:600]}")
             else:
                 verify = manifest.get("verify", {})
                 print(f"[driver] OK. Verificación: {json.dumps(verify.get('pipelines', {}), ensure_ascii=False)[:2000]}")
