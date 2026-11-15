@@ -103,15 +103,16 @@ def check_block(name: str, x, dim: int | None = None) -> dict:
     return {"shape": list(x.shape), "norm_min": float(norms.min()), "norm_max": float(norms.max())}
 
 
-def reference_check(clip: Clip, ids: list[int]) -> dict:
+def reference_check(clip: Clip, ids: list[int]):
     """Compara la foto reducida del paquete con el original pasado por el procesador oficial."""
     import numpy as np
     from PIL import Image
     packed = clip.images([Image.open(PACK / "images" / f"{i}.jpg").convert("RGB") for i in ids])
     original = clip.images([Image.open(PACK / "originals" / f"{i}.png").convert("RGB") for i in ids])
     cosine = (packed * original).sum(axis=1)
-    return {"n": len(ids), "cosine_min": float(cosine.min()), "cosine_mean": float(cosine.mean()),
-            "cosine_p5": float(np.quantile(cosine, 0.05))}
+    summary = {"n": len(ids), "cosine_min": float(cosine.min()), "cosine_mean": float(cosine.mean()),
+               "cosine_p5": float(np.quantile(cosine, 0.05))}
+    return summary, original
 
 
 def main() -> None:
@@ -169,7 +170,7 @@ def main() -> None:
         text = clip.text([t for _, t in groups])
         probe = embed_all(clip, [PACK / "images" / f"{i}.jpg" for i in ids[:64]], deadline, "la prueba de CLIP")
         manifest["probe"] = {"clip_text": check_block("clip_text", text), "clip_image": check_block("clip_image", probe)}
-        manifest["reference_check"] = reference_check(clip, index["references"])
+        manifest["reference_check"], ref_original = reference_check(clip, index["references"])
         log(f"Prueba OK; referencia: {manifest['reference_check']}")
         save()
 
@@ -177,7 +178,8 @@ def main() -> None:
         clip_img = embed_all(clip, [PACK / "images" / f"{i}.jpg" for i in ids], deadline, "CLIP")
         manifest["clip_image"] = check_block("clip_image", clip_img, probe.shape[1]) | {"seconds": round(time.time() - t0, 1)}
         np.savez(OUT / "clip.npz", ids=np.asarray(ids), clip_image=clip_img.astype(np.float16), clip_text=text,
-                 prompt_group=np.asarray([g for g, _ in groups]), prompt_text=np.asarray([t for _, t in groups]))
+                 prompt_group=np.asarray([g for g, _ in groups]), prompt_text=np.asarray([t for _, t in groups]),
+                 ref_ids=np.asarray(index["references"]), ref_original=ref_original.astype(np.float16))
         save()
         del clip
         torch.cuda.empty_cache()

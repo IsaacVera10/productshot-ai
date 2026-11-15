@@ -178,3 +178,30 @@ Corrida `20261115-022838-embed` en una L4 del Colab Pro de Pedro: unos 8 minutos
 - **Modelos:** `openai/clip-vit-large-patch14@32bd64288804d66eefd0ccbe215aa642df71cc41` y `facebook/dinov2-base@f9e44c814b77203eaa57a6bdbbd535f21ede1415`.
 - **CLIP:** 29 600 fotos en 217 s. **DINOv2:** 18 602 recortes en 51 s. Ambos de 768 dimensiones, con valores finitos y normas entre 0,9999998 y 1,0000001.
 - **Preprocesado frente al oficial.** Se comparó el embedding CLIP de la foto reducida del paquete (Lanczos más JPEG 92) con el del PNG original pasado por el procesador oficial. En 128 referencias, el coseno dio media 0,949, percentil 5 de 0,915 y mínimo 0,866. La diferencia no es despreciable, y puede mover decisiones de estilo cercanas a un umbral. Esta corrida guardó solo los cosenos, no los embeddings de los originales: para medir si cambia el estilo asignado, la próxima corrida debe guardar ambos.
+
+### Primera lectura de estilo e identidad (2026-11-15, exploratoria)
+
+`training/bg60k_style.py` y `training/bg60k_identity.py` trabajan sobre la corrida `20261115-022838-embed`. Nada de esto es todavía una decisión: falta la calibración humana.
+
+**Estilo.** Con el puntaje crudo, `studio` se lleva el 65 % de `core` sin alertas: casi cualquier foto de producto le parece de estudio a CLIP. La mediana del margen entre los dos mejores estilos es 0,018. Además, la subclase «fondo negro puro» supera al mejor estilo en 5 478 imágenes. Se estandariza cada estilo contra su propia distribución (z-score) y se ordena por ese valor.
+
+| `core` sin alertas | studio | lifestyle | natural | warm | minimal |
+|---|---|---|---|---|---|
+| Mejor estilo crudo | 6 076 | 2 004 | 602 | 393 | 288 |
+| Mejor estilo estandarizado | 1 288 | 2 858 | 2 148 | 1 424 | 1 645 |
+
+En una revisión visual de los 12 mejores de cada estilo (estandarizado), hecha por Claude y no por una persona:
+- `warm` y `lifestyle` se ven bien;
+- `natural` es aceptable, aunque muchos fondos son renders 3D de vegetación;
+- `studio` trae cortinas pastel en vez del gris continuo del preset;
+- `minimal` es heterogéneo.
+
+Estos dos últimos dependen más de la revisión humana o de mejores descripciones.
+
+**Identidad.** La mediana del coseno de DINOv2 con el vecino más cercano es 0,861, y 2 241 recortes tienen un vecino a 0,98 o más. En hojas de pares por banda:
+- entre 0,85 y 0,90 se mezclan variantes del mismo producto (color, ángulo) con productos distintos de la misma categoría;
+- entre 0,70 y 0,80 todavía aparecen productos idénticos (el mismo juego de tetera, 36305 y 27345, a 0,767).
+
+Un umbral único de DINOv2 no separa identidad de categoría: si es conservador, une categorías enteras por encadenamiento.
+
+Hay una señal complementaria: **ids cercanos**. Entre los vecinos más cercanos, la fracción a 10 ids o menos va de 0,03 (coseno < 0,7) a 0,26 (≥ 0,95), frente a 0,0003 al azar. BG60k parece guardar juntas varias imágenes de una misma publicación. Esa señal cubre solo una parte de los casos, así que sirve como arista adicional y no reemplaza a la revisión.
