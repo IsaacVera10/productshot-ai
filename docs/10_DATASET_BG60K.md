@@ -37,7 +37,7 @@
 - **Umbrales:** los de máscara empiezan como alertas y se calibran con revisión visual. La nitidez no se usa como filtro global, porque `warm` y `lifestyle` piden desenfoque de fondo (`presets.py`); solo se mide la del producto.
 - **Estilo:** la etiqueta final es humana. Además de los ejemplos con margen alto, la revisión incluye márgenes bajos. La evaluación del LoRA no se apoya solo en el mismo CLIP que eligió los ejemplos: la medida principal es humana y ciega (`06_EVALUACION_Y_ETICA.md`).
 - **Identidad:** BG60k no trae identidad de producto. Los grupos salen de aristas por pHash del recorte y por coseno de DINOv2 ≥ τ, unidas por union-find. τ se calibra con pares revisados a mano en bandas de similitud, con pares de mismo producto con cambios grandes y con productos distintos muy parecidos. Como union-find encadena (A~B y B~C unen A con C), se revisan los componentes grandes y las aristas que conectan subgrupos. Un grupo nunca se divide para cumplir cuotas. Las variantes de color de un mismo modelo se agrupan como familia cuando se reconocen.
-- **Afirmación permitida en el informe** (tras ejecutar la auditoría): «particiones por grupos de similitud visual, sin coincidencias de identidad detectadas en la auditoría descrita; persiste riesgo de variantes no detectadas».
+- **Afirmación permitida en el informe** (tras ejecutar la auditoría): «piloto seleccionado con un radio de exclusión de identidad visual y particiones auditadas por revisión humana de vecinos entre particiones, sin coincidencias de identidad detectadas en esa auditoría; persiste riesgo de variantes no detectadas». Reemplaza a la de grupos de similitud visual: la revisión de identidad (abajo) mostró que no se pueden formar esos grupos con un umbral.
 - **Equilibrio:** las categorías se reparten entre estilos para que el LoRA no asocie un estilo con un tipo de producto.
 - **Pruebas:** el test de BG60k es estético y reservado. Las fotos caseras se dividen en desarrollo (para elegir checkpoint, `strength`, escala y duración) y prueba final, que no se usa para ajustar nada.
 
@@ -220,3 +220,36 @@ Es una página local en `http://127.0.0.1:8765`: las imágenes de BG60k no salen
 Guarda el tamaño de cada estrato para poder ponderar después. La revisión es ciega: la página no muestra el coseno ni la banda, y el orden es aleatorio. Las etiquetas son *mismo producto*, *variante del mismo modelo* (color, talla o empaque), *distinto* y *no sé*. Cada decisión se agrega a `identity_decisions.csv` con la hora y quién revisó; si se corrige un par, vale la última.
 
 Con estas etiquetas se calibran τ de DINOv2, el pHash y la arista por ids cercanos antes de formar los grupos. Las variantes se agrupan como familia (docs/10, reglas).
+
+### Resultado de la revisión de identidad y cambio de protocolo (2026-11-15)
+
+Isaac revisó los 320 registros de la muestra, que son 318 pares únicos (dos estaban en un estrato de coseno y también en el de pHash), y no marcó ningún «no sé». La muestra y las decisiones están versionadas en `training/review/`, sin imágenes; el repo es privado. BG60k no dice nada sobre redistribuir anotaciones derivadas, así que publicarlas fuera del equipo queda pendiente.
+
+| Estrato (coseno DINOv2 del vecino más cercano) | Mismo | Variante | Distinto | Mismo o variante |
+|---|---|---|---|---|
+| [0,6, 0,7) | 2 | 4 | 34 | 0,15 |
+| [0,7, 0,8) | 5 | 3 | 32 | 0,20 |
+| [0,8, 0,85) | 4 | 8 | 28 | 0,30 |
+| [0,85, 0,9) | 13 | 10 | 17 | 0,57 |
+| [0,9, 0,95) | 16 | 6 | 18 | 0,55 |
+| [0,95, 0,98) | 18 | 13 | 9 | 0,78 |
+| [0,98, 1] | 40 | 0 | 0 | 1,00 |
+| pHash del recorte ≤ 6 | 37 | 2 | 1 | 0,97 |
+
+Las tasas de pHash y de ids cercanos mezclan estratos sobremuestreados: describen esta muestra y no son precisiones de la población. Cuarenta de cuarenta tampoco demuestra una precisión perfecta.
+- **pHash del recorte < 3:** 76 de 76 registros (74 pares únicos) son mismo producto o variante.
+- **Ids a 10 o menos:** 36 de 39. Los tres falsos positivos son de la misma categoría (56507–56506, 11355–11356 y 50097–50099).
+
+Ningún umbral intermedio separa identidad de categoría. Hay además mismos productos muy lejos en DINOv2, como 25487–4260 (coseno 0,633, pHash 34, ids lejanos), y 1 669 pares únicos de vecinos con coseno < 0,6 quedaron fuera de los estratos revisados. Por eso, en vez de agrupar todo el dataset (etapa 4 original):
+
+1. **Selección del piloto con radio de exclusión** (`training/bg60k_pilot.py`, revisado con Codex). Es en línea y por turnos fijos entre estilos (orden studio, natural, warm, lifestyle, minimal). Cada estilo presenta su siguiente mejor candidato por z de CLIP que cumpla dos condiciones:
+   - **Topes**, contados sobre aceptados y pendientes: como máximo 30 `near` de los 150 y 4 por familia de producto. Las familias salen de `training/bg60k_families.toml`, que agrupa las categorías que la regla de nicho deja separadas.
+   - **Ningún conflicto** con un aceptado o pendiente: misma imagen, coseno DINOv2 ≥ 0,75, pHash del recorte < 7, o ids a 10 o menos de la misma categoría.
+
+   El radio de 0,75 es provisional y no es una garantía: 25487–4260 pasaría igual. Se eligió porque, aceptando todo, los radios de 0,75 a 0,90 alcanzan la misma disponibilidad: 150 por estilo, de 75 a 89 familias por estilo y 30 `near` (17 en lifestyle), con entre 2 681 y 3 734 candidatos aún en cola. Que alcance después de la revisión humana se comprueba al terminarla. El orden de los turnos influye poco (al empezar por otro estilo cambiaron dos imágenes): se fija y se declara.
+2. **Revisión humana del piloto** (`training/bg60k_pilot_review.py`, página local). Cada candidato se acepta o se rechaza con un motivo: no corresponde al estilo, no es mate, más de un producto, comida, texto en el fondo u otro. Un rechazo hace que la misma cola presente el siguiente. El estado se reconstruye reproduciendo el registro de decisiones, y el proceso se detiene si cambió la configuración. La procedencia (hashes de candidatos, puntajes, embeddings y familias, más la configuración) queda en `pilot_provenance.json`.
+3. **Split y auditoría** (pendiente):
+   - **Split:** aleatorio por estilo, con semilla fija.
+   - **Auditoría:** para cada imagen de val y test, sus 10 vecinos DINOv2 recalculados en train; entre val y test, en ambos sentidos. Se suma todo par entre particiones que tenga ids a 10 o menos, o pHash < 15 (la **unión** de ambas señales). La revisión es ciega, en la misma página.
+   - **Coincidencias:** las confirmadas forman componentes (solo con etiquetas humanas, sin encadenar por similitud) y cada componente va entero a una partición. Se recalcula y se repite hasta no encontrar coincidencias nuevas.
+   - **Riesgo residual:** se estima con una muestra aleatoria de pares entre particiones fuera de los auditados, guardando su probabilidad de selección. Con 100 pares y ningún positivo, la cota superior unilateral al 95 % es 2,95 % de los pares, demasiado amplia para afirmar que no hay fuga.
