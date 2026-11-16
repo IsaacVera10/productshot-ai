@@ -188,6 +188,7 @@ class Lab:
         from productshot.domain import Mode, Style
         from productshot.services.generation import GenerationRequest, VariationSpec, build_prompt
         from productshot.services.guardrails import enforce_fidelity
+        from productshot.services.layout import Layout, compose
         from productshot.services.presets import NEGATIVE_PROMPT
 
         def png(img, side=None) -> bytes:
@@ -285,6 +286,27 @@ class Lab:
 
         write_manifest()
 
+        def geometry(mask) -> dict:
+            product = binary(mask)  # 255 = producto
+            near = product.filter(ImageFilter.MaxFilter(81))
+            edge = product.filter(ImageFilter.MaxFilter(9))
+            return {"area": max(1, sum(1 for v in product.getdata() if v)),
+                    "band": ImageChops.subtract(near, edge)}  # franja de ~4 a 40 px alrededor del producto
+
+        framed: dict[tuple, dict] = {}
+
+        def frame(p, layout: dict | None) -> dict:
+            """El caso tal cual o reencuadrado (modo avanzado); G8 y la métrica usan el lienzo."""
+            if not layout:
+                return p
+            key = (p["case"]["name"], tuple(sorted(layout.items())))
+            if key not in framed:
+                photo, mask = compose(p["photo"], p["mask"], Layout(**layout))
+                tag = "_".join(f"{k}{v}" for k, v in sorted(layout.items()))
+                save(f"{p['case']['name']}__0_lienzo_{tag}.png", png(photo))
+                framed[key] = {**p, "photo": photo, "mask": mask, **geometry(mask)}
+            return framed[key]
+
         # 1) Fotos y máscaras, una vez por caso (mismas semillas: mismas fotos en cada corrida).
         prepared = []
         for case in cases:
@@ -294,15 +316,8 @@ class Lab:
                 generator=torch.Generator("cuda").manual_seed(case["seed"]),
             ).images[0]
             mask = self.segmenter.segment(photo).mask
-            product = binary(mask)  # 255 = producto
-            near = product.filter(ImageFilter.MaxFilter(81))
-            edge = product.filter(ImageFilter.MaxFilter(9))
-            prepared.append({
-                "case": case, "photo": photo, "mask": mask,
-                "area": max(1, sum(1 for v in product.getdata() if v)),
-                "band": ImageChops.subtract(near, edge),  # franja de ~4 a 40 px alrededor del producto
-                "entry": {"name": case["name"], "results": []},
-            })
+            prepared.append({"case": case, "photo": photo, "mask": mask, **geometry(mask),
+                             "entry": {"name": case["name"], "results": []}})
             # Resolución completa: son la entrada de todas las configuraciones.
             save(f"{case['name']}__0_foto.png", png(photo))
             save(f"{case['name']}__1_mascara.png", png(mask))
@@ -346,6 +361,7 @@ class Lab:
                 engine = cfg.pop("engine", "four")
                 use_hint = cfg.pop("use_hint", False)
                 lora_scale = cfg.pop("lora", None)
+                layout = cfg.pop("layout", None)
                 if engine not in ("four", "nine", "composite"):
                     raise ValueError(f"{cfg_name}: motor desconocido {engine!r}")
                 if lora_scale is not None and (engine == "composite" or not adapter):
@@ -371,7 +387,7 @@ class Lab:
                     write_manifest()
                 if engine != "nine" and nine is not None:
                     raise ValueError("Las configuraciones de nueve canales deben ir al final.")
-                for p in prepared:
+                for p in (frame(case, layout) for case in prepared):
                     for seed in seeds:
                         specs = tuple(
                             VariationSpec(position=i + 1, style=Style(st), seed=seed + i) for i, st in enumerate(styles)
@@ -499,6 +515,13 @@ EXPERIMENT_SETS = {
     "nueve_strength": {
         "I_nueve_strength_090": {"engine": "nine", "strength": 0.90},
         "J_nueve_strength_095": {"engine": "nine", "strength": 0.95},
+    },
+    # 2026-11-16: reencuadre del modo avanzado (producto más chico y apoyado en el tercio
+    # inferior) frente a la base, con el mismo motor y las mismas semillas.
+    "integracion": {
+        "A_base": {},
+        "L_reencuadre_45": {"layout": {"height": 0.45, "bottom": 0.85}},
+        "L_reencuadre_30": {"layout": {"height": 0.30, "bottom": 0.80}},
     },
     # 2026-11-14: verificación del LoRA del smoke test de Colab (P4, ADR-009). Controles por
     # motor: sin adaptador, adaptador con peso 0 dos veces (repetibilidad) y peso 1. En nueve
