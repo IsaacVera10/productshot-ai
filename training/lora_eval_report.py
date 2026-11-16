@@ -132,6 +132,15 @@ def report(rows: list[dict], configs: list[str], styles: list[str]) -> tuple[str
         _, m = per_product(sub, "clip_margin", configs)
         lines.append(f"| {s} | " + " | ".join(f"{(m[:, k] - m[:, 0]).mean():+.4f}" for k in range(1, len(configs))) + " |")
 
+    if all("text_margin" in r for r in rows):
+        # Señal secundaria: margen CLIP contra el texto de cada preset (no contra BG60k). El LoRA por
+        # autodestilación se entrenó con candidatas elegidas por esta medida, así que la favorece.
+        _, text = per_product(rows, "text_margin", configs)
+        lines += ["", "Δ margen de texto vs apagado (secundario, sesgado a favor del LoRA destilado):", ""]
+        for k, c in enumerate(configs[1:], start=1):
+            d = text[:, k] - text[:, 0]
+            lines.append("- {}: {:+.4f} [{:+.4f}, {:+.4f}]".format(c, d.mean(), *bootstrap_ci(d)))
+
     decision = choose(margin, configs)
     lines += ["", (f"Propuesta: **{decision['proposal']}** ({decision['reason']}). "
                    f"Candidatos: {decision['candidates'] or 'ninguno'}. Pendiente de la revisión humana ciega.")]

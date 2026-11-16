@@ -212,7 +212,7 @@ def load_pipeline(cfg: dict):
     return pipe
 
 
-def evaluate_product(pipe, clip: Clip, dino: Dino, centroids: dict, cfg: dict, row: dict) -> list[dict]:
+def evaluate_product(pipe, clip: Clip, dino: Dino, centroids: dict, texts, cfg: dict, row: dict) -> list[dict]:
     import numpy as np
     import torch
     from PIL import Image, ImageChops, ImageStat
@@ -261,13 +261,15 @@ def evaluate_product(pipe, clip: Clip, dino: Dino, centroids: dict, cfg: dict, r
             rows.append({"id": row["id"], "item_style": row["style"], "style": style, "config": config,
                          "seed": seed, "seconds": seconds, "image": name,
                          "protected_mean_abs_diff": round(drift, 3)})
-    clip_scores = clip.images(finals) @ matrix.T
+    embeds = clip.images(finals)
+    clip_scores, text_scores = embeds @ matrix.T, embeds @ texts.T
     dino_embeds = dino.images([ref_crop, *crops])
     dino_cos = dino_embeds[1:] @ dino_embeds[0]
-    for r, scores, d in zip(rows, clip_scores, dino_cos):
+    for r, scores, t, d in zip(rows, clip_scores, text_scores, dino_cos):
         target = styles.index(r["style"])
         others = np.delete(scores, target)
-        r.update({"clip_target": round(float(scores[target]), 5),
+        r.update({"text_margin": round(float(t[target] - np.delete(t, target).max()), 5),
+                  "clip_target": round(float(scores[target]), 5),
                   "clip_margin": round(float(scores[target] - others.max()), 5),
                   "clip_top1": styles[int(np.argmax(scores))],
                   "dino_product": round(float(d), 5)})
@@ -373,7 +375,7 @@ def main() -> None:
         pipe = load_pipeline(cfg)
         manifest["pipeline_load_seconds"] = round(time.perf_counter() - t0, 1)
         distill = bool(cfg.get("distill"))
-        texts = clip.texts([cfg["style_prompts"][s] for s in centroids]) if distill else None
+        texts = clip.texts([cfg["style_prompts"][s] for s in centroids])
         if distill:
             val = [json.loads(line) for line in (EVAL / "train" / "metadata.jsonl").open(encoding="utf-8")]
         else:
@@ -389,7 +391,7 @@ def main() -> None:
                 if time.time() + max(product_seconds, default=0) * 1.2 > DEADLINE:
                     raise OutOfTime("estimación")
                 rows = (distill_product(pipe, clip, dino, centroids, texts, cfg, row) if distill
-                        else evaluate_product(pipe, clip, dino, centroids, cfg, row))
+                        else evaluate_product(pipe, clip, dino, centroids, texts, cfg, row))
             except OutOfTime:
                 for leftover in IMAGES.glob(f"{row.get('id', Path(row.get('file_name', 'x')).stem)}_*.jpg"):
                     leftover.unlink()

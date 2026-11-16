@@ -185,9 +185,12 @@ def test_evaluate_product_pairs_configs_and_recomposes(tmp_path, monkeypatch):
     rng = np.random.default_rng(0)
     centroids = {s: v / np.linalg.norm(v) for s, v in zip(styles, rng.random((5, 48)))}
     pipe = FakePipe()
-    rows = job.evaluate_product(pipe, FakeEncoder(48), FakeEncoder(48), centroids, cfg, {"id": 7, "style": "warm"})
+    texts = np.stack([centroids[s] for s in styles])
+    rows = job.evaluate_product(pipe, FakeEncoder(48), FakeEncoder(48), centroids, texts, cfg,
+                                {"id": 7, "style": "warm"})
 
     assert len(rows) == len(pipe.calls) == 5 * 3
+    assert all(np.isfinite(r["text_margin"]) for r in rows)
     assert {c["size"] for c in pipe.calls} == {(64, 64)}
     assert pipe.calls[0]["active"] == (("ckpt300",), (0.0,))  # apagado = peso 0, como producción
     assert pipe.calls[1]["active"] == (("ckpt300",), (1.0,))
