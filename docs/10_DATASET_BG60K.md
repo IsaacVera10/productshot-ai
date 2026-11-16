@@ -294,3 +294,15 @@ En L4 cada imagen tardó 14,4 s (no 8 a 10), así que el plazo de 120 minutos al
 **Resultado: ningún checkpoint mejora; la regla propone no usar el LoRA.** Todos empeoran el margen con IC bajo 0, sobre todo en lifestyle y warm; en studio y natural la diferencia es cercana a 0. Las imágenes lo confirman: con el LoRA los fondos colapsan a una pared lisa y apagada (verdosa o gris) en casi todos los estilos, y se pierden la cocina de lifestyle y el bokeh de warm. Sin el LoRA aparece el equipo de estudio que ya se había visto, pero los estilos se distinguen. Además, el LoRA agrega partes al producto fuera de la máscara (un pico y un asa a una olla, un casquillo a un peine), que G8 no corrige porque quedan en el fondo. La revisión humana ciega puede revisar esta propuesta, pero con este resultado no vale la pena gastar test en estos checkpoints.
 
 Hipótesis a contrastar antes de otra corrida: el LoRA aprende una estética común de BG60k que se impone sobre el prompt (209 fotos, 5,7 épocas, rank 16, LR 1e-4, peso 1,0 al generar); el sustantivo del producto en los captions podría reforzar el agregado de partes. Opciones baratas: evaluar el checkpoint 300 con peso 0,3 a 0,6 (sin entrenar) o reentrenar con menos pasos o menor LR.
+
+**Segunda ronda, exploratoria: peso 0,5** (`20261115-195014-eval`, 2026-11-15). Los mismos 17 productos, ckpt300 y ckpt1200 con peso 0,5 (Codex propuso probar los dos, porque la diferencia entre ellos a peso 1,0 no era concluyente: +0,0018 [−0,0019, +0,0055]). La fila del LoRA apagado salió idéntica a la de la primera ronda (0,7252, 41/85): la generación es determinista y las dos rondas se pueden comparar. 211 s por producto, 2,11 unidades (212,49 → 210,38), VM liberado.
+
+| Config | Δ margen vs apagado [IC 95 %] | Gana el estilo pedido |
+|---|---|---|
+| apagado | | 41/85 |
+| 300 a 0,5 | −0,0055 [−0,0100, −0,0019] | 38/85 |
+| 1200 a 0,5 | −0,0042 [−0,0089, +0,0002] | 38/85 |
+
+Con la mitad del peso el daño se reduce a la mitad, pero ninguna variante mejora; la regla vuelve a proponer no usar el LoRA. En las imágenes, a 0,5 vuelven en parte las escenas (la cocina de lifestyle con ckpt300), pero siguen apareciendo partes agregadas fuera de la máscara (el pico y el asa de la olla en warm, una llama en un peine). Al ser una segunda búsqueda sobre los mismos datos, los IC no se leen como confirmación, solo como orientación.
+
+**Conclusión de esta línea:** el adaptador entrenado en `20261115-132928-train` no se usa; el modo avanzado sigue sin LoRA hasta que otro entrenamiento lo supere en val. Si se reentrena, los cambios a probar son captions sin el sustantivo del producto (sospecha de las partes agregadas), menos pasos o menor LR, y evaluar con este mismo procedimiento antes de abrir test.
