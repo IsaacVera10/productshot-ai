@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     mask_min_component_fraction: float = 0.01  # G13: tamaño mínimo para contar un objeto
     fidelity_warn_diff: float = 12.0  # G8: diferencia media por canal antes de recomponer
     generation_timeout_s: float = 600.0  # G14: tiempo máximo de un lote
+    # Reencuadre del modo avanzado (services/layout.py): alto máximo y base del producto como
+    # fracción del lienzo. Con 0 en el alto, el producto queda donde está en la foto.
+    advanced_layout_height: float = 0.45
+    advanced_layout_bottom: float = 0.85
 
     @property
     def max_upload_bytes(self) -> int:

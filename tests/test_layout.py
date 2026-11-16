@@ -1,8 +1,13 @@
 """Reencuadre del modo avanzado."""
 
+import io
+
+import pytest
 from PIL import Image, ImageChops
 
+from productshot.services.generation import MockGenerationBackend
 from productshot.services.layout import Layout, compose, product_box
+from conftest import create_session
 
 
 def photo_with_product(size=(400, 300), box=(100, 50, 300, 250)):
@@ -42,3 +47,27 @@ def test_wide_products_are_limited_by_width():
     _, canvas_mask = compose(image, mask, Layout(width=0.5))
     x0, _, x1, _ = product_box(canvas_mask)
     assert x1 - x0 == 200
+
+
+class RecordingBackend(MockGenerationBackend):
+    def __init__(self):
+        self.requests = []
+
+    def generate(self, request):
+        self.requests.append(request)
+        return super().generate(request)
+
+
+@pytest.mark.parametrize("mode", ["intermediate", "advanced"])
+def test_only_advanced_mode_reframes_the_product(make_client, mode):
+    backend = RecordingBackend()
+    client = make_client(generator=backend)
+    sid = create_session(client, mode).json()["id"]
+    original = Image.open(io.BytesIO(client.get(client.get(f"/api/v1/sessions/{sid}").json()["image_url"]).content))
+    client.post(f"/api/v1/sessions/{sid}/segment")
+    assert client.post(f"/api/v1/sessions/{sid}/generate").status_code == 202
+    assert client.get(f"/api/v1/sessions/{sid}").json()["status"] == "READY_FOR_REVIEW"
+    request = backend.requests[0]
+    assert request.image.size == original.size
+    reframed = not ImageChops.difference(request.image.convert("RGB"), original.convert("RGB")).getbbox()
+    assert reframed is (mode == "intermediate")
