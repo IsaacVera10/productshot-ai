@@ -60,6 +60,8 @@ Personas emprendedoras suben una foto casera de un artículo pequeño y obtienen
 - Las redes sociales piden varias imágenes distintas de un mismo producto, lo que da sentido a generar cinco ambientaciones.
 - Es un público al que el equipo tiene acceso entre familiares y conocidos, lo que hace viable la prueba con usuarios reales.
 
+**Filtro por tipo de producto (G15, 2026-11-16):** se rechaza lo que Instagram y TikTok no permiten anunciar y lo que facilita fraude (armas, tabaco y vapes, drogas, dinero y documentos, productos sexuales); lo que está fuera del nicho recibe un aviso, no un rechazo. Fotos de más de 10 MB (cámaras profesionales) se rechazan: no corresponden al nicho.
+
 **Fuera del nicho en v1:** ropa puesta en modelos, alimentos preparados, productos grandes como muebles, objetos transparentes o muy reflectantes y fotos de personas.
 
 ### Input v1
@@ -73,7 +75,7 @@ Personas emprendedoras suben una foto casera de un artículo pequeño y obtienen
 
 | Modo de UI | Descripción | Trabajo propio |
 |---|---|---|
-| `intermediate` | Inpainting preentrenado con máscara que preserva el producto | Integración, segmentación, control y posprocesamiento |
+| `intermediate` | Editor por instrucciones preentrenado (Qwen-Image-2.1-Turbo) que re-ilumina el producto para la escena, con escenas por categoría y candidatas verificadas contra la foto (ADR-010) | Experimentos de modelos, escenas por categoría, verificación calibrada, segmentación, guardrails e integración |
 | `advanced` | Inpainting con modelo de difusión adaptado con LoRA especializado en estética comercial | Dataset curado, entrenamiento LoRA, integración y análisis del cambio |
 
 **Niveles elegidos:** intermedio y avanzado. El modo `advanced` se presenta como modalidad utilizable y como experimento con pregunta propia: ¿entrenar un LoRA con estética comercial mejora las imágenes frente al modo intermedio?

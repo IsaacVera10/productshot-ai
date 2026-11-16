@@ -8,7 +8,7 @@
 |---|---|---|
 | 0 — Preparación | Por definir | Por definir |
 | 1 — Vertical slice mock | Por definir | Por definir |
-| 2 — Inpainting real | Por definir | Por definir |
+| 2 — Modo intermedio | Aaron Camacho (ADR-010) | Congelado el 2026-11-16 |
 | 3 — Agente | Por definir | Por definir |
 | 4 — Dataset y análisis exploratorio | Por definir | Por definir |
 | 5 — Fine-tuning LoRA | Por definir | Por definir |
@@ -69,18 +69,19 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 4. Sin tokens ni pesos pesados en Git y sin gasto cloud.
 5. PR pequeño, revisable por otro integrante.
 
-## Hito 2 — Inpainting real (intermedio)
+## Hito 2 — Modo intermedio (ADR-010)
 
-- [ ] Puerta de decisión: medir memoria, arranque y lote completo en GCP, GPU local y Colab con benchmarks autorizados; elegir entornos según el resultado.
-- [ ] Probar `rembg` y la máscara. `RembgSegmentationService` (`isnet-general-use`) en el worker de Modal y `SEGMENTATION_BACKEND=remote` (2026-11-14); falta calibrar G13 con fotos reales. Reintento y `POST /sessions/{id}/mask` para máscaras manuales ya implementados (2026-11-12).
-- [ ] Ejecutar el candidato SDXL base con el pipeline de inpainting de cuatro canales; medir VRAM, latencia y calidad de integración. Prueba de humo en Modal hecha (2026-11-13): 9.5 GB, 50 s por lote de cinco en L4; falta la calidad con fotos reales, porque con un producto sintético el modelo prolonga la silueta (`05_COLAB_Y_GCP.md`).
-- [ ] Integrar preservación del producto y manejo explícito de sombras/bordes.
-- [ ] Generar cinco estilos por sesión; guardar checkpoint/revisión/seeds/prompts.
-- [ ] Probar fallos en tazas, recipientes y decorativos; registrar errores.
-- [ ] Casos obligatorios: taza con logotipo (hueco del asa, brillo y logo curvo), producto mate sencillo, producto blanco sobre fondo claro y producto con texto pequeño visible. Evaluar el logotipo contra la foto original, sin exigir reconstruir su parte oculta.
-- [ ] Guardrails del Hito 2 (ADR-008, `08_ITERACIONES_Y_GUARDRAILS.md`): G2 y G7 (clasificador NSFW en entrada y salida), G3 (rostros: rechazar), G8 (fidelidad de la región protegida), G12 (brillo y nitidez), G13 (heurística de máscara) y G14 (timeout por lote). G8, G12, G13 y G14 ya funcionan sin modelos (2026-11-12); faltan G2, G3 y G7 y calibrar todos los umbrales con los casos obligatorios.
+**Estado (2026-11-16):** cerrado y congelado. El inpainting con el producto fijo se descartó con fotos reales (se ve «pegado»); el intermedio es un bloque independiente con Qwen-Image-2.1-Turbo, escenas curadas por categoría y candidatas verificadas. Evidencia en ADR-010 y en `05_COLAB_Y_GCP.md`.
+
+- [x] Puerta de decisión: Modal con L40S (respaldo A100/H100); medido en H100: p95 de 2.07 s por generación, lote de 5 con 15 candidatas en 45–67 s, 40.2 GB de VRAM pico.
+- [x] Segmentación: BiRefNet (`birefnet-general`) en GPU, 1.9 s por foto, con limpieza de fragmentos sueltos; reintento y máscara manual siguen disponibles. G13 detecta caja + producto (dos objetos) como aviso.
+- [x] Comparar inpainting (SDXL base, nueve canales, RealVisXL, FLUX.1 Fill) contra editores (FLUX.2 klein, Kontext, Qwen-Image-2.1 y su Turbo) con fotos reales: `deploy/modal/real_photos.py`, `quality_lab.py` y `edit_lab*.py`.
+- [x] Preservación del producto: verificación por candidata (alineación ORB, bordes dentro del producto y cambio de escena) en vez de recomposición; G8 «verificado».
+- [x] Cinco estilos por sesión, con modelo, revisión, semillas (pedida y de la candidata), prompt (`edit-v1`) y métricas guardados.
+- [x] Casos obligatorios y del nicho: taza estampada, vela (mate con texto), caja de SSD con texto pequeño, impresora con su caja, figura, incienso, lata, entre otros (12 productos). Límite: productos con cables sueltos.
+- [x] Guardrails: G2 y G7 (NSFW), G3 (rostros, calibrado con la taza estampada), G15 (tipo de producto con CLIP), G8 por modo, G12, G13 y G14. Umbrales calibrados con 22 fotos reales.
 - [x] `DELETE /sessions/{id}` para el borrado de fotos (G11): borra la cadena completa de rondas.
-- [x] Iteraciones (ADR-007): `POST /sessions/{id}/next-round` y su vista previa, sesiones hijas (máximo 3 rondas), planificador determinista y vocabulario cerrado de ajustes por reglas. Adelantado sobre el mock el 2026-11-12; falta comprobarlo con imágenes reales.
+- [x] Iteraciones (ADR-007): probadas con imágenes reales el 2026-11-16 (ronda 2 de la vela con «más luminoso», 10/10 verificadas).
 
 ## Hito 3 — Agente con Gemini (AI Studio) y un segundo LLM
 
@@ -114,9 +115,9 @@ Objetivo: **demostración local offline** con cinco imágenes simuladas y resume
 ## Hito 6 — Despliegue en Modal y piezas intercambiables (ADR-009)
 
 - [x] Piezas intercambiables: interfaz `Repository`, raíz de composición por variables de entorno y contrato HTTP del worker con `RemoteGenerationBackend` (2026-11-13). Falta el ejecutor de Modal (P10), con el despliegue.
-- [ ] Worker con GPU L4 y endpoint web de UI y API en Modal; límite de gasto de USD 30 y secretos de Modal. Asignado a Aaron con el plan de `09_PLAN_AARON_MODAL.md` (2026-11-14).
+- [x] Worker del modo intermedio en Modal (clase `Worker`, L40S) con secretos y límite de gasto (2026-11-16). La API y la UI corren en la laptop contra el worker (acordado el 2026-11-16: las tareas 1 a 4 del doc 09 se descartan); el avanzado tendrá su propio worker.
 - [ ] Cancelar la inferencia remota cuando vence G14: hoy la API abandona a los 540 s, pero el worker sigue generando (y cobrando GPU) hasta terminar el lote o llegar a su tope de 10 minutos.
-- [ ] Manejar las solicitudes largas al endpoint web de Modal: pasados 150 s Modal responde con una redirección 303 y `RemoteGenerationBackend` no la sigue (HTTPX no sigue redirecciones por defecto), así que intentaría leerla como la respuesta del contrato. Probarlo con un lote lento, con autenticación y dentro del presupuesto total de espera.
+- [x] (2026-11-16) Los adaptadores remotos siguen el 303 de Modal como GET con el token (prueba con transporte simulado). Antes: manejar las solicitudes largas al endpoint web de Modal: pasados 150 s Modal responde con una redirección 303 y `RemoteGenerationBackend` no la sigue (HTTPX no sigue redirecciones por defecto), así que intentaría leerla como la respuesta del contrato. Probarlo con un lote lento, con autenticación y dentro del presupuesto total de espera.
 - [ ] Probar el worker en la laptop (RTX 4060) con los mismos contratos.
 - [ ] Ensayar la demo completa en Modal, en menos de seis minutos y con el worker caliente, y grabar el video de respaldo.
 - [ ] Alternativa GCP (solo si hay créditos): adaptadores de Firestore y Cloud Storage, Dockerfile y Cloud Run, según `05_COLAB_Y_GCP.md`.

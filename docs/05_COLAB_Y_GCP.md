@@ -206,6 +206,42 @@ La app estuvo viva 41 minutos (12:50 a 13:31): la subida del adaptador con `moda
 
 Costo esperado: unas 20 h de L4 para todo el proyecto (desarrollo, prueba con 10 usuarios, ensayos y demo) a cerca de USD 0.80 por hora, dentro de los USD 30 gratis de un mes. Es una estimación: el smoke test medirá el costo real por lote.
 
+### Modo intermedio con fotos reales (2026-11-15 y 16, ADR-010)
+
+Experimentos con fotos caseras reales de 12 productos (taza estampada, vela, caja de SSD, impresora con su caja, figura, incienso, lata, hub, entre otros); scripts en `deploy/modal/` y resultados en `data/experiments/` (no versionado).
+
+| Ronda | Qué se probó | Resultado |
+|---|---|---|
+| `real_photos.py` | Inpainting: SDXL base (A), nueve canales (G, I, F, K) y fondo de entrada mezclado con el degradado del preset (P, Q, R) | Nueve canales con mezcla (R): expansión 0.048 contra 0.150 de A, perspectiva correcta. Pero el producto se ve «pegado»: conserva la luz de la foto |
+| `quality_lab.py` | RealVisXL V4 inpainting, BiRefNet, encuadre 4:5, armonización de luz y FLUX.1 Fill | BiRefNet separa la taza del rollo que `isnet` unía. FLUX Fill con prompts SDXL llena la escena de objetos. Mejora moderada, no un salto |
+| `edit_lab.py` (rondas 1 y 2) | Editores por instrucción en H100: Qwen-Image-2.1 (8.2 s/img), su Turbo (2.1 s/img), FLUX.2 klein 9B (1.9 s/img), Kontext dev con y sin Edit-R1 (14 s/img); instrucción larga o pedido corto | Solo Qwen conserva la orientación de la taza y la vela intacta (FLUX.2 klein y Kontext espejan la taza). El pedido corto da escenas más ricas, pero con más errores (taza con dos asas, una mano) |
+| `edit_lab3.py` | Qwen Turbo: escenas curadas (A) contra un director de arte Qwen3-VL-8B (B) | A es más confiable; B a veces deja el fondo original o cambia el producto (enciende la vela) |
+| `edit_lab4.py` | 4 candidatas por estilo con verificación DINOv2 y cambio de escena, 12 productos | La selección sube la fidelidad media de 0.877 a 0.910; ninguna elegida deja el fondo sin cambiar |
+| `calib_fidelity.py` | Verificación alineada (ORB) con bordes, contra positivas, fallas reales y negativas sintéticas | Regla `inlier_ratio ≥ 0.45`, `edges ≥ 0.40`; resultados con IC en ADR-010 |
+
+Costo de todos los experimentos: unos USD 10 de los créditos de Modal (estimado; ver la facturación).
+
+### Worker del modo intermedio (2026-11-16)
+
+Clase `Worker` de `deploy/modal/worker.py`, con imagen propia (torch 2.8, diffusers 0.43, transformers 5.23, onnxruntime-gpu 1.22) y GPU L40S con respaldo A100 y H100. Carga Qwen-Image-2.1-Turbo, BiRefNet (GPU), el clasificador NSFW (G2 y G7), Haar (G3) y CLIP (G15).
+
+```bash
+PYTHONPATH=backend uv run --with modal modal deploy deploy/modal/worker.py
+PYTHONPATH=backend uv run --with modal modal run deploy/modal/worker.py::main \
+    --photos "data/fotos/001_candle.jpg:hogar,data/fotos/002_cup.jpg:cocina"   # prueba de humo
+```
+
+| Medida (H100: no había L40S libre) | Resultado |
+|---|---|
+| Generación (8 pasos, ~1 MP) | mediana 2.06 s, p95 2.07 s (150 generaciones) |
+| Lote de 5 con 15 candidatas, verificación y G7 | 45–67 s |
+| Carga en frío del editor | 37–39 s |
+| BiRefNet en GPU | 1.9 s (37 s en CPU) |
+| VRAM pico | 40.2 GB |
+| Caso de falla (hub con cable) | `UnverifiedBatch` a los 423 s (presupuesto 420 s) |
+
+Problemas resueltos al desplegar: `rembg` instala el onnxruntime de CPU, que tapa al de GPU (se desinstala en la imagen); onnxruntime 1.22 salta de TensorRT a CPU sin probar CUDA si no se piden los proveedores explícitos; CLIP en transformers 5 devuelve un objeto en `get_text_features`; los contenedores de una app desplegada siguen con el código anterior hasta que se apagan (detener la app antes de relanzar una corrida corregida).
+
 ## Alternativa: GCP
 
 Se mantiene compatible por si el equipo consigue créditos (por ejemplo, educativos) o quiere la demo en Cloud Run. **No hay créditos hoy:** las cuentas de facturación de Isaac están cerradas y `planifica-proyecto` no tiene facturación vinculada.

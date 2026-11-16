@@ -1,5 +1,7 @@
 # 09: Plan de Aaron para el despliegue en Modal
 
+> **Actualización 2026-11-16:** acordado con Isaac. Aaron toma el Hito 2 completo (modo intermedio como bloque independiente, ADR-010). Las tareas 1 a 4 se descartan: la demo corre con la API y la UI en la laptop y cada modo en su propio worker de Modal; el 303 de Modal se resolvió en los adaptadores remotos. La tarea 5 (LoRA en el worker) pasa a Isaac, junto con su worker del modo avanzado.
+
 **Fecha:** 2026-11-14 · **Responsable:** Aaron Camacho · **Revisa:** Isaac
 
 Aaron toma el Hito 6 (Modal) mientras Isaac sigue con el dataset BG60k y el LoRA (Hitos 4 y 5). Las dos partes solo se cruzan en el contrato HTTP del worker, así que pueden avanzar en paralelo.
