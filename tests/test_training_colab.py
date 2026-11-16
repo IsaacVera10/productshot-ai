@@ -386,3 +386,15 @@ def test_eval_frame_matches_the_backend_layout():
     canvas, canvas_mask = compose(photo, alpha.point(lambda v: 255 - v), Layout(height=0.45, bottom=0.85))
     assert not ImageChops.difference(framed, canvas).getbbox()
     assert not ImageChops.difference(framed_alpha, canvas_mask.point(lambda v: 255 - v)).getbbox()
+
+
+def test_distill_generates_candidates_with_the_advanced_pipeline():
+    drv = load_driver()
+    layout = {"height": 0.45, "bottom": 0.85}
+    cfg = drv.build_config("eval", "r6", inpaint=True, layout=layout, distill=2, strength=1.0, max_products=60)
+    assert cfg["distill"] == {"seeds": 2} and cfg["variants"] == {} and cfg["generation"]["strength"] == 1.0
+    assert cfg["base_model"] == drv.NINE_MODEL and cfg["layout"] == layout
+    with pytest.raises(ValueError):
+        drv.build_config("eval", "r6", distill=2)
+    with pytest.raises(ValueError):
+        drv.build_config("eval", "r6", inpaint=True, layout=layout)

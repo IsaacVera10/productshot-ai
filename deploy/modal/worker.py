@@ -530,6 +530,13 @@ EXPERIMENT_SETS = {
         "N_nueve_reencuadre_45": {"engine": "nine", "layout": {"height": 0.45, "bottom": 0.85}},
         "N_nueve_reencuadre_30": {"engine": "nine", "layout": {"height": 0.30, "bottom": 0.80}},
     },
+    # 2026-11-16: con strength 0.99 el fondo gris del lienzo sobrevive en warm y studio. Con 1.0
+    # los latentes parten de ruido puro; el UNet sigue recibiendo la máscara y el producto.
+    "integracion_strength": {
+        "N_nueve_reencuadre_45": {"engine": "nine", "layout": {"height": 0.45, "bottom": 0.85}},
+        "S_nueve_reencuadre_45_s100": {"engine": "nine", "strength": 1.0,
+                                       "layout": {"height": 0.45, "bottom": 0.85}},
+    },
     # 2026-11-14: verificación del LoRA del smoke test de Colab (P4, ADR-009). Controles por
     # motor: sin adaptador, adaptador con peso 0 dos veces (repetibilidad) y peso 1. En nueve
     # canales, además, strength 0.99 y 1.0. Con 1.0 los latentes parten de ruido puro, pero el

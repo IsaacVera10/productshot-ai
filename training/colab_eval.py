@@ -109,6 +109,13 @@ class Clip:
             chunks.append(torch.nn.functional.normalize(embeds.float(), dim=-1).cpu().numpy())
         return np.concatenate(chunks)
 
+    def texts(self, texts: list[str]):
+        torch = self.torch
+        with torch.inference_mode():
+            tokens = self.processor(text=texts, return_tensors="pt", padding=True, truncation=True).to("cuda")
+            embeds = self.model.get_text_features(**tokens)
+        return torch.nn.functional.normalize(embeds.float(), dim=-1).cpu().numpy()
+
 
 class Dino:
     def __init__(self, model_id: str, revision: str) -> None:
@@ -267,6 +274,66 @@ def evaluate_product(pipe, clip: Clip, dino: Dino, centroids: dict, cfg: dict, r
     return rows
 
 
+def distill_product(pipe, clip: Clip, dino: Dino, centroids: dict, texts, cfg: dict, row: dict) -> list[dict]:
+    """Candidatas de entrenamiento: una foto de train reencuadrada en cada estilo, con varias semillas.
+
+    Se guardan las imágenes recompuestas (G8) a resolución de entrenamiento y, para elegir la mejor
+    de cada estilo en la laptop, el margen CLIP contra el texto de cada preset (no contra BG60k),
+    el margen contra los centroides, DINOv2 del producto y la deriva antes de recomponer.
+    """
+    import numpy as np
+    import torch
+    from PIL import Image, ImageChops, ImageStat
+
+    g, pp = cfg["generation"], cfg["preprocess"]
+    photo = Image.open(EVAL / "train" / row["file_name"]).convert("RGB")
+    alpha = Image.open(EVAL / "train" / row["mask"]).convert("L")
+    scale = g["target_side"] / max(photo.size)
+    size = tuple(max(8, round(v * scale / 8) * 8) for v in photo.size)
+    photo, alpha = photo.resize(size, Image.Resampling.LANCZOS), alpha.resize(size, Image.Resampling.BILINEAR)
+    working = Image.composite(photo, Image.new("RGB", size, (pp["neutral"],) * 3), alpha)
+    working, alpha = frame(working, alpha, cfg["layout"], pp["neutral"])
+    mask = alpha.point(lambda v: 255 - v)
+    protected = mask.point(lambda v: 255 if v < 128 else 0)
+    gen_mask = pipe.mask_processor.blur(mask, blur_factor=g["mask_blur"])
+    ref_crop = product_crop(working, alpha, pp["side"], pp["neutral"], pp["jpeg_quality"])
+    styles = list(centroids)
+    matrix = np.stack([centroids[s] for s in styles])
+
+    rows, finals, crops = [], [], []
+    for style in styles:
+        for k in range(cfg["distill"]["seeds"]):
+            check_deadline(f"producto {row['file_name']}")
+            seed = seed_for(int(Path(row["file_name"]).stem), f"{style}:{k}")
+            t0 = time.perf_counter()
+            out = pipe(
+                prompt=cfg["style_prompts"][style], negative_prompt=cfg["negative_prompt"],
+                image=working, mask_image=gen_mask, height=size[1], width=size[0],
+                num_inference_steps=g["steps"], guidance_scale=g["guidance_scale"], strength=g["strength"],
+                generator=torch.Generator("cuda").manual_seed(seed),
+            ).images[0].convert("RGB")
+            seconds = round(time.perf_counter() - t0, 2)
+            drift = sum(ImageStat.Stat(ImageChops.difference(out, working), mask=protected).mean) / 3
+            final = Image.composite(out, working, mask)  # G8
+            name = f"{Path(row['file_name']).stem}_{style}_{k}.jpg"
+            final.save(IMAGES / name, quality=95, subsampling=0)
+            finals.append(pack_view(final, pp["side"], pp["jpeg_quality"]))
+            crops.append(product_crop(out, alpha, pp["side"], pp["neutral"], pp["jpeg_quality"]))
+            rows.append({"id": int(Path(row["file_name"]).stem), "item_style": row["style"], "style": style,
+                         "candidate": k, "seed": seed, "seconds": seconds, "image": name,
+                         "protected_mean_abs_diff": round(drift, 3)})
+    embeds = clip.images(finals)
+    by_text, by_centroid = embeds @ texts.T, embeds @ matrix.T
+    dino_embeds = dino.images([ref_crop, *crops])
+    for r, t, c, d in zip(rows, by_text, by_centroid, dino_embeds[1:] @ dino_embeds[0]):
+        target = styles.index(r["style"])
+        r.update({"text_margin": round(float(t[target] - np.delete(t, target).max()), 5),
+                  "text_top1": styles[int(np.argmax(t))],
+                  "clip_margin": round(float(c[target] - np.delete(c, target).max()), 5),
+                  "dino_product": round(float(d), 5)})
+    return rows
+
+
 def main() -> None:
     import numpy as np  # noqa: F401 - falla pronto si el VM no lo trae
     import torch
@@ -305,10 +372,15 @@ def main() -> None:
         t0 = time.perf_counter()
         pipe = load_pipeline(cfg)
         manifest["pipeline_load_seconds"] = round(time.perf_counter() - t0, 1)
-        val = [json.loads(line) for line in (EVAL / "val" / "eval.jsonl").open(encoding="utf-8")]
+        distill = bool(cfg.get("distill"))
+        texts = clip.texts([cfg["style_prompts"][s] for s in centroids]) if distill else None
+        if distill:
+            val = [json.loads(line) for line in (EVAL / "train" / "metadata.jsonl").open(encoding="utf-8")]
+        else:
+            val = [json.loads(line) for line in (EVAL / "val" / "eval.jsonl").open(encoding="utf-8")]
         random.Random(cfg["order_seed"]).shuffle(val)
         val = val[: cfg.get("max_products") or len(val)]
-        manifest["order"] = [r["id"] for r in val]
+        manifest["order"] = [r.get("id", r.get("file_name")) for r in val]
         manifest["completed"] = []
         product_seconds: list[float] = []
         for row in val:
@@ -316,20 +388,22 @@ def main() -> None:
             try:
                 if time.time() + max(product_seconds, default=0) * 1.2 > DEADLINE:
                     raise OutOfTime("estimación")
-                rows = evaluate_product(pipe, clip, dino, centroids, cfg, row)
+                rows = (distill_product(pipe, clip, dino, centroids, texts, cfg, row) if distill
+                        else evaluate_product(pipe, clip, dino, centroids, cfg, row))
             except OutOfTime:
-                for leftover in IMAGES.glob(f"{row['id']}_*.jpg"):
+                for leftover in IMAGES.glob(f"{row.get('id', Path(row.get('file_name', 'x')).stem)}_*.jpg"):
                     leftover.unlink()
                 log(f"Sin tiempo: quedan {len(val) - len(manifest['completed'])} productos sin evaluar")
                 break
             with metrics_path.open("a", encoding="utf-8") as f:
                 f.write("".join(json.dumps(r) + "\n" for r in rows))
             product_seconds.append(time.perf_counter() - t1)
-            manifest["completed"].append(row["id"])
+            manifest["completed"].append(row.get("id", row.get("file_name")))
             manifest["peak_vram_gb"] = round(torch.cuda.max_memory_allocated() / 1024**3, 2)
             save()
             done = len(manifest["completed"])
-            log(f"Producto {done}/{len(val)} ({row['id']}, {row['style']}) en {product_seconds[-1]:.0f} s")
+            log(f"Producto {done}/{len(val)} ({row.get('id', row.get('file_name'))}, {row['style']}) "
+                f"en {product_seconds[-1]:.0f} s")
         manifest["partial"] = len(manifest["completed"]) < len(val)
         manifest["files"] = {"metrics.jsonl": sha256(metrics_path), "style_refs.npz": sha256(OUT / "style_refs.npz")}
         manifest["status"] = "ok"

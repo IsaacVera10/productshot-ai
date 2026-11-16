@@ -51,6 +51,7 @@ EMBED_SCRIPT = ROOT / "training" / "colab_embed.py"
 EVAL_SCRIPT = ROOT / "training" / "colab_eval.py"
 EVAL_SPLIT = ROOT / "data" / "bg60k" / "export" / "eval" / "val"
 TRAIN_TAR = ROOT / "data" / "bg60k" / "export" / "dataset.tar"
+DISTILL_TAR = ROOT / "data" / "bg60k" / "export" / "preset_masked.tar"  # fotos de train con su máscara
 STYLE_PROMPTS = ROOT / "training" / "bg60k_style_prompts.toml"
 REQUIREMENTS = ROOT / "training" / "requirements-colab.txt"
 ASSIGNMENTS = ROOT / "training" / "colab_assignments.py"
@@ -90,7 +91,7 @@ def build_config(stage: str, run_id: str, steps: int | None = None, rank: int = 
                  deadline_unix: float | None = None, pack_sha256: str | None = None,
                  adapters: dict | None = None, scales: list[float] | None = None,
                  max_products: int | None = None, masked_loss: bool = False, inpaint: bool = False,
-                 layout: dict | None = None) -> dict:
+                 layout: dict | None = None, distill: int | None = None, strength: float | None = None) -> dict:
     """Configuración que se sube como /content/job.json. Pura: se prueba sin Colab."""
     from productshot.domain import Style
     from productshot.services.presets import NEGATIVE_PROMPT, PRESETS
@@ -107,7 +108,8 @@ def build_config(stage: str, run_id: str, steps: int | None = None, rank: int = 
             "prompts": tomllib.loads(STYLE_PROMPTS.read_text(encoding="utf-8")),
         }
     if stage == "eval":
-        return eval_config(run_id, adapters or {}, deadline_unix, scales, max_products, inpaint, layout)
+        return eval_config(run_id, adapters or {}, deadline_unix, scales, max_products, inpaint, layout,
+                           distill, strength)
     if stage not in ("smoke", "train"):
         raise ValueError(f"Etapa desconocida: {stage}")
     if stage == "train" and not dataset_remote:
@@ -162,14 +164,17 @@ def build_config(stage: str, run_id: str, steps: int | None = None, rank: int = 
 
 
 def eval_config(run_id: str, adapters: dict, deadline_unix: float | None, scales: list[float] | None = None,
-                max_products: int | None = None, nine: bool = False, layout: dict | None = None) -> dict:
+                max_products: int | None = None, nine: bool = False, layout: dict | None = None,
+                distill: int | None = None, strength: float | None = None) -> dict:
     """Mismo pipeline, prompts y parámetros que producción (SdxlParams); solo cambia el LoRA."""
     from productshot.domain import Style
     from productshot.services.presets import NEGATIVE_PROMPT, PRESETS
     from productshot.services.sdxl_generation import DEFAULT_MODEL_ID, SdxlParams
 
-    if not adapters:
+    if not adapters and not distill:
         raise ValueError("La etapa eval necesita adaptadores (--adapters).")
+    if distill and not (nine and layout):
+        raise ValueError("--distill genera con el avanzado: necesita --inpaint y --layout.")
     if max_products is not None and max_products < 1:
         raise ValueError("--max-products debe ser positivo.")
     if scales and not all(math.isfinite(x) and 0 < x <= 2 for x in scales):
@@ -197,7 +202,10 @@ def eval_config(run_id: str, adapters: dict, deadline_unix: float | None, scales
         "production_revision": p.revision,
         "negative_prompt": NEGATIVE_PROMPT,
         "style_prompts": {s.value: PRESETS[s].prompt for s in Style},
-        "generation": {"steps": p.steps, "guidance_scale": p.guidance_scale, "strength": p.strength,
+        # Con `distill`, en vez de comparar checkpoints se generan candidatas de entrenamiento con
+        # las fotos de train (`distill` semillas por estilo); no hay adaptadores.
+        "distill": {"seeds": distill} if distill else None,
+        "generation": {"steps": p.steps, "guidance_scale": p.guidance_scale, "strength": strength or p.strength,
                        "target_side": p.target_side, "mask_blur": p.mask_blur, "lora_scale": p.lora_scale},
         "adapters": adapters,
         # Sin --scales, cada checkpoint con el peso de producción; con --scales, cada par checkpoint@peso.
@@ -484,6 +492,8 @@ def main() -> int:
     ap.add_argument("--checkpoints", type=lambda v: v.split(","), help="eval: solo estos, p. ej. ckpt300,ckpt1200")
     ap.add_argument("--scales", type=lambda v: [float(x) for x in v.split(",")], help="eval: pesos del LoRA a probar")
     ap.add_argument("--max-products", type=int, help="eval: primeros N productos del orden fijo")
+    ap.add_argument("--distill", type=int, help="eval: candidatas de entrenamiento con N semillas por estilo")
+    ap.add_argument("--strength", type=float, help="eval: strength de la generación (por defecto el de SdxlParams)")
     ap.add_argument("--layout", type=lambda v: dict(zip(("height", "bottom"), map(float, v.split(",")))),
                     help="eval: reencuadre alto,base del producto, p. ej. 0.45,0.85")
     ap.add_argument("--max-minutes", type=float, default=50.0, help="presupuesto total desde que se pide el VM")
@@ -500,15 +510,15 @@ def main() -> int:
         ap.error("falta --stage (o --cleanup)")
     if args.stage == "embed" and not args.pack:
         ap.error("la etapa embed necesita --pack")
-    if args.stage == "eval" and not args.adapters:
-        ap.error("la etapa eval necesita --adapters")
+    if args.stage == "eval" and not (args.adapters or args.distill):
+        ap.error("la etapa eval necesita --adapters (o --distill)")
     if args.max_minutes * 60 <= RESERVE_S + 5 * 60:
         ap.error("--max-minutes debe dejar al menos 5 minutos además de la reserva de 10")
 
     run_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{args.stage}"
     embed = args.stage == "embed"
     evaluate = args.stage == "eval"
-    out_root = args.out or (args.adapters / "eval" if evaluate else ROOT / "data" / ("bg60k/embeddings" if embed else "lora"))
+    out_root = args.out or (ROOT / "data" / "lora" / "distill" if args.distill else args.adapters / "eval" if evaluate else ROOT / "data" / ("bg60k/embeddings" if embed else "lora"))
     out_dir = out_root / run_id
     state_dir = Path(tempfile.mkdtemp(prefix="colab-state-")) if args.dry_run else out_dir
     if not args.dry_run:
@@ -521,20 +531,21 @@ def main() -> int:
     adapters, eval_parts = None, []
     if evaluate:
         eval_tar = parts_dir / "eval.tar"
-        found = collect_adapters(args.adapters)
+        found = collect_adapters(args.adapters) if args.adapters else {}
         if args.checkpoints:
             missing = set(args.checkpoints) - set(found)
             if missing:
                 ap.error(f"checkpoints inexistentes: {sorted(missing)} (hay {list(found)})")
             found = {k: v for k, v in found.items() if k in args.checkpoints}
-        adapters = build_eval_tar(eval_tar, EVAL_SPLIT, TRAIN_TAR, found)
+        adapters = build_eval_tar(eval_tar, EVAL_SPLIT, DISTILL_TAR if args.distill else TRAIN_TAR, found)
     cfg = build_config(args.stage, run_id, args.steps, args.rank, args.learning_rate, remote_tar,
                        deadline_unix=deadline - RESERVE_S, pack_sha256=pack_sha, adapters=adapters,
-                       scales=args.scales, max_products=args.max_products, masked_loss=args.masked_loss, inpaint=args.inpaint, layout=args.layout)
+                       scales=args.scales, max_products=args.max_products, masked_loss=args.masked_loss, inpaint=args.inpaint, layout=args.layout,
+                       distill=args.distill, strength=args.strength)
     if evaluate:
         eval_parts = split_parts(eval_tar, parts_dir) if not args.dry_run else []
         cfg["eval_tar"] = {"parts": len(eval_parts), "sha256": hashlib.sha256(eval_tar.read_bytes()).hexdigest()}
-        cfg["adapters_run"] = args.adapters.name
+        cfg["adapters_run"] = args.adapters.name if args.adapters else None
     pack_parts = split_parts(args.pack, parts_dir) if embed and not args.dry_run else []
     if embed:
         cfg["pack_parts"] = len(pack_parts)
