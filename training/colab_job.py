@@ -13,6 +13,7 @@ Etapas:
    preset del estilo); `upload` usa una carpeta imagefolder subida como tar.
 3. Entrenamiento: `train_text_to_image_lora_sdxl.py` de diffusers 0.31.0 sobre SDXL base,
    con checkpoints para reanudar (`--resume_from_checkpoint latest`).
+   Con `masked_loss`, una copia parcheada del script pondera el error solo sobre el fondo.
 4. Verificación (smoke test de P4): carga el adaptador en el pipeline de inpainting de cuatro
    canales y en el de nueve, genera con el LoRA apagado y encendido con la misma semilla y
    mide cuánto cambia el fondo. Falla si algún pipeline no tiene los canales esperados, si no
@@ -53,6 +54,53 @@ SCRIPT_URL = (
     "examples/text_to_image/train_text_to_image_lora_sdxl.py"
 )
 SCRIPT_SHA256 = "5860e4a50f5d7a75b3f5c73d1df153ea604069e2f90bdd0994308749541fe959"
+MASKED_SCRIPT = CONTENT / "train_masked.py"
+
+# Pérdida solo sobre el fondo: cada imagen trae en `mask` el nombre de su máscara del producto
+# (blanco = producto). La máscara sigue el mismo resize y recorte que la foto, se reduce a la
+# resolución latente y el error del producto pesa 0. La hipótesis es que así el LoRA aprende
+# el entorno y no a dibujar productos; no lo garantiza, porque la VAE mezcla vecinos y los pesos
+# del LoRA se comparten.
+MASKED_PATCH = [
+    ("import numpy as np\n", "import numpy as np\nfrom PIL import Image\n"),
+    ("    def preprocess_train(examples):\n",
+     "    if args.random_flip or args.snr_gamma is not None:\n"
+     "        raise ValueError(\"La pérdida con máscara no admite --random_flip ni --snr_gamma.\")\n\n"
+     "    def preprocess_train(examples):\n"),
+    ('        images = [image.convert("RGB") for image in examples[image_column]]\n',
+     '        images = [image.convert("RGB") for image in examples[image_column]]\n'
+     '        masks = [Image.open(os.path.join(args.train_data_dir, n)).convert("L") for n in examples["mask"]]\n'
+     "        all_weights = []\n"),
+    ("            image = train_resize(image)\n",
+     "            if masks[len(all_images)].size != image.size:\n"
+     "                raise ValueError(\"La máscara no tiene el tamaño de la foto.\")\n"
+     "            image = train_resize(image)\n"
+     "            resized = image.size\n"),
+    ("            crop_top_lefts.append(crop_top_left)\n",
+     "            crop_top_lefts.append(crop_top_left)\n"
+     "            mask = masks[len(all_images)].resize(resized, Image.BILINEAR)\n"
+     "            mask = crop(mask, y1, x1, args.resolution, args.resolution)\n"
+     "            product = torch.from_numpy(np.array(mask, dtype=np.float32) / 255.0)[None, None]\n"
+     "            all_weights.append(1.0 - F.avg_pool2d(product, 8)[0])\n"),
+    ('        examples["pixel_values"] = all_images\n',
+     '        examples["pixel_values"] = all_images\n'
+     '        examples["loss_weights"] = all_weights\n'),
+    ('            "crop_top_lefts": crop_top_lefts,\n',
+     '            "crop_top_lefts": crop_top_lefts,\n'
+     '            "loss_weights": torch.stack([example["loss_weights"] for example in examples]),\n'),
+    ('                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")\n',
+     '                    weights = batch["loss_weights"].to(model_pred.device, torch.float32)\n'
+     "                    error = (model_pred.float() - target.float()) ** 2 * weights\n"
+     "                    loss = error.sum() / (weights.sum() * model_pred.shape[1]).clamp(min=1.0)\n"),
+]
+
+
+def patch_script(source: str) -> str:
+    for old, new in MASKED_PATCH:
+        if source.count(old) != 1:
+            raise RuntimeError(f"El script oficial cambió: no encuentro una sola vez {old.strip()!r}.")
+        source = source.replace(old, new)
+    return source
 
 
 def log(msg: str) -> None:
@@ -191,6 +239,9 @@ def environment(cfg: dict) -> dict:
     if sha256(script) != SCRIPT_SHA256:
         raise RuntimeError("El script oficial de diffusers no coincide con el sha256 esperado.")
     info["train_script"] = {"url": SCRIPT_URL, "sha256": SCRIPT_SHA256}
+    if cfg.get("train", {}).get("masked_loss"):
+        MASKED_SCRIPT.write_text(patch_script(script.read_text(encoding="utf-8")), encoding="utf-8")
+        info["train_script"]["masked_sha256"] = sha256(MASKED_SCRIPT)
     log(f"Entorno: {info['gpu']} ({info['vram_total_gb']} GB), {info['packages']}")
     return info
 
@@ -211,8 +262,10 @@ def build_dataset(cfg: dict) -> dict:
         DATA.mkdir(parents=True, exist_ok=True)
         with tarfile.open(tar_path) as tar:
             tar.extractall(DATA, filter="data")
-        n = sum(1 for _ in (DATA / "metadata.jsonl").open())
-        return {"kind": "upload", "images": n, "tar_sha256": sha256(tar_path)}
+        rows = [json.loads(line) for line in (DATA / "metadata.jsonl").open(encoding="utf-8")]
+        if cfg["train"].get("masked_loss"):
+            check_masks(rows)
+        return {"kind": "upload", "images": len(rows), "tar_sha256": sha256(tar_path)}
 
     # kind == "generate": dataset mínimo para comprobar la mecánica, no la calidad.
     import torch
@@ -244,12 +297,27 @@ def build_dataset(cfg: dict) -> dict:
     return {"kind": "generate", "images": len(rows), "seed_rule": "1000 + 10 * producto + estilo"}
 
 
+def check_masks(rows: list[dict], min_background: float = 0.2) -> None:
+    from PIL import Image
+
+    for r in rows:
+        path = DATA / r.get("mask", "")
+        if not path.is_file():
+            raise RuntimeError(f"Falta la máscara de {r['file_name']}.")
+        with Image.open(path) as mask, Image.open(DATA / r["file_name"]) as photo:
+            if mask.size != photo.size:
+                raise RuntimeError(f"La máscara de {r['file_name']} no tiene el tamaño de la foto.")
+            hist = mask.convert("L").histogram()
+        if sum(hist[:128]) / sum(hist) < min_background:
+            raise RuntimeError(f"La máscara de {r['file_name']} deja menos de {min_background:.0%} de fondo.")
+
+
 def train(cfg: dict) -> dict:
     t = cfg["train"]
     cmd = [
         sys.executable, "-m", "accelerate.commands.launch", "--num_processes", "1",
         "--mixed_precision", t["mixed_precision"],
-        str(CONTENT / "train_text_to_image_lora_sdxl.py"),
+        str(MASKED_SCRIPT if t.get("masked_loss") else CONTENT / "train_text_to_image_lora_sdxl.py"),
         "--pretrained_model_name_or_path", cfg["base_model"],
         "--revision", cfg["base_revision"],
         "--variant", "fp16",  # los mismos archivos que la generación: una sola descarga

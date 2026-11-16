@@ -283,3 +283,46 @@ def test_deadline_kills_the_whole_process_group(tmp_path):
     time.sleep(0.5)
     with pytest.raises(ProcessLookupError):
         os.kill(child, 0)
+
+
+def load_job():
+    spec = importlib.util.spec_from_file_location("colab_job", ROOT / "training" / "colab_job.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_masked_patch_replaces_each_anchor_once():
+    job = load_job()
+    source = "".join(old for old, _ in job.MASKED_PATCH)
+    patched = job.patch_script(source)
+    assert 'examples["loss_weights"] = all_weights' in patched
+    assert "reduction=\"mean\"" not in patched
+    with pytest.raises(RuntimeError):
+        job.patch_script(source.replace("crop_top_lefts.append(crop_top_left)", "otra cosa"))
+
+
+def test_masked_loss_reaches_the_config():
+    drv = load_driver()
+    assert drv.build_config("train", "r3", dataset_remote="dataset.tar")["train"]["masked_loss"] is False
+    cfg = drv.build_config("train", "r3", dataset_remote="dataset.tar", masked_loss=True)
+    assert cfg["train"]["masked_loss"] is True
+
+
+def test_check_masks_rejects_wrong_size_or_no_background(tmp_path, monkeypatch):
+    from PIL import Image
+
+    job = load_job()
+    monkeypatch.setattr(job, "DATA", tmp_path)
+    Image.new("RGB", (8, 8)).save(tmp_path / "1.png")
+    rows = [{"file_name": "1.png", "mask": "1.mask"}]
+    Image.new("L", (8, 8), 0).save(tmp_path / "1.mask", format="PNG")
+    job.check_masks(rows)
+    Image.new("L", (8, 8), 255).save(tmp_path / "1.mask", format="PNG")
+    with pytest.raises(RuntimeError, match="fondo"):
+        job.check_masks(rows)
+    Image.new("L", (4, 8), 0).save(tmp_path / "1.mask", format="PNG")
+    with pytest.raises(RuntimeError, match="tamaño"):
+        job.check_masks(rows)
+    with pytest.raises(RuntimeError, match="Falta"):
+        job.check_masks([{"file_name": "1.png"}])

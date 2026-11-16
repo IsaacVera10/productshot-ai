@@ -4,9 +4,11 @@
 
 Lee el split congelado (`review/split.csv`) y escribe:
 - `review/captions.csv`: id, split, estilo, producto y caption, para revisarlos como texto;
-- `data/bg60k/export/dataset.tar`: solo train, como imagefolder con `metadata.jsonl`;
+- `data/bg60k/export/<name>.tar`: solo train, como imagefolder con `metadata.jsonl`. Con
+  `--captions preset` el caption es solo el preset (igual que el prompt de inferencia) y con
+  `--masks` cada foto lleva `<id>.mask`, la máscara del producto en PNG, para la pérdida con máscara;
 - `data/bg60k/export/eval/<split>/`: val y test con la foto, el recorte RGBA y `eval.jsonl`;
-- `data/bg60k/export/export.json`: conteos y sha256.
+- `data/bg60k/export/<name>.json`: conteos y sha256 (`export.json` para `dataset`).
 
 Las fotos se copian sin recomprimir desde los zip de BG60k.
 """
@@ -24,6 +26,7 @@ import zipfile
 from pathlib import Path
 
 import pyarrow.parquet as pq
+from PIL import Image
 
 from productshot.domain import Style
 from productshot.services.presets import PRESETS, PROMPT_VERSION
@@ -72,22 +75,40 @@ def add_bytes(tar: tarfile.TarFile, name: str, data: bytes) -> None:
     tar.addfile(info, io.BytesIO(data))
 
 
+def product_mask(cutout: bytes, size: tuple[int, int]) -> bytes:
+    alpha = Image.open(io.BytesIO(cutout)).getchannel("A")
+    if alpha.size != size:
+        raise SystemExit(f"El recorte mide {alpha.size} y la foto {size}.")
+    buf = io.BytesIO()
+    alpha.point(lambda v: 255 if v >= 128 else 0).save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def export(rows: list[dict], raw: Path, out: Path) -> dict:
+def export(rows: list[dict], raw: Path, out: Path, name: str = "dataset", captions: str = "noun",
+           masks: bool = False) -> dict:
     zips = Zips(raw)
     out.mkdir(parents=True, exist_ok=True)
     train = [r for r in rows if r["split"] == "train"]
-    tmp = out / "dataset.tar.tmp"
+    tmp = out / f"{name}.tar.tmp"
     with tarfile.open(tmp, "w") as tar:
-        meta = "".join(json.dumps({"file_name": f"{r['id']}.png", "text": r["caption"], "style": r["style"]},
-                                  ensure_ascii=False) + "\n" for r in train)
-        add_bytes(tar, "metadata.jsonl", meta.encode())
+        meta = []
         for r in train:
-            add_bytes(tar, f"{r['id']}.png", zips.read(r["img_zip"], r["img_member"]))
-    tmp.replace(out / "dataset.tar")
+            text = r["caption"] if captions == "noun" else PRESETS[Style(r["style"])].prompt
+            meta.append({"file_name": f"{r['id']}.png", "text": text, "style": r["style"]}
+                        | ({"mask": f"{r['id']}.mask"} if masks else {}))
+        metadata = "".join(json.dumps(m, ensure_ascii=False) + "\n" for m in meta).encode()
+        add_bytes(tar, "metadata.jsonl", metadata)
+        for r in train:
+            photo = zips.read(r["img_zip"], r["img_member"])
+            add_bytes(tar, f"{r['id']}.png", photo)
+            if masks:
+                size = Image.open(io.BytesIO(photo)).size
+                add_bytes(tar, f"{r['id']}.mask", product_mask(zips.read(r["mask_zip"], r["mask_member"]), size))
+    tmp.replace(out / f"{name}.tar")
 
     for part in ("val", "test"):
         folder = out / "eval" / part
@@ -103,7 +124,9 @@ def export(rows: list[dict], raw: Path, out: Path) -> dict:
     counts = {}
     for r in rows:
         counts.setdefault(r["style"], {"train": 0, "val": 0, "test": 0})[r["split"]] += 1
-    return {"prompt_version": PROMPT_VERSION, "counts": counts, "dataset_sha256": sha256(out / "dataset.tar"),
+    return {"prompt_version": PROMPT_VERSION, "counts": counts, "dataset": name, "captions": captions,
+            "masks": masks, "dataset_sha256": sha256(out / f"{name}.tar"),
+            "metadata_sha256": hashlib.sha256(metadata).hexdigest(),
             "split_sha256": sha256(REVIEW / "split.csv"), "captions_sha256": sha256(NOUNS)}
 
 
@@ -111,6 +134,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Captions y exportación del piloto de BG60k.")
     parser.add_argument("--data", type=Path, default=Path("data/bg60k"))
     parser.add_argument("--raw", type=Path, default=Path("data/raw/bg60k"))
+    parser.add_argument("--name", default="dataset", help="nombre del tar de train")
+    parser.add_argument("--captions", choices=("noun", "preset"), default="noun")
+    parser.add_argument("--masks", action="store_true", help="incluye la máscara del producto de cada foto")
     args = parser.parse_args(argv)
 
     rows = rows_for(REVIEW / "split.csv", args.data / "candidates.parquet")
@@ -119,8 +145,9 @@ def main(argv: list[str] | None = None) -> int:
         writer.writerow(["id", "split", "style", "category", "noun", "caption"])
         for r in rows:
             writer.writerow([r["id"], r["split"], r["style"], r["category"], r["noun"], r["caption"]])
-    summary = export(rows, args.raw, args.data / "export")
-    (args.data / "export" / "export.json").write_text(json.dumps(summary, indent=1, ensure_ascii=False))
+    summary = export(rows, args.raw, args.data / "export", args.name, args.captions, args.masks)
+    report = "export.json" if args.name == "dataset" else f"{args.name}.json"
+    (args.data / "export" / report).write_text(json.dumps(summary, indent=1, ensure_ascii=False))
     print(json.dumps(summary, indent=1, ensure_ascii=False))
     return 0
 
