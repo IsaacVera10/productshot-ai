@@ -321,8 +321,9 @@ def split_parts(path: Path, folder: Path, size: int = PART_BYTES) -> list[Path]:
     return parts
 
 
-def wait_for_job(colab: "Colab", out_dir: Path, every: float = 60.0) -> None:
-    """Si `exec` pierde la conexión, el trabajo sigue en el kernel: se espera a que su manifiesto deje de decir running."""
+def wait_for_job(colab: "Colab", out_dir: Path, every: float = 60.0) -> bool:
+    """Si `exec` pierde la conexión, el trabajo sigue en el kernel: se espera a que su manifiesto deje de
+    decir running. Devuelve False si el trabajo no llegó a empezar."""
     probe = out_dir / "manifest.probe.json"
     missing = 0
     while colab.remaining(reserve=RESERVE_S - 120) > every:
@@ -337,10 +338,12 @@ def wait_for_job(colab: "Colab", out_dir: Path, every: float = 60.0) -> None:
         missing = 0 if status else missing + 1
         if missing >= 2:
             print("[driver] No hay manifiesto en el VM: el trabajo no llegó a empezar.", flush=True)
-            break
+            probe.unlink(missing_ok=True)
+            return False
         print(f"[driver] Sin conexión con exec; el trabajo sigue ({status}). Espero {every:.0f} s.", flush=True)
         time.sleep(every)
     probe.unlink(missing_ok=True)
+    return True
 
 
 def colab_bin() -> str:
@@ -563,10 +566,12 @@ def main() -> int:
         if embed and args.dry_run:
             colab("upload", f"{args.pack}.part000", "/content/pack.tar.part000", timeout=300)
         try:
-            proc = colab("exec", "-f", str(EMBED_SCRIPT if embed else EVAL_SCRIPT if evaluate else JOB_SCRIPT), "--timeout", str(args.idle_timeout), check=False,
-                         timeout=colab.remaining(reserve=RESERVE_S - 120))
-            if proc is not None and proc.returncode != 0:
-                wait_for_job(colab, out_dir)
+            for attempt in range(3):
+                proc = colab("exec", "-f", str(EMBED_SCRIPT if embed else EVAL_SCRIPT if evaluate else JOB_SCRIPT), "--timeout", str(args.idle_timeout), check=False,
+                             timeout=colab.remaining(reserve=RESERVE_S - 120))
+                if proc is None or proc.returncode == 0 or wait_for_job(colab, out_dir):
+                    break
+                print(f"[driver] Reintento {attempt + 1} de exec en el mismo VM.", flush=True)
         finally:
             # Lo que haya, aunque el trabajo falle: el manifiesto trae el error.
             colab("download", "/content/out/result.tar.gz", str(out_dir / "result.tar.gz"),

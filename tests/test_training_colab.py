@@ -47,6 +47,10 @@ FAKE_COLAB = textwrap.dedent('''\
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(rest[0], dest)
     elif cmd == "exec":
+        marker = remote / "exec_failed_once"
+        if os.environ.get("FAKE_EXEC_NOT_STARTED") and not marker.exists():
+            marker.write_text("1")
+            sys.exit(1)
         job = json.loads((remote / "content/job.json").read_text())
         out = remote / "content/out"
         out.mkdir(parents=True, exist_ok=True)
@@ -334,3 +338,10 @@ def test_lost_exec_connection_waits_for_the_job(fake, monkeypatch):
     monkeypatch.setenv("FAKE_EXEC_CODE", "1")
     code, calls = run()
     assert code == 0 and "stop" in calls
+
+
+def test_exec_is_retried_when_the_job_never_started(fake, monkeypatch):
+    drv, run, server = fake
+    monkeypatch.setenv("FAKE_EXEC_NOT_STARTED", "1")
+    code, calls = run()
+    assert code == 0 and calls.count("exec") == 2 and "stop" in calls
