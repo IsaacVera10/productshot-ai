@@ -359,3 +359,30 @@ def test_inpaint_trains_the_nine_channel_unet_with_masks():
     patched = job.patch_script(masked + "".join(old for old, _ in job.INPAINT_PATCH[4:]), inpaint=True)
     assert "torch.cat([noisy_model_input, inpaint_mask, masked_latents], dim=1)" in patched
     assert 'examples["product_pixels"] = all_products' in patched
+
+
+def test_inpaint_eval_uses_nine_channels_and_the_layout():
+    drv = load_driver()
+    adapters = {"ckpt400": {"file": "adapters/ckpt400.safetensors", "source": "x", "sha256": "0"}}
+    cfg = drv.build_config("eval", "r5", adapters=adapters, inpaint=True, layout={"height": 0.45, "bottom": 0.85})
+    assert cfg["base_model"] == drv.NINE_MODEL and cfg["base_revision"] == drv.NINE_REVISION
+    assert cfg["layout"] == {"height": 0.45, "bottom": 0.85} and cfg["generation"]["strength"] == 0.99
+    assert drv.build_config("eval", "r5", adapters=adapters)["base_model"] == drv.BASE_MODEL
+
+
+def test_eval_frame_matches_the_backend_layout():
+    from PIL import Image, ImageChops
+
+    from productshot.services.layout import Layout, compose
+
+    spec = importlib.util.spec_from_file_location("colab_eval", ROOT / "training" / "colab_eval.py")
+    ev = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ev)
+    photo = Image.new("RGB", (400, 300), (128, 128, 128))
+    photo.paste((10, 120, 30), (100, 50, 300, 250))
+    alpha = Image.new("L", (400, 300), 0)
+    alpha.paste(255, (100, 50, 300, 250))
+    framed, framed_alpha = ev.frame(photo, alpha, {"height": 0.45, "bottom": 0.85}, 128)
+    canvas, canvas_mask = compose(photo, alpha.point(lambda v: 255 - v), Layout(height=0.45, bottom=0.85))
+    assert not ImageChops.difference(framed, canvas).getbbox()
+    assert not ImageChops.difference(framed_alpha, canvas_mask.point(lambda v: 255 - v)).getbbox()

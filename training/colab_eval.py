@@ -173,6 +173,23 @@ def style_references(clip: Clip, cfg: dict) -> tuple[dict, dict]:
     return {s: c for s, c in zip(styles, centroids)}, summary
 
 
+def frame(working, alpha, layout: dict, neutral: int):
+    """El mismo reencuadre que `productshot.services.layout.compose` (aquí no se importa el paquete)."""
+    from PIL import Image
+
+    w, h = working.size
+    box = alpha.point(lambda v: 255 if v >= 128 else 0).getbbox()
+    bw, bh = box[2] - box[0], box[3] - box[1]
+    scale = min(1.0, layout["height"] * h / bh, layout.get("width", 0.6) * w / bw)
+    size = (max(1, round(bw * scale)), max(1, round(bh * scale)))
+    x = (w - size[0]) // 2
+    y = min(h - size[1], max(0, round(layout["bottom"] * h) - size[1]))
+    canvas, canvas_alpha = Image.new("RGB", (w, h), (neutral,) * 3), Image.new("L", (w, h), 0)
+    canvas.paste(working.crop(box).resize(size, Image.Resampling.LANCZOS), (x, y))
+    canvas_alpha.paste(alpha.crop(box).resize(size, Image.Resampling.BILINEAR), (x, y))
+    return canvas, canvas_alpha
+
+
 def load_pipeline(cfg: dict):
     import torch
     from diffusers import StableDiffusionXLInpaintPipeline
@@ -197,6 +214,8 @@ def evaluate_product(pipe, clip: Clip, dino: Dino, centroids: dict, cfg: dict, r
     cutout = Image.open(EVAL / "val" / f"{row['id']}_cutout.png").convert("RGBA")
     alpha = cutout.getchannel("A")
     working = Image.composite(cutout.convert("RGB"), Image.new("RGB", cutout.size, (pp["neutral"],) * 3), alpha)
+    if cfg.get("layout"):
+        working, alpha = frame(working, alpha, cfg["layout"], pp["neutral"])
     mask = alpha.point(lambda v: 255 - v)  # blanco = fondo editable, negro = producto
     protected = mask.point(lambda v: 255 if v < 128 else 0)
     scale = g["target_side"] / max(working.size)

@@ -89,7 +89,8 @@ def build_config(stage: str, run_id: str, steps: int | None = None, rank: int = 
                  learning_rate: float = 1e-4, dataset_remote: str | None = None,
                  deadline_unix: float | None = None, pack_sha256: str | None = None,
                  adapters: dict | None = None, scales: list[float] | None = None,
-                 max_products: int | None = None, masked_loss: bool = False, inpaint: bool = False) -> dict:
+                 max_products: int | None = None, masked_loss: bool = False, inpaint: bool = False,
+                 layout: dict | None = None) -> dict:
     """Configuración que se sube como /content/job.json. Pura: se prueba sin Colab."""
     from productshot.domain import Style
     from productshot.services.presets import NEGATIVE_PROMPT, PRESETS
@@ -106,7 +107,7 @@ def build_config(stage: str, run_id: str, steps: int | None = None, rank: int = 
             "prompts": tomllib.loads(STYLE_PROMPTS.read_text(encoding="utf-8")),
         }
     if stage == "eval":
-        return eval_config(run_id, adapters or {}, deadline_unix, scales, max_products)
+        return eval_config(run_id, adapters or {}, deadline_unix, scales, max_products, inpaint, layout)
     if stage not in ("smoke", "train"):
         raise ValueError(f"Etapa desconocida: {stage}")
     if stage == "train" and not dataset_remote:
@@ -161,7 +162,7 @@ def build_config(stage: str, run_id: str, steps: int | None = None, rank: int = 
 
 
 def eval_config(run_id: str, adapters: dict, deadline_unix: float | None, scales: list[float] | None = None,
-                max_products: int | None = None) -> dict:
+                max_products: int | None = None, nine: bool = False, layout: dict | None = None) -> dict:
     """Mismo pipeline, prompts y parámetros que producción (SdxlParams); solo cambia el LoRA."""
     from productshot.domain import Style
     from productshot.services.presets import NEGATIVE_PROMPT, PRESETS
@@ -187,8 +188,11 @@ def eval_config(run_id: str, adapters: dict, deadline_unix: float | None, scales
         "stage": "eval",
         "deadline_unix": deadline_unix,
         "diffusers_version": DIFFUSERS_VERSION,
-        "base_model": BASE_MODEL,
-        "base_revision": BASE_REVISION,
+        # Con `nine`, el UNet de inpainting de nueve canales (LoRA de inpainting) y, con `layout`,
+        # el producto reencuadrado como en el modo avanzado.
+        "base_model": NINE_MODEL if nine else BASE_MODEL,
+        "base_revision": NINE_REVISION if nine else BASE_REVISION,
+        "layout": layout,
         # Producción resuelve esta revisión al cargar; la evaluación fija BASE_REVISION (docs/05).
         "production_revision": p.revision,
         "negative_prompt": NEGATIVE_PROMPT,
@@ -474,12 +478,14 @@ def main() -> int:
     ap.add_argument("--learning-rate", type=float, default=1e-4)
     ap.add_argument("--dataset-tar", type=Path, help="tar de una carpeta imagefolder con metadata.jsonl")
     ap.add_argument("--masked-loss", action="store_true", help="train: pérdida solo sobre el fondo (el tar trae máscaras)")
-    ap.add_argument("--inpaint", action="store_true", help="train: objetivo de inpainting en el UNet de nueve canales")
+    ap.add_argument("--inpaint", action="store_true", help="train y eval: LoRA de inpainting en el UNet de nueve canales")
     ap.add_argument("--pack", type=Path, help="paquete de bg60k_pack.py (etapa embed)")
     ap.add_argument("--adapters", type=Path, help="carpeta de una corrida train con sus checkpoints (etapa eval)")
     ap.add_argument("--checkpoints", type=lambda v: v.split(","), help="eval: solo estos, p. ej. ckpt300,ckpt1200")
     ap.add_argument("--scales", type=lambda v: [float(x) for x in v.split(",")], help="eval: pesos del LoRA a probar")
     ap.add_argument("--max-products", type=int, help="eval: primeros N productos del orden fijo")
+    ap.add_argument("--layout", type=lambda v: dict(zip(("height", "bottom"), map(float, v.split(",")))),
+                    help="eval: reencuadre alto,base del producto, p. ej. 0.45,0.85")
     ap.add_argument("--max-minutes", type=float, default=50.0, help="presupuesto total desde que se pide el VM")
     ap.add_argument("--idle-timeout", type=float, default=900.0,
                     help="segundos sin salida antes de que `colab exec` deje de esperar")
@@ -524,7 +530,7 @@ def main() -> int:
         adapters = build_eval_tar(eval_tar, EVAL_SPLIT, TRAIN_TAR, found)
     cfg = build_config(args.stage, run_id, args.steps, args.rank, args.learning_rate, remote_tar,
                        deadline_unix=deadline - RESERVE_S, pack_sha256=pack_sha, adapters=adapters,
-                       scales=args.scales, max_products=args.max_products, masked_loss=args.masked_loss, inpaint=args.inpaint)
+                       scales=args.scales, max_products=args.max_products, masked_loss=args.masked_loss, inpaint=args.inpaint, layout=args.layout)
     if evaluate:
         eval_parts = split_parts(eval_tar, parts_dir) if not args.dry_run else []
         cfg["eval_tar"] = {"parts": len(eval_parts), "sha256": hashlib.sha256(eval_tar.read_bytes()).hexdigest()}
