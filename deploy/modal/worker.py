@@ -140,7 +140,8 @@ class Worker:
 
 
 @app.cls(
-    gpu="L4",
+    # A10G (24 GB) si no hay L4 libres: los resultados se comparan dentro de cada corrida.
+    gpu=["L4", "A10G"],
     volumes={CACHE: cache},
     secrets=[secret],
     # Solo experimentos (hasta ~40 min). Clase aparte para que el tope largo no alcance
@@ -522,6 +523,12 @@ EXPERIMENT_SETS = {
         "A_base": {},
         "L_reencuadre_45": {"layout": {"height": 0.45, "bottom": 0.85}},
         "L_reencuadre_30": {"layout": {"height": 0.30, "bottom": 0.80}},
+    },
+    # El mismo reencuadre con el UNet de inpainting de nueve canales, que sabe que lo protegido
+    # es contenido dado. A y L de cuatro canales son reproducibles (corrida integracion).
+    "integracion_nueve": {
+        "N_nueve_reencuadre_45": {"engine": "nine", "layout": {"height": 0.45, "bottom": 0.85}},
+        "N_nueve_reencuadre_30": {"engine": "nine", "layout": {"height": 0.30, "bottom": 0.80}},
     },
     # 2026-11-14: verificación del LoRA del smoke test de Colab (P4, ADR-009). Controles por
     # motor: sin adaptador, adaptador con peso 0 dos veces (repetibilidad) y peso 1. En nueve
