@@ -15,7 +15,7 @@ import logging
 
 from fastapi import FastAPI, Header, HTTPException
 
-from productshot.services.generation import GenerationBackend, GenerationRequest, VariationSpec
+from productshot.services.generation import GenerationBackend, GenerationRequest, GenerationUnavailable, VariationSpec
 from productshot.services.screening import ScreeningService, UnsafeOutput
 from productshot.services.segmentation import SegmentationService
 from productshot.worker.contract import (
@@ -122,6 +122,9 @@ def create_worker_app(
             artifacts = backend.generate(request)
         except UnsafeOutput as exc:  # G7: el lote no se entrega
             log.warning("G7: lote rechazado en la sesión %s: %s", body.session_id, exc)
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except GenerationUnavailable as exc:  # p. ej. ningún estilo verificado (modo intermedio)
+            log.warning("Lote no disponible en la sesión %s: %s", body.session_id, exc)
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         log.info("Lote generado: sesión %s, %d imágenes, backend %s", body.session_id, len(artifacts), backend.name)
         info = _health()

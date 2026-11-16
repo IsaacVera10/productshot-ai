@@ -30,7 +30,8 @@ class RemoteScreeningService:
     def screen(self, image: Image.Image) -> ScreeningResult:
         body = ScreenIn(image_png_b64=encode_png(image.convert("RGB")))
         try:
-            resp = self._client.post(SCREEN_PATH, json=body.model_dump(mode="json"), timeout=self._timeout)
+            resp = self._client.post(SCREEN_PATH, json=body.model_dump(mode="json"), timeout=self._timeout,
+                                     follow_redirects=True)
         except httpx.TimeoutException as exc:
             raise ScreeningUnavailable("El revisor de fotos no respondió a tiempo.") from exc
         except httpx.HTTPError as exc:

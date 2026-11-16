@@ -199,3 +199,49 @@ def test_block_passes_the_orchestrator_end_to_end(make_client):
     body = run_batch(client, "intermediate")
     assert body["status"] == "READY_FOR_REVIEW", body.get("failure_reason")
     assert len(body["variations"]) == 5
+
+
+def test_remote_generation_follows_modal_303_and_keeps_the_token():
+    """Modal responde 303 pasados 150 s; el cliente sigue la redirección como GET con el token."""
+    import httpx
+
+    from productshot.services.generation import MockGenerationBackend
+    from productshot.services.remote_generation import RemoteGenerationBackend
+    from productshot.worker.app import create_worker_app
+    from productshot.worker.contract import GENERATE_PATH
+    from test_ports import worker_transport
+
+    inner = worker_transport(create_worker_app(MockGenerationBackend(), token="t"))
+    stash, seen = {}, []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append((req.method, req.url.path, req.headers.get("authorization")))
+        if req.method == "POST" and req.url.path == GENERATE_PATH:
+            stash["body"] = req.content
+            return httpx.Response(303, headers={"location": f"{GENERATE_PATH}?__modal_function_call_id=fc-1"})
+        if req.method == "GET" and req.url.path == GENERATE_PATH:
+            # Modal entrega el resultado de la llamada original.
+            return inner.handle_request(httpx.Request("POST", req.url.copy_with(query=None), headers=req.headers,
+                                                      content=stash["body"]))
+        return inner.handle_request(req)
+
+    client = httpx.Client(base_url="http://worker", transport=httpx.MockTransport(handler))
+    arts = RemoteGenerationBackend("http://worker", token="t", client=client).generate(request())
+    assert len(arts) == 5
+    assert ("GET", GENERATE_PATH, "Bearer t") in seen
+
+
+def test_unverified_batch_reaches_the_user_with_its_message(make_client):
+    """El lote sin verificar viaja por HTTP como 422 y la sesión muestra el mensaje útil."""
+    import httpx
+
+    from productshot.services.remote_generation import RemoteGenerationBackend
+    from productshot.worker.app import create_worker_app
+    from test_ports import worker_transport
+
+    b, _ = backend(itertools.repeat(BAD), budget_s=0.0)  # nunca pasa y no hay tiempo para reintentos
+    client_http = httpx.Client(base_url="http://w", transport=worker_transport(create_worker_app(b)))
+    client = make_client(generator=RemoteGenerationBackend("http://w", client=client_http))
+    body = run_batch(client, "intermediate")
+    assert body["status"] == "FAILED"
+    assert "cables sueltos" in body["failure_reason"]

@@ -96,13 +96,23 @@ class RemoteGenerationBackend:
             category=request.category,
         )
         try:
-            resp = self._client.post(GENERATE_PATH, json=body.model_dump(mode="json"), timeout=self._timeout)
+            # Modal corta a los 150 s con un 303 al mismo endpoint (con el id de la llamada):
+            # se sigue como GET y espera el resultado. Mismo origen: el token se conserva.
+            resp = self._client.post(GENERATE_PATH, json=body.model_dump(mode="json"), timeout=self._timeout,
+                                     follow_redirects=True)
         except httpx.TimeoutException as exc:
             raise GenerationUnavailable("El worker de generación no respondió a tiempo.") from exc
         except httpx.HTTPError as exc:
             raise GenerationUnavailable("No se pudo conectar con el worker de generación.") from exc
         if resp.status_code == 401:
             raise GenerationUnavailable("El worker de generación rechazó el token configurado.")
+        if resp.status_code == 422:
+            # El worker explica por qué no entrega el lote (G7 o producto sin verificar): se muestra tal cual.
+            try:
+                detail = str(resp.json().get("detail") or "")
+            except ValueError:
+                detail = ""
+            raise GenerationUnavailable(detail or "El worker no pudo generar un lote válido.")
         if resp.status_code >= 400:
             raise GenerationUnavailable(f"El worker de generación respondió con error {resp.status_code}.")
         try:
