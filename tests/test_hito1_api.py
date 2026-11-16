@@ -18,7 +18,7 @@ def test_healthz(client):
     assert body["status"] == "ok"
     assert body["adapters"] == {
         "repository": "SqliteRepository", "artifacts": "LocalArtifactStore", "segmentation": "mock",
-        "generation": "mock", "summary": "deterministic", "runner": "InlineJobRunner",
+        "generation": "mock", "summary": "deterministic", "runner": "InlineJobRunner", "screening": "mock",
     }
 
 

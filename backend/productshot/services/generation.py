@@ -14,7 +14,7 @@ from typing import Protocol
 
 from PIL import Image, ImageDraw
 
-from productshot.domain import Mode, Style
+from productshot.domain import Category, Mode, Style
 from productshot.services.presets import NEGATIVE_PROMPT, PRESETS, PROMPT_VERSION
 from productshot.services.rounds import prompt_fragments, variant_key
 
@@ -45,6 +45,8 @@ class GenerationRequest:
     mask: Image.Image  # "L": blanco editable, negro protegido
     specs: tuple[VariationSpec, ...]
     prompt_version: str = PROMPT_VERSION
+    # Tipo de producto (lista cerrada). El modo intermedio elige con esto la escena; None = genérica.
+    category: Category | None = None
 
 
 @dataclass(frozen=True)

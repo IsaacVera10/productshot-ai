@@ -30,10 +30,11 @@ from productshot.api.schemas import (
 )
 from productshot.config import Settings
 from productshot.composition import build_services
-from productshot.domain import DomainError, GenerationJob, Mask, Mode, NotFound, SessionView
+from productshot.domain import Category, DomainError, GenerationJob, Mask, Mode, NotFound, SessionView
 from productshot.services.generation import GenerationBackend
 from productshot.services.jobs import JobRunner
 from productshot.services.rounds import explain_plan, variant_label
+from productshot.services.screening import ScreeningService
 from productshot.services.segmentation import SegmentationService
 from productshot.services.sessions import SessionService
 from productshot.services.summary import SummaryService
@@ -71,6 +72,7 @@ def _session_out(view: SessionView, simulated: bool) -> SessionOut:
     return SessionOut(
         id=s.id,
         mode=s.mode,
+        category=s.category,
         status=s.status,
         image_id=s.image_id,
         image_url=asset_url(view.image.storage_key),
@@ -163,13 +165,14 @@ def _build_router() -> APIRouter:
         request: Request,
         image: Annotated[UploadFile, File(description="Foto JPG o PNG del producto")],
         mode: Annotated[Mode, Form()],
+        category: Annotated[Category | None, Form()] = None,
     ) -> SessionOut:
         # Ruta síncrona a propósito: FastAPI la ejecuta en el pool de hilos, de modo que
         # decodificar la imagen, escribir archivos y esperar el bloqueo de SQLite no
         # detiene el event loop ni las demás solicitudes (como el sondeo de la UI).
         limit = svc(request).settings.max_upload_bytes
         data = image.file.read(limit + 1)  # leer uno de más basta para detectar el exceso
-        return out(request, svc(request).create_session(data, mode))
+        return out(request, svc(request).create_session(data, mode, category))
 
     @router.get("/sessions/{session_id}", response_model=SessionOut)
     def get_session(request: Request, session_id: str) -> SessionOut:
@@ -253,11 +256,13 @@ def create_app(
     generator: GenerationBackend | None = None,
     segmenter: SegmentationService | None = None,
     summarizer: SummaryService | None = None,
+    screener: ScreeningService | None = None,
     mount_ui: bool = True,
 ) -> FastAPI:
     settings = settings or Settings()
     services = build_services(
-        settings, runner=runner, generator=generator, segmenter=segmenter, summarizer=summarizer
+        settings, runner=runner, generator=generator, segmenter=segmenter, summarizer=summarizer,
+        screener=screener,
     )
     runner = services.runner
     sessions = SessionService(
@@ -268,6 +273,7 @@ def create_app(
         generator=services.generator,
         summarizer=services.summarizer,
         runner=runner,
+        screener=services.screener,
     )
     adapters = services.describe()
     log.info("Adaptadores: %s", ", ".join(f"{k}={v}" for k, v in adapters.items()))

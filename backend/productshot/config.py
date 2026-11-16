@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     # Piezas intercambiables (ADR-009): `composition.py` elige el adaptador de cada una.
     generation_backend: Literal["mock", "remote"] = "mock"
     segmentation_backend: Literal["mock", "remote"] = "mock"
+    # G2 y G3 (clasificador NSFW y rostros) sobre la foto subida; remote = el mismo worker.
+    screening_backend: Literal["mock", "remote"] = "mock"
     summary_backend: Literal["deterministic", "gemini"] = "deterministic"
     job_runner: Literal["thread", "inline"] = "thread"
 
@@ -53,6 +55,16 @@ class Settings(BaseSettings):
     mask_min_protected: float = 0.03  # G13: fracción de la foto protegida
     mask_max_protected: float = 0.85
     mask_min_component_fraction: float = 0.01  # G13: tamaño mínimo para contar un objeto
+    nsfw_threshold: float = 0.85  # G2 (entrada) y G7 (salida, en el worker): probabilidad 0 a 1
+    # G3: lado mínimo del rostro como fracción del lado menor de la foto. Con 0.08 la taza
+    # estampada con personajes de anime daba 2 "rostros" (8 % y 12 %, medido el 2026-11-15):
+    # sería rechazar el producto típico del nicho. 0.15 deja pasar estampados y rechaza a una
+    # persona en primer plano.
+    face_min_fraction: float = 0.15
+    # G15 (CLIP, tipo de producto). Calibrado el 2026-11-16 con 22 fotos reales: los productos
+    # del nicho no pasan de 0.04 en ningún grupo bloqueado; el vape da 0.99 y el juguete sexual 0.97.
+    category_block_threshold: float = 0.5
+    category_warn_threshold: float = 0.5
     fidelity_warn_diff: float = 12.0  # G8: diferencia media por canal antes de recomponer
     generation_timeout_s: float = 600.0  # G14: tiempo máximo de un lote
 

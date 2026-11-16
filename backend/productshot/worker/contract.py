@@ -13,6 +13,7 @@ Rutas:
 - `GET  /v1/health`   → `HealthOut`
 - `POST /v1/generate` → `GenerateOut` (cuerpo `GenerateIn`)
 - `POST /v1/segment`  → `SegmentOut` (cuerpo `SegmentIn`); 404 si el worker no segmenta
+- `POST /v1/screen`   → `ScreenOut` (cuerpo `ScreenIn`): G2 y G3; 404 si el worker no revisa
 
 Autenticación: `Authorization: Bearer <GENERATION_WORKER_TOKEN>` si el worker tiene token.
 """
@@ -26,12 +27,13 @@ import io
 from PIL import Image
 from pydantic import BaseModel, Field
 
-from productshot.domain import VARIATIONS_PER_BATCH, Mode, Style
+from productshot.domain import VARIATIONS_PER_BATCH, Category, Mode, Style
 
 CONTRACT_VERSION = "1"
 HEALTH_PATH = "/v1/health"
 GENERATE_PATH = "/v1/generate"
 SEGMENT_PATH = "/v1/segment"
+SCREEN_PATH = "/v1/screen"
 # Tope de decodificación para las imágenes que cruzan el contrato (en ambos sentidos).
 MAX_CONTRACT_PIXELS = 4096 * 4096
 
@@ -55,6 +57,8 @@ class GenerateIn(BaseModel):
     image_png_b64: str
     mask_png_b64: str
     specs: list[SpecIn] = Field(min_length=VARIATIONS_PER_BATCH, max_length=VARIATIONS_PER_BATCH)
+    # Opcional (compatible con clientes anteriores): tipo de producto, lista cerrada.
+    category: Category | None = None
 
 
 class ArtifactOut(BaseModel):
@@ -83,6 +87,7 @@ class HealthOut(BaseModel):
     simulated: bool
     segmenter: str | None = None  # None: el worker no ofrece /v1/segment
     segmenter_simulated: bool | None = None
+    screener: str | None = None  # None: el worker no ofrece /v1/screen
 
 
 class SegmentIn(BaseModel):
@@ -96,6 +101,21 @@ class SegmentOut(BaseModel):
     simulated: bool
     mask_png_b64: str  # "L": blanco = fondo editable, negro = producto
     seconds: float | None = None
+
+
+class ScreenIn(BaseModel):
+    contract_version: str = CONTRACT_VERSION
+    image_png_b64: str
+
+
+class ScreenOut(BaseModel):
+    contract_version: str = CONTRACT_VERSION
+    screener: str
+    simulated: bool
+    nsfw_score: float = Field(ge=0, le=1)
+    faces: int = Field(ge=0)
+    seconds: float | None = None
+    categories: dict[str, float] = Field(default_factory=dict)  # G15, opcional
 
 
 def encode_png(image: Image.Image) -> str:

@@ -195,7 +195,7 @@ def test_defaults_are_all_local(tmp_path):
     services = build_services(_settings(tmp_path))
     assert services.describe() == {
         "repository": "SqliteRepository", "artifacts": "LocalArtifactStore", "segmentation": "mock",
-        "generation": "mock", "summary": "deterministic", "runner": "ThreadJobRunner",
+        "generation": "mock", "summary": "deterministic", "runner": "ThreadJobRunner", "screening": "mock",
     }
     services.runner.shutdown()
 

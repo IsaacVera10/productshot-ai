@@ -7,6 +7,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from productshot.domain import (
+    Category,
     REASON_MAX_CHARS,
     REASON_RAW_MAX_CHARS,
     DecisionValue,
@@ -132,6 +133,7 @@ class JobOut(BaseModel):
 class SessionOut(BaseModel):
     id: str
     mode: Mode
+    category: Category | None = None
     status: SessionStatus
     image_id: str
     image_url: str

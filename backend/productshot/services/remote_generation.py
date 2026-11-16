@@ -93,6 +93,7 @@ class RemoteGenerationBackend:
                 SpecIn(position=s.position, style=s.style, seed=s.seed, adjustments=list(s.adjustments))
                 for s in request.specs
             ],
+            category=request.category,
         )
         try:
             resp = self._client.post(GENERATE_PATH, json=body.model_dump(mode="json"), timeout=self._timeout)

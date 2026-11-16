@@ -28,8 +28,11 @@ class RembgSegmentationService:
     simulated = False
 
     def __init__(self, model: str = DEFAULT_MODEL, *, session_factory: Callable | None = None,
-                 remove_fn: Callable | None = None):
+                 remove_fn: Callable | None = None, providers: list[str] | None = None):
         self.model = model
+        # Con onnxruntime-gpu conviene pedirlos explícitos: si se deja la lista por defecto y
+        # TensorRT no está instalado, onnxruntime 1.22 salta directo a CPU sin probar CUDA.
+        self.providers = providers
         self._session_factory = session_factory
         self._remove = remove_fn
         self._session = None
@@ -43,7 +46,7 @@ class RembgSegmentationService:
         else:
             from rembg import new_session, remove
 
-            self._session = new_session(self.model)
+            self._session = new_session(self.model, providers=self.providers) if self.providers else new_session(self.model)
             self._remove = remove
         log.info("rembg cargado: %s", self.model)
 

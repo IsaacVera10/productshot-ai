@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 from productshot.domain import (
+    Category,
     DECIDABLE_STATES,
     VARIATIONS_PER_BATCH,
     Decision,
@@ -48,7 +49,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     updated_at TEXT NOT NULL,
     parent_session_id TEXT REFERENCES sessions(id),
     round_index INTEGER NOT NULL DEFAULT 1 CHECK (round_index BETWEEN 1 AND 3),
-    round_plan_json TEXT
+    round_plan_json TEXT,
+    category TEXT
 );
 -- Una ronda tiene a lo sumo una hija (ADR-007).
 CREATE UNIQUE INDEX IF NOT EXISTS ux_sessions_parent ON sessions(parent_session_id);
@@ -120,7 +122,7 @@ CREATE TABLE IF NOT EXISTS summaries (
     created_at TEXT NOT NULL
 );
 """
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Hito 1 original (versión 0): sin rondas y con UNIQUE (session_id, style).
 _MIGRATE_0_TO_2 = """
@@ -196,6 +198,9 @@ class SqliteRepository:
                     conn.execute("ALTER TABLE input_images ADD COLUMN quality_json TEXT")
                 if cols("masks") and "warnings_json" not in cols("masks"):
                     conn.execute("ALTER TABLE masks ADD COLUMN warnings_json TEXT")
+                # 3 -> 4: categoría del producto (modo intermedio). Nula en las sesiones anteriores.
+                if "category" not in cols("sessions"):
+                    conn.execute("ALTER TABLE sessions ADD COLUMN category TEXT")
                 broken = conn.execute("PRAGMA foreign_key_check").fetchall()
                 if broken:
                     raise sqlite3.IntegrityError(f"La migración dejó claves foráneas rotas: {broken[:3]}")
@@ -253,10 +258,11 @@ class SqliteRepository:
         with self._tx() as conn:
             conn.execute(
                 "INSERT INTO sessions (id, mode, status, image_id, base_model_revision, failure_reason,"
-                " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                " created_at, updated_at, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     session.id, session.mode.value, session.status.value, session.image_id,
                     session.base_model_revision, None, iso(session.created_at), iso(session.updated_at),
+                    session.category.value if session.category else None,
                 ),
             )
             self._insert_image(conn, image)
@@ -305,12 +311,12 @@ class SqliteRepository:
                 raise StateConflict("Esta ronda ya tiene una ronda siguiente.")
             conn.execute(
                 "INSERT INTO sessions (id, mode, status, image_id, base_model_revision, failure_reason,"
-                " created_at, updated_at, parent_session_id, round_index, round_plan_json)"
-                " VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)",
+                " created_at, updated_at, parent_session_id, round_index, round_plan_json, category)"
+                " VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)",
                 (
                     child.id, child.mode.value, child.status.value, child.image_id, child.base_model_revision,
                     iso(child.created_at), iso(child.updated_at), parent_id, child.round_index,
-                    child.round_plan_json,
+                    child.round_plan_json, child.category.value if child.category else None,
                 ),
             )
             self._insert_image(conn, image)
@@ -372,6 +378,7 @@ class SqliteRepository:
             parent_session_id=row["parent_session_id"],
             round_index=row["round_index"],
             round_plan_json=row["round_plan_json"],
+            category=Category(row["category"]) if row["category"] else None,
         )
 
     def get_image(self, session_id: str) -> InputImage:

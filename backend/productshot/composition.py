@@ -8,6 +8,7 @@ entorno, no código:
 |--------------|----------------------|------------------------------------|
 | Generación   | GENERATION_BACKEND   | mock, remote (worker HTTP)         |
 | Segmentación | SEGMENTATION_BACKEND | mock, remote (rembg en el worker)  |
+| G2 y G3      | SCREENING_BACKEND    | mock, remote (NSFW y rostros en el worker) |
 | Resumen      | SUMMARY_BACKEND      | deterministic, gemini              |
 | Ejecutor     | JOB_RUNNER           | thread, inline                     |
 | Registro     | (fijo)               | SQLite (Firestore cuando haga falta) |
@@ -24,6 +25,7 @@ from dataclasses import dataclass
 from productshot.config import Settings
 from productshot.services.generation import GenerationBackend, MockGenerationBackend
 from productshot.services.jobs import InlineJobRunner, JobRunner, ThreadJobRunner
+from productshot.services.screening import MockScreeningService, ScreeningService
 from productshot.services.segmentation import MockSegmentationService, SegmentationService
 from productshot.services.summary import DeterministicSummaryService, SummaryService
 from productshot.storage.artifacts import ArtifactStore, LocalArtifactStore
@@ -43,6 +45,7 @@ class Services:
     generator: GenerationBackend
     summarizer: SummaryService
     runner: JobRunner
+    screener: ScreeningService
 
     def describe(self) -> dict[str, str]:
         """Qué adaptador quedó en cada pieza (para el log de arranque y `/health`)."""
@@ -53,6 +56,7 @@ class Services:
             "generation": self.generator.name,
             "summary": self.summarizer.name,
             "runner": type(self.runner).__name__,
+            "screening": self.screener.name,
         }
 
 
@@ -90,6 +94,18 @@ def build_segmenter(settings: Settings) -> SegmentationService:
     raise ConfigError(f"SEGMENTATION_BACKEND desconocido: {settings.segmentation_backend!r}.")
 
 
+def build_screener(settings: Settings) -> ScreeningService:
+    if settings.screening_backend == "mock":
+        return MockScreeningService()
+    if settings.screening_backend == "remote":
+        if not settings.generation_worker_url:
+            raise ConfigError("SCREENING_BACKEND=remote necesita GENERATION_WORKER_URL (el mismo worker revisa).")
+        from productshot.services.remote_screening import RemoteScreeningService
+
+        return RemoteScreeningService(settings.generation_worker_url, token=_secret(settings.generation_worker_token))
+    raise ConfigError(f"SCREENING_BACKEND desconocido: {settings.screening_backend!r}.")
+
+
 def build_summarizer(settings: Settings) -> SummaryService:
     if settings.summary_backend == "deterministic":
         return DeterministicSummaryService()
@@ -125,6 +141,7 @@ def build_services(
     generator: GenerationBackend | None = None,
     summarizer: SummaryService | None = None,
     runner: JobRunner | None = None,
+    screener: ScreeningService | None = None,
 ) -> Services:
     """Construye todas las piezas. Los argumentos explícitos (pruebas) mandan sobre la configuración."""
     return Services(
@@ -134,4 +151,5 @@ def build_services(
         generator=generator or build_generator(settings),
         summarizer=summarizer or build_summarizer(settings),
         runner=runner or build_runner(settings),
+        screener=screener or build_screener(settings),
     )
