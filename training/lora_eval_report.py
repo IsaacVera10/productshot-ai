@@ -58,6 +58,8 @@ def validate(eval_dir: Path, manifest: dict) -> list[dict]:
     for r in rows:
         if not all(isinstance(r.get(k), (int, float)) and np.isfinite(r[k]) for k in NUMERIC):
             raise ValueError(f"Fila con valores faltantes o no finitos: {r}")
+        if "text_margin" in r and not (isinstance(r["text_margin"], (int, float)) and np.isfinite(r["text_margin"])):
+            raise ValueError(f"text_margin no finito: {r}")
         if r.get("clip_top1") not in styles:
             raise ValueError(f"clip_top1 desconocido: {r}")
         with Image.open(eval_dir / "images" / r["image"]) as im:
