@@ -124,7 +124,63 @@ def mask_warnings(metrics: dict, settings: Settings) -> list[GuardrailWarning]:
     return out
 
 
+# --- G15: tipo de producto (CLIP zero-shot en el worker) ---
+
+# Criterio: se bloquea lo que Instagram y TikTok no permiten anunciar y lo que facilita fraude;
+# se avisa lo que está fuera del nicho y puede salir mal. Los grupos vienen de screening.py.
+CATEGORY_REJECT_MESSAGES = {
+    "arma": "No trabajamos con armas ni municiones.",
+    "tabaco_vape": "No trabajamos con cigarrillos ni vapes: su publicidad está restringida en las redes del nicho.",
+    "drogas": "No trabajamos con drogas ni con sus accesorios.",
+    "dinero_documentos": "No trabajamos con dinero, tarjetas ni documentos de identidad, por riesgo de falsificación.",
+    "sexual": "No trabajamos con productos para adultos: Instagram y TikTok no permiten anunciarlos.",
+}
+CATEGORY_WARN_MESSAGES = {
+    "comida": "Parece comida: la herramienta está pensada para objetos rígidos y el resultado puede salir mal.",
+    "transparente": "Parece un objeto transparente o espejado: el fondo nuevo puede verse a través y salir mal.",
+    "grande": "Parece un producto grande (mueble o electrodoméstico): la herramienta está pensada para objetos de mesa.",
+    "animal": "Parece un animal: la herramienta está pensada para productos.",
+    "pantalla_documento": "Parece una captura o un documento, no la foto de un producto.",
+}
+
+
+def category_decision(session_id: str | None, categories: dict[str, float], settings: Settings) -> list[GuardrailWarning]:
+    """Rechaza (422) si un grupo bloqueado supera el umbral; si no, devuelve los avisos."""
+    from productshot.domain import RejectedContent
+
+    blocked = [(categories.get(g, 0.0), g) for g in CATEGORY_REJECT_MESSAGES]
+    score, group = max(blocked, default=(0.0, None))
+    if group and score >= settings.category_block_threshold:
+        event("G15", session_id, f"blocked_{group}", score=round(score, 4))
+        raise RejectedContent(CATEGORY_REJECT_MESSAGES[group])
+    warnings = []
+    for g, message in CATEGORY_WARN_MESSAGES.items():
+        if categories.get(g, 0.0) >= settings.category_warn_threshold:
+            event("G15", session_id, f"warn_{g}", score=round(categories[g], 4))
+            warnings.append(GuardrailWarning("G15", f"out_of_niche_{g}", message))
+    return warnings
+
+
 # --- G8: fidelidad del producto ---
+
+
+VERIFIED_KEYS = ("inlier_ratio", "edges", "scene_change", "aligned")
+
+
+def verified_fidelity(mode, params: dict) -> dict | None:
+    """G8 por modo: devuelve las métricas si la imagen viene VERIFICADA del modo intermedio.
+
+    Solo se acepta en el modo intermedio y si trae el método y todas las métricas; si no, la
+    API recompone el producto como siempre ("recompuesto"), que es lo seguro.
+    """
+    from productshot.domain import Mode
+
+    fid = params.get("fidelity") if isinstance(params, dict) else None
+    if mode != Mode.INTERMEDIATE or not isinstance(fid, dict) or fid.get("method") != "verificado":
+        return None
+    if not all(k in fid for k in VERIFIED_KEYS) or not fid["aligned"]:
+        return None
+    return dict(fid)
 
 
 def enforce_fidelity(working: Image.Image, mask: Image.Image, generated: Image.Image,
@@ -154,6 +210,7 @@ def enforce_fidelity(working: Image.Image, mask: Image.Image, generated: Image.I
         after_max = max(hi for _lo, hi in ImageStat.Stat(after, mask=exact).extrema)
     drift = round(sum(before) / 3, 2)
     return recomposed, {
+        "method": "recompuesto",
         "protected_mean_abs_diff": drift,
         "protected_max_diff_after": after_max,
         "recomposed": True,
