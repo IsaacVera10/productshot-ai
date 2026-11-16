@@ -281,7 +281,13 @@ def check_result(out_dir: Path, run_id: str) -> dict:
         if not manifest.get("completed"):
             raise Failure("La evaluación no completó ningún producto.")
         try:
-            eval_report().validate(out_dir, manifest)
+            if manifest["config"].get("distill"):
+                expected = len(manifest["completed"]) * len(manifest["config"]["style_prompts"]) * \
+                    manifest["config"]["distill"]["seeds"]
+                if sum(1 for _ in (out_dir / "metrics.jsonl").open()) != expected:
+                    raise ValueError(f"metrics.jsonl no tiene {expected} candidatas")
+            else:
+                eval_report().validate(out_dir, manifest)
         except (ValueError, OSError, KeyError) as exc:
             raise Failure(f"Resultado de eval inválido: {exc}") from exc
         return manifest
