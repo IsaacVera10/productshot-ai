@@ -306,3 +306,24 @@ Hipótesis a contrastar antes de otra corrida: el LoRA aprende una estética com
 Con la mitad del peso el daño se reduce a la mitad, pero ninguna variante mejora; la regla vuelve a proponer no usar el LoRA. En las imágenes, a 0,5 vuelven en parte las escenas (la cocina de lifestyle con ckpt300), pero siguen apareciendo partes agregadas fuera de la máscara (el pico y el asa de la olla en warm, una llama en un peine). Al ser una segunda búsqueda sobre los mismos datos, los IC no se leen como confirmación, solo como orientación.
 
 **Conclusión de esta línea:** el adaptador entrenado en `20261115-132928-train` no se usa; el modo avanzado sigue sin LoRA hasta que otro entrenamiento lo supere en val. Si se reentrena, los cambios a probar son captions sin el sustantivo del producto (sospecha de las partes agregadas), menos pasos o menor LR, y evaluar con este mismo procedimiento antes de abrir test.
+
+**Segundo entrenamiento: captions sin producto y pérdida con máscara** (2026-11-15 y 16). Se probaron las dos hipótesis anteriores con dos corridas que solo difieren en la pérdida, ambas con captions iguales al prompt de inferencia (solo el preset), LR 5e-5, 800 pasos (3,8 épocas), rank 16:
+
+- A (`v2a/20261115-231054-train`): `preset.tar`, pérdida normal. 0,97 unidades.
+- B (`v2b/20261115-234005-train`): `preset_masked.tar`, pérdida solo sobre el fondo. `colab_job.py` parchea el script oficial con reemplazos exactos (`MASKED_PATCH`): la máscara del producto, sacada del alfa del recorte de BG60k, sigue el mismo resize y recorte que la foto, se reduce a la resolución latente y el error del producto pesa 0. El job valida antes de entrenar que cada máscara exista, tenga el tamaño de la foto y deje al menos 20 % de fondo (el producto ocupa entre 6 % y 57 %, mediana 22 %). Revisado por Codex.
+
+Ambas cargan bien (560 capas) y cambian el fondo de la taza sintética en cuatro canales (20,9 y 21,7/255). Dos intentos fallaron porque `colab exec` perdió la conexión antes de empezar y quedó colgado (0,24 unidades y nada en el segundo); desde entonces el driver consulta el manifiesto del VM y reintenta `exec` si el trabajo no llegó a empezar.
+
+Evaluación con val, decidida antes de ver los datos para que cupiera en el tiempo: 15 productos, checkpoints 400 y 800 a peso 1,0, y la misma regla. 208 s por producto, unas 2 unidades por corrida. El total de la ronda fue 5,18 unidades (210,14 → 204,96), VM liberado.
+
+| Config | Δ margen vs apagado [IC 95 %] | Gana el estilo pedido | Deriva > 12 |
+|---|---|---|---|
+| apagado | | 37/75 | 5/75 |
+| A 400 | −0,0060 [−0,0095, −0,0024] | 30/75 | 0/75 |
+| A 800 | −0,0120 [−0,0159, −0,0085] | 24/75 | 1/75 |
+| B 400 | −0,0057 [−0,0092, −0,0019] | 31/75 | 1/75 |
+| B 800 | −0,0107 [−0,0142, −0,0070] | 27/75 | 1/75 |
+
+Por estilo, studio y natural mejoran un poco (+0,002 a +0,007) y warm y lifestyle empeoran (−0,011 a −0,039). A y B se ven casi iguales: lifestyle pierde la cocina y queda una pared lisa, warm pierde el bokeh y la madera, y las partes agregadas siguen (el pico y el asa de la olla en warm, una rejilla sobre una caja en lifestyle). La pérdida con máscara no las elimina, así que no vienen de que el LoRA aprenda a dibujar productos. La explicación más probable es que BG60k enseña fotos de catálogo con el producto grande sobre un fondo simple, y ese fondo plano empuja al inpainting de cuatro canales a prolongar la silueta, que es la falla que ya tenía el modelo base (`05_COLAB_Y_GCP.md`).
+
+**Resultado: según la regla fijada, se cierra la línea del LoRA.** Ninguna de las diez configuraciones evaluadas, de tres entrenamientos, mejora el margen de estilo en val, y todas agregan partes al producto. El modo avanzado queda sin LoRA y esto se reporta como resultado negativo medido. Para un trabajo futuro, haría falta un dataset de escenas (no de catálogo) para los estilos warm y lifestyle, o entrenar sobre el UNet de inpainting con el objetivo de inpainting, que el script oficial no cubre.
