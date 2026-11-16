@@ -234,3 +234,23 @@ def test_report_keeps_baseline_without_improvement():
 def test_report_is_provisional_with_few_products():
     _, decision = rep.report(synthetic_rows({"ckpt300": 0.05}, n=3), CONFIGS, ["warm", "studio"])
     assert decision["proposal"] is None
+
+
+def test_eval_variants_with_scales():
+    cfg = drv.build_config("eval", "r1", adapters={"ckpt300": {}}, scales=[0.3, 0.6], max_products=17)
+    assert cfg["variants"] == {"ckpt300@0.3": {"adapter": "ckpt300", "scale": 0.3},
+                               "ckpt300@0.6": {"adapter": "ckpt300", "scale": 0.6}}
+    assert cfg["max_products"] == 17
+    default = drv.build_config("eval", "r1", adapters={"ckpt300": {}})
+    assert default["variants"] == {"ckpt300": {"adapter": "ckpt300", "scale": SdxlParams().lora_scale}}
+
+
+@pytest.mark.parametrize("kwargs", [{"max_products": 0}, {"scales": [float("nan")]}, {"scales": [0.3, 0.30000001]}])
+def test_eval_rejects_invalid_variants(kwargs):
+    with pytest.raises(ValueError):
+        drv.build_config("eval", "r1", adapters={"ckpt300": {}}, **kwargs)
+
+
+def test_eval_variants_order_for_tie_break():
+    cfg = drv.build_config("eval", "r1", adapters={"ckpt1200": {}, "ckpt300": {}}, scales=[0.6, 0.3])
+    assert list(cfg["variants"]) == ["ckpt300@0.3", "ckpt300@0.6", "ckpt1200@0.3", "ckpt1200@0.6"]

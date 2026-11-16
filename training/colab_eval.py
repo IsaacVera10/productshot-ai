@@ -210,12 +210,13 @@ def evaluate_product(pipe, clip: Clip, dino: Dino, centroids: dict, cfg: dict, r
     rows, finals, crops = [], [], []
     for style in styles:
         seed = seed_for(row["id"], style)
-        for config in [OFF, *cfg["adapters"]]:
+        for config in [OFF, *cfg["variants"]]:
             check_deadline(f"producto {row['id']}")
             if config == OFF:
                 pipe.set_adapters([next(iter(cfg["adapters"]))], adapter_weights=[0.0])
             else:
-                pipe.set_adapters([config], adapter_weights=[g["lora_scale"]])
+                variant = cfg["variants"][config]
+                pipe.set_adapters([variant["adapter"]], adapter_weights=[variant["scale"]])
             t0 = time.perf_counter()
             out = pipe(
                 prompt=cfg["style_prompts"][style], negative_prompt=cfg["negative_prompt"],
@@ -287,6 +288,7 @@ def main() -> None:
         manifest["pipeline_load_seconds"] = round(time.perf_counter() - t0, 1)
         val = [json.loads(line) for line in (EVAL / "val" / "eval.jsonl").open(encoding="utf-8")]
         random.Random(cfg["order_seed"]).shuffle(val)
+        val = val[: cfg.get("max_products") or len(val)]
         manifest["order"] = [r["id"] for r in val]
         manifest["completed"] = []
         product_seconds: list[float] = []

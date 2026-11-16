@@ -41,7 +41,7 @@ def load_rows(path: Path) -> list[dict]:
 
 def expected(manifest: dict) -> tuple[list[str], list[str], list[int]]:
     cfg = manifest["config"]
-    return [OFF, *cfg["adapters"]], list(cfg["style_prompts"]), list(manifest.get("completed", []))
+    return [OFF, *cfg.get("variants", cfg["adapters"])], list(cfg["style_prompts"]), list(manifest.get("completed", []))
 
 
 def validate(eval_dir: Path, manifest: dict) -> list[dict]:

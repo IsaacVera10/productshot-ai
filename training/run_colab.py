@@ -9,6 +9,8 @@ Colab Pro (`colab --auth=oauth2 whoami`).
     PYTHONPATH=backend python training/run_colab.py --stage train --dataset-tar ds.tar --steps 1500
     PYTHONPATH=backend python training/run_colab.py --stage embed --pack data/bg60k/pack.tar --max-minutes 30
     PYTHONPATH=backend python training/run_colab.py --stage eval --adapters data/lora/<RUN_ID> --max-minutes 120
+    PYTHONPATH=backend python training/run_colab.py --stage eval --adapters data/lora/<RUN_ID> \
+        --checkpoints ckpt300 --scales 0.3,0.6 --max-products 17 --max-minutes 90
     PYTHONPATH=backend python training/run_colab.py --cleanup                 # libera VM huérfanos
 
 Pasos: comprobar que la cuenta no tiene VM asignados -> `colab new --gpu L4` -> subir la
@@ -32,6 +34,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib.util
+import math
 import json
 import os
 import shutil
@@ -85,7 +88,8 @@ class Failure(Exception):
 def build_config(stage: str, run_id: str, steps: int | None = None, rank: int = 16,
                  learning_rate: float = 1e-4, dataset_remote: str | None = None,
                  deadline_unix: float | None = None, pack_sha256: str | None = None,
-                 adapters: dict | None = None) -> dict:
+                 adapters: dict | None = None, scales: list[float] | None = None,
+                 max_products: int | None = None) -> dict:
     """Configuración que se sube como /content/job.json. Pura: se prueba sin Colab."""
     from productshot.domain import Style
     from productshot.services.presets import NEGATIVE_PROMPT, PRESETS
@@ -102,7 +106,7 @@ def build_config(stage: str, run_id: str, steps: int | None = None, rank: int = 
             "prompts": tomllib.loads(STYLE_PROMPTS.read_text(encoding="utf-8")),
         }
     if stage == "eval":
-        return eval_config(run_id, adapters or {}, deadline_unix)
+        return eval_config(run_id, adapters or {}, deadline_unix, scales, max_products)
     if stage not in ("smoke", "train"):
         raise ValueError(f"Etapa desconocida: {stage}")
     if stage == "train" and not dataset_remote:
@@ -151,7 +155,8 @@ def build_config(stage: str, run_id: str, steps: int | None = None, rank: int = 
     }
 
 
-def eval_config(run_id: str, adapters: dict, deadline_unix: float | None) -> dict:
+def eval_config(run_id: str, adapters: dict, deadline_unix: float | None, scales: list[float] | None = None,
+                max_products: int | None = None) -> dict:
     """Mismo pipeline, prompts y parámetros que producción (SdxlParams); solo cambia el LoRA."""
     from productshot.domain import Style
     from productshot.services.presets import NEGATIVE_PROMPT, PRESETS
@@ -159,7 +164,17 @@ def eval_config(run_id: str, adapters: dict, deadline_unix: float | None) -> dic
 
     if not adapters:
         raise ValueError("La etapa eval necesita adaptadores (--adapters).")
+    if max_products is not None and max_products < 1:
+        raise ValueError("--max-products debe ser positivo.")
+    if scales and not all(math.isfinite(x) and 0 < x <= 2 for x in scales):
+        raise ValueError("Los pesos deben ser finitos y estar entre 0 y 2.")
     p = SdxlParams()
+    # Orden de desempate del reporte: checkpoint más temprano y después menor peso.
+    order = sorted(adapters, key=lambda a: int(a.removeprefix("ckpt")))
+    variants = ({a: {"adapter": a, "scale": p.lora_scale} for a in order} if not scales else
+                {f"{a}@{x:g}": {"adapter": a, "scale": x} for a in order for x in sorted(scales)})
+    if scales and len(variants) != len(order) * len(scales):
+        raise ValueError("Hay pesos repetidos o que se confunden al nombrar las variantes.")
     if p.model_id != DEFAULT_MODEL_ID or p.model_id != BASE_MODEL or p.mask_dilate_px or p.prompt_prefix:
         raise ValueError("La configuración de producción cambió: revisar la evaluación antes de correrla.")
     return {
@@ -176,6 +191,9 @@ def eval_config(run_id: str, adapters: dict, deadline_unix: float | None) -> dic
         "generation": {"steps": p.steps, "guidance_scale": p.guidance_scale, "strength": p.strength,
                        "target_side": p.target_side, "mask_blur": p.mask_blur, "lora_scale": p.lora_scale},
         "adapters": adapters,
+        # Sin --scales, cada checkpoint con el peso de producción; con --scales, cada par checkpoint@peso.
+        "variants": variants,
+        "max_products": max_products,
         "models": {"clip": {"id": CLIP_MODEL, "revision": CLIP_REVISION},
                    "dino": {"id": DINO_MODEL, "revision": DINO_REVISION}},
         # Igual que bg60k_pack.py, para que CLIP y DINOv2 vean lo mismo que en los embeddings.
@@ -427,6 +445,9 @@ def main() -> int:
     ap.add_argument("--dataset-tar", type=Path, help="tar de una carpeta imagefolder con metadata.jsonl")
     ap.add_argument("--pack", type=Path, help="paquete de bg60k_pack.py (etapa embed)")
     ap.add_argument("--adapters", type=Path, help="carpeta de una corrida train con sus checkpoints (etapa eval)")
+    ap.add_argument("--checkpoints", type=lambda v: v.split(","), help="eval: solo estos, p. ej. ckpt300,ckpt1200")
+    ap.add_argument("--scales", type=lambda v: [float(x) for x in v.split(",")], help="eval: pesos del LoRA a probar")
+    ap.add_argument("--max-products", type=int, help="eval: primeros N productos del orden fijo")
     ap.add_argument("--max-minutes", type=float, default=50.0, help="presupuesto total desde que se pide el VM")
     ap.add_argument("--idle-timeout", type=float, default=900.0,
                     help="segundos sin salida antes de que `colab exec` deje de esperar")
@@ -462,9 +483,16 @@ def main() -> int:
     adapters, eval_parts = None, []
     if evaluate:
         eval_tar = parts_dir / "eval.tar"
-        adapters = build_eval_tar(eval_tar, EVAL_SPLIT, TRAIN_TAR, collect_adapters(args.adapters))
+        found = collect_adapters(args.adapters)
+        if args.checkpoints:
+            missing = set(args.checkpoints) - set(found)
+            if missing:
+                ap.error(f"checkpoints inexistentes: {sorted(missing)} (hay {list(found)})")
+            found = {k: v for k, v in found.items() if k in args.checkpoints}
+        adapters = build_eval_tar(eval_tar, EVAL_SPLIT, TRAIN_TAR, found)
     cfg = build_config(args.stage, run_id, args.steps, args.rank, args.learning_rate, remote_tar,
-                       deadline_unix=deadline - RESERVE_S, pack_sha256=pack_sha, adapters=adapters)
+                       deadline_unix=deadline - RESERVE_S, pack_sha256=pack_sha, adapters=adapters,
+                       scales=args.scales, max_products=args.max_products)
     if evaluate:
         eval_parts = split_parts(eval_tar, parts_dir) if not args.dry_run else []
         cfg["eval_tar"] = {"parts": len(eval_parts), "sha256": hashlib.sha256(eval_tar.read_bytes()).hexdigest()}
