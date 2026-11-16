@@ -321,6 +321,28 @@ def split_parts(path: Path, folder: Path, size: int = PART_BYTES) -> list[Path]:
     return parts
 
 
+def wait_for_job(colab: "Colab", out_dir: Path, every: float = 60.0) -> None:
+    """Si `exec` pierde la conexión, el trabajo sigue en el kernel: se espera a que su manifiesto deje de decir running."""
+    probe = out_dir / "manifest.probe.json"
+    missing = 0
+    while colab.remaining(reserve=RESERVE_S - 120) > every:
+        colab("download", "/content/out/manifest.json", str(probe), check=False, timeout=120, budget=False)
+        try:
+            status = json.loads(probe.read_text(encoding="utf-8")).get("status")
+        except (OSError, ValueError):
+            status = None
+        if status and status != "running":
+            print(f"[driver] El trabajo terminó con estado {status}.", flush=True)
+            break
+        missing = 0 if status else missing + 1
+        if missing >= 2:
+            print("[driver] No hay manifiesto en el VM: el trabajo no llegó a empezar.", flush=True)
+            break
+        print(f"[driver] Sin conexión con exec; el trabajo sigue ({status}). Espero {every:.0f} s.", flush=True)
+        time.sleep(every)
+    probe.unlink(missing_ok=True)
+
+
 def colab_bin() -> str:
     path = os.environ.get("COLAB_BIN") or shutil.which("colab")
     if not path:
@@ -541,8 +563,10 @@ def main() -> int:
         if embed and args.dry_run:
             colab("upload", f"{args.pack}.part000", "/content/pack.tar.part000", timeout=300)
         try:
-            colab("exec", "-f", str(EMBED_SCRIPT if embed else EVAL_SCRIPT if evaluate else JOB_SCRIPT), "--timeout", str(args.idle_timeout), check=False,
-                  timeout=colab.remaining(reserve=RESERVE_S - 120))
+            proc = colab("exec", "-f", str(EMBED_SCRIPT if embed else EVAL_SCRIPT if evaluate else JOB_SCRIPT), "--timeout", str(args.idle_timeout), check=False,
+                         timeout=colab.remaining(reserve=RESERVE_S - 120))
+            if proc is not None and proc.returncode != 0:
+                wait_for_job(colab, out_dir)
         finally:
             # Lo que haya, aunque el trabajo falle: el manifiesto trae el error.
             colab("download", "/content/out/result.tar.gz", str(out_dir / "result.tar.gz"),

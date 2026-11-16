@@ -65,6 +65,7 @@ FAKE_COLAB = textwrap.dedent('''\
             if not os.environ.get("FAKE_NO_ADAPTER"):
                 tar.add(weights, arcname=weights.name)
         # Como el CLI real: devuelve 0 aunque el código remoto falle.
+        sys.exit(int(os.environ.get("FAKE_EXEC_CODE", "0")))
     elif cmd == "download":
         src = remote / rest[0].lstrip("/")
         if not src.exists():
@@ -326,3 +327,10 @@ def test_check_masks_rejects_wrong_size_or_no_background(tmp_path, monkeypatch):
         job.check_masks(rows)
     with pytest.raises(RuntimeError, match="Falta"):
         job.check_masks([{"file_name": "1.png"}])
+
+
+def test_lost_exec_connection_waits_for_the_job(fake, monkeypatch):
+    drv, run, server = fake
+    monkeypatch.setenv("FAKE_EXEC_CODE", "1")
+    code, calls = run()
+    assert code == 0 and "stop" in calls
