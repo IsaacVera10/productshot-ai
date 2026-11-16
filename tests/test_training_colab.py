@@ -345,3 +345,17 @@ def test_exec_is_retried_when_the_job_never_started(fake, monkeypatch):
     monkeypatch.setenv("FAKE_EXEC_NOT_STARTED", "1")
     code, calls = run()
     assert code == 0 and calls.count("exec") == 2 and "stop" in calls
+
+
+def test_inpaint_trains_the_nine_channel_unet_with_masks():
+    drv = load_driver()
+    t = drv.build_config("train", "r4", dataset_remote="dataset.tar", inpaint=True)["train"]
+    assert t["objective"] == "inpaint" and t["masked_loss"] is True
+    assert t["model"] == drv.NINE_MODEL and t["model_revision"] == drv.NINE_REVISION
+    job = load_job()
+    masked = "".join(old for old, _ in job.MASKED_PATCH)
+    with pytest.raises(RuntimeError):
+        job.patch_script(masked, inpaint=True)
+    patched = job.patch_script(masked + "".join(old for old, _ in job.INPAINT_PATCH[4:]), inpaint=True)
+    assert "torch.cat([noisy_model_input, inpaint_mask, masked_latents], dim=1)" in patched
+    assert 'examples["product_pixels"] = all_products' in patched

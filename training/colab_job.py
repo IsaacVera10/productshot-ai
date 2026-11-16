@@ -94,9 +94,36 @@ MASKED_PATCH = [
      "                    loss = error.sum() / (weights.sum() * model_pred.shape[1]).clamp(min=1.0)\n"),
 ]
 
+# Objetivo de inpainting sobre el UNet de nueve canales (va encima de MASKED_PATCH): la entrada
+# es el latente con ruido, la máscara de lo editable (el fondo) y la foto con solo el producto,
+# igual que en StableDiffusionXLInpaintPipeline. Así el LoRA aprende a generar el entorno real
+# de cada producto (superficie, sombra y reflejos) en vez de la foto entera.
+INPAINT_PATCH = [
+    ("        all_weights = []\n", "        all_weights = []\n        all_products = []\n"),
+    ("            all_weights.append(1.0 - F.avg_pool2d(product, 8)[0])\n",
+     "            all_weights.append(1.0 - F.avg_pool2d(product, 8)[0])\n"
+     "            all_products.append(product[0])\n"),
+    ('        examples["loss_weights"] = all_weights\n',
+     '        examples["loss_weights"] = all_weights\n'
+     '        examples["product_pixels"] = all_products\n'),
+    ('            "loss_weights": torch.stack([example["loss_weights"] for example in examples]),\n',
+     '            "loss_weights": torch.stack([example["loss_weights"] for example in examples]),\n'
+     '            "product_pixels": torch.stack([example["product_pixels"] for example in examples]),\n'),
+    ("                noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)\n",
+     "                noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)\n"
+     '                keep = (batch["product_pixels"].to(pixel_values.device) > 0.5).to(pixel_values.dtype)\n'
+     "                masked_latents = vae.encode(pixel_values * keep).latent_dist.sample() * vae.config.scaling_factor\n"
+     "                masked_latents = masked_latents.to(noisy_model_input.dtype)\n"
+     "                inpaint_mask = F.interpolate(1.0 - keep, size=noisy_model_input.shape[-2:])\n"
+     "                inpaint_mask = inpaint_mask.to(noisy_model_input.dtype)\n"),
+    ("                model_pred = unet(\n                    noisy_model_input,\n",
+     "                model_pred = unet(\n"
+     "                    torch.cat([noisy_model_input, inpaint_mask, masked_latents], dim=1),\n"),
+]
 
-def patch_script(source: str) -> str:
-    for old, new in MASKED_PATCH:
+
+def patch_script(source: str, inpaint: bool = False) -> str:
+    for old, new in MASKED_PATCH + (INPAINT_PATCH if inpaint else []):
         if source.count(old) != 1:
             raise RuntimeError(f"El script oficial cambió: no encuentro una sola vez {old.strip()!r}.")
         source = source.replace(old, new)
@@ -240,7 +267,8 @@ def environment(cfg: dict) -> dict:
         raise RuntimeError("El script oficial de diffusers no coincide con el sha256 esperado.")
     info["train_script"] = {"url": SCRIPT_URL, "sha256": SCRIPT_SHA256}
     if cfg.get("train", {}).get("masked_loss"):
-        MASKED_SCRIPT.write_text(patch_script(script.read_text(encoding="utf-8")), encoding="utf-8")
+        source = patch_script(script.read_text(encoding="utf-8"), inpaint=cfg["train"].get("objective") == "inpaint")
+        MASKED_SCRIPT.write_text(source, encoding="utf-8")
         info["train_script"]["masked_sha256"] = sha256(MASKED_SCRIPT)
     log(f"Entorno: {info['gpu']} ({info['vram_total_gb']} GB), {info['packages']}")
     return info
@@ -318,8 +346,8 @@ def train(cfg: dict) -> dict:
         sys.executable, "-m", "accelerate.commands.launch", "--num_processes", "1",
         "--mixed_precision", t["mixed_precision"],
         str(MASKED_SCRIPT if t.get("masked_loss") else CONTENT / "train_text_to_image_lora_sdxl.py"),
-        "--pretrained_model_name_or_path", cfg["base_model"],
-        "--revision", cfg["base_revision"],
+        "--pretrained_model_name_or_path", t.get("model", cfg["base_model"]),
+        "--revision", t.get("model_revision", cfg["base_revision"]),
         "--variant", "fp16",  # los mismos archivos que la generación: una sola descarga
         "--train_data_dir", str(DATA),
         "--caption_column", "text",
