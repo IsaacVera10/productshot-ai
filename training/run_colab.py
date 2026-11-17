@@ -34,9 +34,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib.util
-import math
 import json
+import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -186,7 +187,7 @@ def eval_config(run_id: str, adapters: dict, deadline_unix: float | None, scales
         raise ValueError("Los pesos deben ser finitos y estar entre 0 y 2.")
     p = SdxlParams()
     # Orden de desempate del reporte: checkpoint más temprano y después menor peso.
-    order = sorted(adapters, key=lambda a: int(a.removeprefix("ckpt")))
+    order = sorted(adapters, key=lambda a: (0, int(a[4:]), "") if a.startswith("ckpt") and a[4:].isdigit() else (1, 0, a))
     variants = ({a: {"adapter": a, "scale": p.lora_scale} for a in order} if not scales else
                 {f"{a}@{x:g}": {"adapter": a, "scale": x} for a in order for x in sorted(scales)})
     if scales and len(variants) != len(order) * len(scales):
@@ -561,6 +562,8 @@ def main() -> int:
     ap.add_argument("--checkpoints", type=lambda v: v.split(","), help="eval: solo estos, p. ej. ckpt300,ckpt1200")
     ap.add_argument("--scales", type=lambda v: [float(x) for x in v.split(",")], help="eval: pesos del LoRA a probar")
     ap.add_argument("--max-products", type=int, help="eval: primeros N productos del orden fijo")
+    ap.add_argument("--extra-adapter", action="append",
+                    help="eval: adaptador de otra corrida para comparar en la misma evaluación, nombre=ruta")
     ap.add_argument("--split", choices=("val", "test"), default="val",
                     help="eval: test se usa una sola vez, con la configuración ya fijada en val")
     ap.add_argument("--distill", type=int, help="eval: candidatas de entrenamiento con N semillas por estilo")
@@ -609,6 +612,12 @@ def main() -> int:
             if missing:
                 ap.error(f"checkpoints inexistentes: {sorted(missing)} (hay {list(found)})")
             found = {k: v for k, v in found.items() if k in args.checkpoints}
+        for spec in args.extra_adapter or []:
+            name, _, path = spec.partition("=")
+            if not re.fullmatch(r"[a-z][a-z0-9_]*", name) or name.startswith("ckpt") or name in found \
+                    or not Path(path).is_file():
+                ap.error(f"--extra-adapter inválido: {spec!r} (nombre=ruta a un .safetensors existente)")
+            found[name] = Path(path)
         split_dir = EVAL_SPLIT.with_name(args.split)
         adapters = build_eval_tar(eval_tar, split_dir, DISTILL_TAR if args.distill else TRAIN_TAR, found)
     cfg = build_config(args.stage, run_id, args.steps, args.rank, args.learning_rate, remote_tar,

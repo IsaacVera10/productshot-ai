@@ -421,3 +421,11 @@ def test_distill_with_photographer_prompts():
                            strength=1.0, prompt_version="v2")
     assert cfg["prompt_version"] == "v2" and cfg["negative_prompt"] == NEGATIVE_PROMPTS["v2"]
     assert cfg["style_prompts"] == {s.value: PROMPTS["v2"][s] for s in Style}
+
+
+def test_extra_adapters_go_after_checkpoints():
+    drv = load_driver()
+    adapters = {n: {"file": f"adapters/{n}.safetensors", "source": n, "sha256": "0"}
+                for n in ("v4_ckpt400", "ckpt800", "ckpt200")}
+    cfg = drv.build_config("eval", "r8", adapters=adapters, inpaint=True, layout={"height": 0.45, "bottom": 0.85})
+    assert list(cfg["variants"]) == ["ckpt200", "ckpt800", "v4_ckpt400"]
