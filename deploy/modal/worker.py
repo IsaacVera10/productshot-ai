@@ -114,10 +114,11 @@ edit_image = (
     .add_local_dir(ROOT / "backend" / "productshot", "/root/productshot")
 )
 
-# GPU del worker: A100 de 80 GB y H100 de respaldo. La L40S (44 GB útiles) NO alcanza: el editor
-# llega a ~40 GB de pico y BiRefNet necesita varios GB más (OOM el 2026-11-16 sin tope; con un
-# tope de 2 GB falla BiRefNet). WORKER_GPUS permite forzar una para pruebas.
-WORKER_GPUS = os.environ.get("WORKER_GPUS", "A100-80GB,H100").split(",")
+# GPU del worker: H100 y A100 de 80 GB de respaldo. La L40S (44 GB útiles) NO alcanza: el editor
+# llega a ~40 GB de pico y BiRefNet necesita varios GB más (OOM el 2026-11-16). La A100 va segunda:
+# las que asignó Modal leían el volumen de pesos muy lento (31 GB en 2 min; un arranque pasó los
+# 600 s), mientras la H100 carga todo en ~40 s. WORKER_GPUS permite forzar una para pruebas.
+WORKER_GPUS = os.environ.get("WORKER_GPUS", "H100,A100-80GB").split(",")
 
 
 @app.cls(
@@ -129,6 +130,9 @@ WORKER_GPUS = os.environ.get("WORKER_GPUS", "A100-80GB,H100").split(",")
     # Tope por llamada: el lote verifica candidatas con un presupuesto de 420 s (QwenEditBackend)
     # y la API abandona a los 540 s (GENERATION_WORKER_TIMEOUT_S), antes de G14 (600 s).
     timeout=600,
+    # Un arranque en una A100 lenta puede pasar de 10 min: mejor esperar que fallar (la API, de
+    # todos modos, rechaza la foto si no la pudo revisar a tiempo).
+    startup_timeout=1200,
     scaledown_window=120,
     max_containers=1,
 )

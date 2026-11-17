@@ -138,12 +138,12 @@ function startWaiting(firstMsg) {
   clearInterval(waitTimer);
   waitTimer = setInterval(() => {
     const s = (Date.now() - t0) / 1000;
-    const pct = Math.min(92, 4 + (s / EXPECTED_S) * 88);
+    if (!state.generating) return; // revisando la foto o encendiendo el servidor: sin avance falso
+    const g = (Date.now() - state.genStart) / 1000;
+    const pct = Math.min(92, 4 + (g / EXPECTED_S) * 88);
     $("wait-bar").style.width = `${pct}%`;
-    if (state.generating) {
-      const m = msgs.filter(([at]) => s >= at).pop();
-      $("wait-msg").textContent = m[1];
-    }
+    const m = msgs.filter(([at]) => g >= at).pop();
+    $("wait-msg").textContent = m[1];
     if (s > 30) $("wait-time").textContent = `Llevamos ${Math.round(s)} s.`;
   }, 1000);
 }
@@ -162,6 +162,7 @@ async function pollReady(sessionId) {
 
 async function generateAndShow(session) {
   state.generating = true;
+  state.genStart = Date.now();
   await api(`/sessions/${session.id}/generate`, { method: "POST" });
   const ready = await pollReady(session.id);
   stopWaiting();
@@ -172,6 +173,13 @@ async function generateAndShow(session) {
 
 async function create() {
   startWaiting("Revisando tu foto…");
+  // Mientras se revisa la foto (G2, G3 y G15) no se muestra el avance de la generación: si el
+  // servidor está apagado, encenderlo toma hasta un par de minutos y conviene decirlo.
+  const coldTimer = setTimeout(() => {
+    if (!state.generating) {
+      $("wait-msg").textContent = "Encendiendo el servidor: la primera foto tarda un poco más (hasta 2 minutos).";
+    }
+  }, 15000);
   try {
     const fd = new FormData();
     fd.append("image", state.blob, "producto.jpg");
@@ -184,8 +192,10 @@ async function create() {
     state.notes = (fresh.warnings || []).concat(fresh.mask?.warnings || []);
     if (fresh.simulated) toast("Modo de prueba: el servidor usa imágenes simuladas.");
     state.rounds = 1;
+    clearTimeout(coldTimer);
     await generateAndShow(fresh);
   } catch (e) {
+    clearTimeout(coldTimer);
     stopWaiting();
     show("foto");
     toast(e.message, 9000);
