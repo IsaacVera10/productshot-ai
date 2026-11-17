@@ -48,6 +48,9 @@ FAKE_COLAB = textwrap.dedent('''\
         shutil.copy(rest[0], dest)
     elif cmd == "exec":
         marker = remote / "exec_failed_once"
+        if os.environ.get("FAKE_EXEC_HANGS") and not marker.exists():
+            marker.write_text("1")
+            time.sleep(30)  # como el CLI real tras perder la conexión: no corre el trabajo ni termina
         if os.environ.get("FAKE_EXEC_NOT_STARTED") and not marker.exists():
             marker.write_text("1")
             sys.exit(1)
@@ -398,3 +401,13 @@ def test_distill_generates_candidates_with_the_advanced_pipeline():
         drv.build_config("eval", "r6", distill=2)
     with pytest.raises(ValueError):
         drv.build_config("eval", "r6", inpaint=True, layout=layout)
+
+
+def test_hung_exec_is_cut_and_retried(fake, monkeypatch):
+    drv, run, server = fake
+    monkeypatch.setattr(drv, "EXEC_GRACE_S", 1.0)
+    monkeypatch.setenv("FAKE_EXEC_HANGS", "1")
+    t0 = time.perf_counter()
+    code, calls = run()
+    assert code == 0 and calls.count("exec") == 2 and "stop" in calls
+    assert time.perf_counter() - t0 < 25

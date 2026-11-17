@@ -52,6 +52,7 @@ EVAL_SCRIPT = ROOT / "training" / "colab_eval.py"
 EVAL_SPLIT = ROOT / "data" / "bg60k" / "export" / "eval" / "val"
 # Test se empaqueta en la misma ruta que val (`val/` del tar) y `split` lo registra en job.json.
 TRAIN_TAR = ROOT / "data" / "bg60k" / "export" / "dataset.tar"
+EXEC_GRACE_S = 180.0  # sin manifiesto en el VM pasado este plazo, exec quedó colgado sin correr el trabajo
 DISTILL_TAR = ROOT / "data" / "bg60k" / "export" / "preset_masked.tar"  # fotos de train con su máscara
 STYLE_PROMPTS = ROOT / "training" / "bg60k_style_prompts.toml"
 REQUIREMENTS = ROOT / "training" / "requirements-colab.txt"
@@ -344,6 +345,17 @@ def split_parts(path: Path, folder: Path, size: int = PART_BYTES) -> list[Path]:
     return parts
 
 
+def job_started(colab: "Colab", out_dir: Path) -> bool:
+    probe = out_dir / "manifest.started.json"
+    colab("download", "/content/out/manifest.json", str(probe), check=False, timeout=120, budget=False)
+    try:
+        return bool(json.loads(probe.read_text(encoding="utf-8")).get("status"))
+    except (OSError, ValueError):
+        return False
+    finally:
+        probe.unlink(missing_ok=True)
+
+
 def wait_for_job(colab: "Colab", out_dir: Path, every: float = 60.0) -> bool:
     """Si `exec` pierde la conexión, el trabajo sigue en el kernel: se espera a que su manifiesto deje de
     decir running. Devuelve False si el trabajo no llegó a empezar."""
@@ -396,9 +408,7 @@ class Colab:
     def __call__(self, *args: str, session: bool = True, timeout: float = 120.0, check: bool = True,
                  budget: bool = True) -> subprocess.CompletedProcess | None:
         """Una llamada al CLI con timeout. `budget` la limita también al presupuesto restante."""
-        cmd = [self.bin, "--auth=oauth2", "--config", str(self.state), *args]
-        if session:
-            cmd[5:5] = ["-s", self.session]
+        cmd = self.command(args, session)
         if budget:
             timeout = min(timeout, max(5.0, self.remaining()))
         print("+ " + " ".join(cmd), flush=True)
@@ -414,6 +424,38 @@ class Colab:
         if check and proc.returncode != 0:
             raise Failure(f"`colab {args[0]}` terminó con código {proc.returncode}")
         return proc
+
+    def command(self, args, session: bool = True) -> list[str]:
+        cmd = [self.bin, "--auth=oauth2", "--config", str(self.state), *args]
+        if session:
+            cmd[5:5] = ["-s", self.session]
+        return cmd
+
+    def exec_watched(self, args, timeout: float, started, grace: float | None = None) -> subprocess.CompletedProcess | None:
+        """`exec` con vigilante: a veces pierde la conexión antes de correr el trabajo y queda colgado
+        sin respetar su propio timeout. Si a los `grace` s el trabajo no dejó manifiesto, se corta."""
+        grace = EXEC_GRACE_S if grace is None else grace
+        cmd = self.command(["exec", *args])
+        print("+ " + " ".join(cmd), flush=True)
+        if self.dry_run:
+            return None
+        proc = subprocess.Popen(cmd)
+        try:
+            proc.wait(timeout=min(grace, timeout))
+        except subprocess.TimeoutExpired:
+            if not started():
+                print(f"[driver] exec no arrancó el trabajo en {grace:.0f} s: lo corto.", flush=True)
+                proc.kill()
+                proc.wait()
+                return subprocess.CompletedProcess(cmd, -9)
+            try:
+                proc.wait(timeout=max(5.0, timeout - grace))
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+                print(f"[driver] `colab exec` superó {timeout:.0f} s", flush=True)
+                return None
+        return subprocess.CompletedProcess(cmd, proc.returncode)
 
     def assignments(self) -> list[dict] | None:
         """Asignaciones en el servidor; None si no se pudo consultar."""
@@ -600,8 +642,10 @@ def main() -> int:
             colab("upload", f"{args.pack}.part000", "/content/pack.tar.part000", timeout=300)
         try:
             for attempt in range(3):
-                proc = colab("exec", "-f", str(EMBED_SCRIPT if embed else EVAL_SCRIPT if evaluate else JOB_SCRIPT), "--timeout", str(args.idle_timeout), check=False,
-                             timeout=colab.remaining(reserve=RESERVE_S - 120))
+                script = EMBED_SCRIPT if embed else EVAL_SCRIPT if evaluate else JOB_SCRIPT
+                proc = colab.exec_watched(["-f", str(script), "--timeout", str(args.idle_timeout)],
+                                          timeout=colab.remaining(reserve=RESERVE_S - 120),
+                                          started=lambda: job_started(colab, out_dir))
                 if proc is None or proc.returncode == 0 or wait_for_job(colab, out_dir):
                     break
                 print(f"[driver] Reintento {attempt + 1} de exec en el mismo VM.", flush=True)
