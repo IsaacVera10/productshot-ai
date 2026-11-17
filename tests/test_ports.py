@@ -9,8 +9,8 @@
 
 from __future__ import annotations
 
-import types
 import re
+import types
 from pathlib import Path
 
 import httpx
