@@ -97,7 +97,7 @@ def build_config(stage: str, run_id: str, steps: int | None = None, rank: int = 
                  prompt_version: str = "v1") -> dict:
     """Configuración que se sube como /content/job.json. Pura: se prueba sin Colab."""
     from productshot.domain import Style
-    from productshot.services.presets import NEGATIVE_PROMPT, PRESETS
+    from productshot.services.presets import NEGATIVE_PROMPTS, PROMPTS
 
     if stage == "embed":
         import tomllib
@@ -126,9 +126,11 @@ def build_config(stage: str, run_id: str, steps: int | None = None, rank: int = 
         "diffusers_version": DIFFUSERS_VERSION,
         "base_model": BASE_MODEL,
         "base_revision": BASE_REVISION,
-        "negative_prompt": NEGATIVE_PROMPT,
-        # Caption = preset del estilo (el mismo prompt que usa la generación) + producto.
-        "style_prompts": {s.value: PRESETS[s].prompt for s in Style},
+        # Los captions vienen del dataset; esto registra los prompts y el negativo de esa versión, que
+        # también usa la verificación.
+        "prompt_version": prompt_version,
+        "negative_prompt": NEGATIVE_PROMPTS[prompt_version],
+        "style_prompts": {s.value: PROMPTS[prompt_version][s] for s in Style},
         "dataset": (
             {"kind": "generate", "products": SMOKE_PRODUCTS} if smoke
             else {"kind": "upload", "remote_tar": dataset_remote}
