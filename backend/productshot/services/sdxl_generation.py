@@ -177,7 +177,7 @@ class SdxlInpaintBackend:
                     image=final,
                     seed=spec.seed,
                     model_revision=self.model_revision,
-                    prompt_version=request.prompt_version,
+                    prompt_version=p.prompt_version,
                     params={
                         "backend": self.name,
                         "simulated": False,
