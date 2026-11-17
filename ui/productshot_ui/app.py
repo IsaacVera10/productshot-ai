@@ -23,16 +23,25 @@ STYLE_LABELS = {
     "minimal": "Minimalista",
 }
 MODE_CHOICES = [
-    ("Intermedio: inpainting preentrenado", "intermediate"),
+    ("Intermedio: edición con IA (Qwen) y producto verificado", "intermediate"),
     ("Avanzado: inpainting + LoRA", "advanced"),
+]
+# Tipo de producto: el modo intermedio elige con esto la escena (escritorio, cocina, sala...).
+CATEGORY_CHOICES = [
+    ("Tecnología (hubs, mouse, parlantes)", "tecnologia"),
+    ("Hogar y decoración (velas, jabones, cerámica)", "hogar"),
+    ("Tazas y cocina", "cocina"),
+    ("Juguetes y coleccionables", "juguetes"),
+    ("Otro", "otro"),
 ]
 DECISION_CHOICES = [("Aceptar", "accepted"), ("Rechazar", "rejected")]
 POLL_TIMEOUT_S = 180
 N = 5
 
 MOCK_NOTICE = (
-    "> **Hito 1: modo simulación.** La máscara, las cinco imágenes y el resumen se producen con "
-    "componentes de prueba (mock). No hay generación con IA ni agente LLM todavía."
+    "> Las cinco ambientaciones se generan con IA. En el modo intermedio la IA re-ilumina tu producto para la escena "
+    "y cada foto se verifica contra la tuya (forma, logo y texto); en el avanzado se conservan sus píxeles exactos. "
+    "Si el servidor corre en modo de prueba (mock), cada imagen lo indica con la franja «SIMULACIÓN»."
 )
 
 
@@ -69,10 +78,11 @@ class Api:
             raise ApiError(f"No se pudo descargar la imagen (HTTP {r.status_code})")
         return Image.open(io.BytesIO(r.content))
 
-    def create_session(self, path: str, mode: str) -> dict:
+    def create_session(self, path: str, mode: str, category: str | None = None) -> dict:
         ctype = "image/png" if path.lower().endswith(".png") else "image/jpeg"
+        data = {"mode": mode} | ({"category": category} if category else {})
         with open(path, "rb") as fh:
-            return self._call("POST", "/sessions", files={"image": ("upload", fh, ctype)}, data={"mode": mode})
+            return self._call("POST", "/sessions", files={"image": ("upload", fh, ctype)}, data=data)
 
     def segment(self, sid: str) -> dict:
         return self._call("POST", f"/sessions/{sid}/segment")
@@ -166,6 +176,8 @@ def build_ui(api_base: str) -> gr.Blocks:
                 image_in = gr.Image(type="filepath", label="Foto del producto (JPG/PNG, máx. 10 MB)",
                                     sources=["upload"])
                 mode_in = gr.Radio(MODE_CHOICES, value="intermediate", label="Modo de generación")
+                category_in = gr.Dropdown(CATEGORY_CHOICES, value="otro", label="¿Qué tipo de producto es?",
+                                          info="Elige la escena de las fotos (lo usa el modo intermedio).")
                 start_btn = gr.Button("1. Crear sesión y segmentar", variant="primary")
             with gr.Column(scale=1):
                 mask_out = gr.Image(label="Máscara (azul = fondo que se puede cambiar)", interactive=False)
@@ -215,11 +227,11 @@ def build_ui(api_base: str) -> gr.Blocks:
 
         # --- manejadores ---
 
-        def start(path, mode):
+        def start(path, mode, category=None):
             if not path:
                 return None, None, "Primero sube una foto.", *_empty_cards(), "", ""
             try:
-                session = api.create_session(path, mode)
+                session = api.create_session(path, mode, category)
                 seg = api.segment(session["id"])
                 mask = api.image(seg["mask"]["preview_url"])
                 warnings = api.session(session["id"])["warnings"]
@@ -370,7 +382,7 @@ def build_ui(api_base: str) -> gr.Blocks:
                       "Pulsa «2. Generar 5 variaciones».")
             return (child["id"], mask, status, *_empty_cards(), "", "\n".join(child["round_plan"]["explanation"]), "")
 
-        start_btn.click(start, [image_in, mode_in],
+        start_btn.click(start, [image_in, mode_in, category_in],
                         [session_state, mask_out, status_md, *card_components, summary_out, plan_out])
         preview_btn.click(preview_round, [session_state, note_in], [status_md, plan_out])
         mask_btn.click(use_mask, [session_state, mask_file], [mask_out, status_md])

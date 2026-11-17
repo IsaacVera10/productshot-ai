@@ -226,5 +226,5 @@ def test_round_schema_database_gains_guardrail_columns(tmp_path):
     con = sqlite3.connect(path)
     assert "quality_json" in {r[1] for r in con.execute("PRAGMA table_info(input_images)")}
     assert "warnings_json" in {r[1] for r in con.execute("PRAGMA table_info(masks)")}
-    assert con.execute("PRAGMA user_version").fetchone()[0] == 3
+    assert con.execute("PRAGMA user_version").fetchone()[0] == 4
     con.close()

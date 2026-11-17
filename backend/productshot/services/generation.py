@@ -14,7 +14,7 @@ from typing import Protocol
 
 from PIL import Image, ImageDraw
 
-from productshot.domain import Mode, Style
+from productshot.domain import Category, Mode, Style
 from productshot.services.presets import NEGATIVE_PROMPT, PRESETS, PROMPT_VERSION
 from productshot.services.rounds import prompt_fragments, variant_key
 
@@ -45,6 +45,8 @@ class GenerationRequest:
     mask: Image.Image  # "L": blanco editable, negro protegido
     specs: tuple[VariationSpec, ...]
     prompt_version: str = PROMPT_VERSION
+    # Tipo de producto (lista cerrada). El modo intermedio elige con esto la escena; None = genérica.
+    category: Category | None = None
 
 
 @dataclass(frozen=True)
@@ -57,6 +59,39 @@ class GeneratedArtifact:
     prompt_version: str
     params: dict = field(default_factory=dict)
     variant: str = ""
+
+
+class ModeRoutedGenerator:
+    """Un backend por modo en la API: cada solicitud va al worker de su `request.mode`.
+
+    El modo intermedio (editor Qwen, ADR-010) y el avanzado (SDXL + LoRA) son bloques
+    independientes con su propio worker. La identidad (nombre, simulado, revisión) se pide por
+    modo con `for_mode`, para que cada sesión registre la del worker que la generó.
+    """
+
+    name = "remoto-por-modo"
+
+    def __init__(self, backends: dict):
+        self.backends = backends
+
+    def for_mode(self, mode):
+        return self.backends[mode]
+
+    @property
+    def simulated(self) -> bool:
+        return any(b.simulated for b in self.backends.values())
+
+    @property
+    def model_revision(self) -> str:
+        return " | ".join(f"{m.value}={b.model_revision}" for m, b in self.backends.items())
+
+    def generate(self, request):
+        return self.backends[request.mode].generate(request)
+
+
+def generator_for(generator, mode):
+    """El backend que atiende `mode` (el mismo si no hay ruteo por modo)."""
+    return generator.for_mode(mode) if hasattr(generator, "for_mode") else generator
 
 
 class GenerationUnavailable(Exception):

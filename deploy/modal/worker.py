@@ -57,6 +57,8 @@ image = (
         # Segmentación del producto (en CPU dentro del mismo contenedor)
         "rembg==2.0.59",
         "onnxruntime==1.19.2",
+        # G3: detector de rostros clásico (Haar). El clasificador NSFW de G2/G7 usa transformers.
+        "opencv-python-headless==4.10.0.84",
     )
     .env({"HF_HOME": f"{CACHE}/hf", "U2NET_HOME": f"{CACHE}/u2net", "HF_HUB_DISABLE_TELEMETRY": "1"})
     .add_local_dir(ROOT / "backend" / "productshot", "/root/productshot")
@@ -79,48 +81,118 @@ def _load_pieces(obj, model_id: str) -> None:
     cache.commit()  # guarda los pesos descargados para el próximo arranque
 
 
+# Worker del MODO INTERMEDIO (bloque de Aaron, 2026-11-16): editor Qwen-Image-2.1-Turbo con
+# candidatas verificadas (`services/qwen_edit.py`), BiRefNet para la máscara y G2/G3/G7/G15. Usa su
+# propia imagen (torch 2.8 y diffusers 0.43 para `QwenImage21Pipeline`); `Lab` sigue con la de arriba.
+# El modo avanzado (LoRA de Isaac) se sirve en su propio worker: la API elige la URL según el modo.
+edit_image = (
+    modal.Image.debian_slim(python_version="3.11")
+    .pip_install(
+        "torch==2.8.0",
+        "torchvision==0.23.0",
+        "diffusers==0.43.0",
+        "transformers==5.23.0",
+        "accelerate==1.15.0",
+        "safetensors",
+        "sentencepiece==0.2.3",
+        "protobuf",
+        "fastapi==0.162.0",
+        "pydantic==2.14.2",
+        "pydantic-settings==2.16.2",
+        "pillow==12.3.0",
+        "httpx==0.28.1",
+        "numpy",
+        "rembg==2.0.59",
+        "onnxruntime-gpu==1.22.0",  # BiRefNet en GPU: 0.3 s por foto en vez de ~35 s en CPU
+        "opencv-python-headless==4.10.0.84",  # G3 (Haar) y alineación de la verificación (ORB)
+    )
+    # rembg arrastra el onnxruntime de CPU, que tapa al de GPU: se quita y se reinstala el de GPU.
+    .run_commands("pip uninstall -y onnxruntime", "pip install --force-reinstall --no-deps onnxruntime-gpu==1.22.0")
+    .env({"HF_HOME": f"{CACHE}/hf", "U2NET_HOME": f"{CACHE}/u2net", "HF_HUB_DISABLE_TELEMETRY": "1",
+          # Menos fragmentación de la memoria de la GPU.
+          "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"})
+    .add_local_dir(ROOT / "backend" / "productshot", "/root/productshot")
+)
+
+# GPU del worker: H100 y A100 de 80 GB de respaldo. La L40S (44 GB útiles) NO alcanza: el editor
+# llega a ~40 GB de pico y BiRefNet necesita varios GB más (OOM el 2026-11-16). La A100 va segunda:
+# las que asignó Modal leían el volumen de pesos muy lento (31 GB en 2 min; un arranque pasó los
+# 600 s), mientras la H100 carga todo en ~40 s. WORKER_GPUS permite forzar una para pruebas.
+WORKER_GPUS = os.environ.get("WORKER_GPUS", "H100,A100-80GB").split(",")
+
+
 @app.cls(
-    gpu="L4",
+    image=edit_image,
+    # Qwen-Image-2.1-Turbo usa ~40 GB de pico en bf16, más BiRefNet y los clasificadores.
+    gpu=WORKER_GPUS,
     volumes={CACHE: cache},
     secrets=[secret],
-    # Tope por llamada: un lote de la API dura ~2 min y la API abandona a los 540 s
-    # (GENERATION_WORKER_TIMEOUT_S). Los experimentos largos van en `Lab`, no aquí.
+    # Tope por llamada: el lote verifica candidatas con un presupuesto de 420 s (QwenEditBackend)
+    # y la API abandona a los 540 s (GENERATION_WORKER_TIMEOUT_S), antes de G14 (600 s).
     timeout=600,
+    # Un arranque en una A100 lenta puede pasar de 10 min: mejor esperar que fallar (la API, de
+    # todos modos, rechaza la foto si no la pudo revisar a tiempo).
+    startup_timeout=1200,
     scaledown_window=120,
     max_containers=1,
 )
 class Worker:
     @modal.enter()
     def load(self) -> None:
-        from productshot.services.sdxl_generation import DEFAULT_MODEL_ID
+        try:
+            import onnxruntime
 
-        # SDXL_MODEL_ID permite cambiar de checkpoint sin tocar código (P3, P4).
-        _load_pieces(self, os.environ.get("SDXL_MODEL_ID", DEFAULT_MODEL_ID))
+            onnxruntime.preload_dlls(cuda=True, cudnn=True)  # usa las librerías CUDA y cuDNN de torch
+        except Exception:  # noqa: BLE001 - sin GPU para ONNX, rembg cae a CPU (más lento)
+            pass
+        from productshot.config import Settings
+        from productshot.services.qwen_edit import QwenEditBackend
+        from productshot.services.rembg_segmentation import RembgSegmentationService
+        from productshot.services.screening import LocalScreeningService, SafetyCheckedBackend
+
+        settings = Settings(_env_file=None)
+        self.editor = QwenEditBackend(budget_s=float(os.environ.get("EDIT_BUDGET_S", "420")))
+        self.editor.load()
+        self.segmenter = RembgSegmentationService("birefnet-general",
+                                                  providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+        self.segmenter.load()
+        inner = getattr(getattr(self.segmenter, "_session", None), "inner_session", None)
+        self.segmenter_providers = inner.get_providers() if inner is not None else ["desconocido"]
+        print("BiRefNet en:", self.segmenter_providers, flush=True)
+        # G2/G3/G15 (/v1/screen) y G7 (cada salida): el mismo clasificador NSFW, cargado una vez.
+        self.screener = LocalScreeningService(face_min_fraction=settings.face_min_fraction)
+        self.screener.load()
+        self.backend = SafetyCheckedBackend(self.editor, self.screener.nsfw_score, threshold=settings.nsfw_threshold)
+        cache.commit()  # guarda los pesos descargados para el próximo arranque
 
     @modal.asgi_app()
     def web(self):
         from productshot.worker.app import create_worker_app
 
         return create_worker_app(
-            self.backend, token=os.environ.get("GENERATION_WORKER_TOKEN"), segmenter=self.segmenter
+            self.backend, token=os.environ.get("GENERATION_WORKER_TOKEN"), segmenter=self.segmenter,
+            screener=self.screener,
         )
 
     @modal.method()
-    def smoke(self, image_png: bytes, mask_png: bytes, mode: str = "intermediate") -> dict:
-        """Un lote de cinco con las mismas piezas que usa la API; devuelve métricas e imágenes."""
+    def smoke(self, image_png: bytes, category: str = "otro") -> dict:
+        """Un lote completo como lo pide la API (segmentar y generar): métricas e imágenes."""
         import torch
         from PIL import Image
 
-        from productshot.domain import CANONICAL_STYLES, Mode
+        from productshot.domain import CANONICAL_STYLES, Category, Mode
         from productshot.services.generation import GenerationRequest, VariationSpec
 
         img = Image.open(io.BytesIO(image_png)).convert("RGB")
-        mask = Image.open(io.BytesIO(mask_png)).convert("L")
-        specs = tuple(VariationSpec(position=i + 1, style=s, seed=1000 + i) for i, s in enumerate(CANONICAL_STYLES))
+        img.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
         t0 = time.perf_counter()
-        arts = self.backend.generate(
-            GenerationRequest(session_id="smoke", mode=Mode(mode), image=img, mask=mask, specs=specs)
-        )
+        mask = self.segmenter.segment(img).mask
+        seg_s = round(time.perf_counter() - t0, 2)
+        specs = tuple(VariationSpec(position=i + 1, style=s, seed=1000 + i) for i, s in enumerate(CANONICAL_STYLES))
+        torch.cuda.reset_peak_memory_stats()
+        t0 = time.perf_counter()
+        arts = self.backend.generate(GenerationRequest(session_id="smoke", mode=Mode.INTERMEDIATE, image=img,
+                                                       mask=mask, specs=specs, category=Category(category)))
         total = time.perf_counter() - t0
         images = {}
         for a in arts:
@@ -129,12 +201,14 @@ class Worker:
             images[f"{a.position}_{a.style.value}.png"] = buf.getvalue()
         return {
             "gpu": torch.cuda.get_device_name(0),
-            "vram_total_gb": round(torch.cuda.get_device_properties(0).total_memory / 1024**3, 1),
-            "model_revision": self.backend.model_revision,
-            "load_seconds": self.backend.load_seconds,
+            "model_revision": self.editor.model_revision,
+            "load_seconds": self.editor.load_seconds,
+            "segment_seconds": seg_s,
+            "segmenter_providers": self.segmenter_providers,
             "batch_seconds": round(total, 1),
-            "per_image": [{k: a.params[k] for k in ("seconds", "peak_vram_gb", "generation_size")} | {"style": a.style.value} for a in arts],
-            "params": {k: arts[0].params[k] for k in ("steps", "guidance_scale", "strength")},
+            "peak_vram_gb": round(torch.cuda.max_memory_allocated() / 1024**3, 1),
+            "latencies": list(self.editor.latencies),
+            "fidelity": [a.params["fidelity"] for a in arts],
             "images": images,
         }
 
@@ -749,53 +823,39 @@ def lora_verdicts(out: list[dict], configs: list[str], ratio: float = 3.0) -> di
     return verdicts
 
 
-def _demo_product(size=(1024, 768)):
-    """Producto sintético (una taza simple) con su máscara exacta, si no se pasa una foto."""
-    from PIL import Image, ImageDraw
-
-    w, h = size
-    img = Image.new("RGB", size, (214, 210, 202))
-    mask = Image.new("L", size, 255)
-    for target, fill_body, fill_handle in ((img, (176, 38, 44), (150, 30, 36)), (mask, 0, 0)):
-        d = ImageDraw.Draw(target)
-        d.rounded_rectangle([w * 0.38, h * 0.30, w * 0.60, h * 0.78], radius=18, fill=fill_body)
-        d.ellipse([w * 0.56, h * 0.40, w * 0.70, h * 0.62], outline=fill_handle, width=int(w * 0.022))
-    return img, mask
-
-
 @app.local_entrypoint()
-def main(image: str = "", mask: str = "", mode: str = "intermediate", out: str = "") -> None:
-    from PIL import Image
+def main(photos: str = "data/fotos/001_candle.jpg:hogar", out: str = "") -> None:
+    """Prueba de humo del worker del modo intermedio: uno o más lotes verificados.
 
-    if image:
-        img = Image.open(image).convert("RGB")
-        msk = Image.open(mask).convert("L") if mask else None
-        if msk is None:
-            raise SystemExit("Con --image también hace falta --mask (blanco = fondo, negro = producto).")
-    else:
-        img, msk = _demo_product()
-
-    def png(i) -> bytes:
-        buf = io.BytesIO()
-        i.save(buf, format="PNG")
-        return buf.getvalue()
-
-    result = Worker().smoke.remote(png(img), png(msk), mode)
+    `photos` = "ruta:categoría,ruta:categoría,...". Con varias fotos el contenedor queda caliente
+    y las latencias de todas las generaciones sirven para la p95.
+    """
     out_dir = Path(out or "data/smoke") / time.strftime("%Y%m%d-%H%M%S")
     out_dir.mkdir(parents=True, exist_ok=True)
-    # G8 local: el producto se recompone desde la foto, igual que hace la API con cada lote.
-    from productshot.config import Settings
-    from productshot.services.guardrails import enforce_fidelity
-
-    fidelity = {}
-    for name, data in result.pop("images").items():
-        (out_dir / f"raw_{name}").write_bytes(data)
-        final, metrics = enforce_fidelity(img, msk, Image.open(io.BytesIO(data)), Settings(_env_file=None))
-        final.save(out_dir / name)
-        fidelity[name] = metrics["protected_mean_abs_diff"]
-    result["product_drift_before_recompose"] = fidelity
-    img.save(out_dir / "0_input.png")
-    msk.save(out_dir / "0_mask.png")
-    (out_dir / "metrics.json").write_text(json.dumps(result, indent=2, ensure_ascii=False))
-    print(json.dumps(result, indent=2, ensure_ascii=False))
-    print(f"Imágenes en {out_dir}")
+    worker, summary, latencies = Worker(), [], []
+    for item in photos.split(","):
+        path, _, category = item.partition(":")
+        t0 = time.perf_counter()
+        try:
+            result = worker.smoke.remote(Path(path).read_bytes(), category or "otro")
+        except Exception as exc:  # noqa: BLE001 - p. ej. lote sin verificar: se registra y se sigue
+            summary.append({"photo": path, "error": f"{type(exc).__name__}: {exc}"[:300]})
+            continue
+        d = out_dir / Path(path).stem
+        d.mkdir(exist_ok=True)
+        for name, data in result.pop("images").items():
+            (d / name).write_bytes(data)
+        (d / "metrics.json").write_text(json.dumps(result, indent=2, ensure_ascii=False))
+        latencies += result["latencies"]
+        summary.append({"photo": path, "wall_seconds": round(time.perf_counter() - t0, 1),
+                        **{k: result[k] for k in ("gpu", "load_seconds", "segment_seconds", "batch_seconds",
+                                                  "peak_vram_gb")},
+                        "generations": len(result["latencies"]),
+                        "retries": [f["retries"] for f in result["fidelity"]]})
+    lat = sorted(latencies)
+    p95 = lat[min(len(lat) - 1, int(0.95 * len(lat)))] if lat else None
+    report = {"latency_p95_s": p95, "latency_median_s": lat[len(lat) // 2] if lat else None,
+              "generations": len(lat), "batches": summary}
+    (out_dir / "smoke.json").write_text(json.dumps(report, indent=2, ensure_ascii=False))
+    print(json.dumps(report, indent=2, ensure_ascii=False))
+    print(f"Resultados en {out_dir}")

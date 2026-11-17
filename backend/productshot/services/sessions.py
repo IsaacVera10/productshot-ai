@@ -14,6 +14,7 @@ from PIL import Image
 
 from productshot.config import Settings
 from productshot.domain import (
+    Category,
     CANONICAL_STYLES,
     MASK_EDITABLE_STATES,
     MAX_ROUNDS,
@@ -26,6 +27,7 @@ from productshot.domain import (
     GenerationJob,
     InputImage,
     InvalidInput,
+    RejectedContent,
     JobStatus,
     Mask,
     Mode,
@@ -42,11 +44,13 @@ from productshot.domain import (
     utcnow,
 )
 from productshot.services import guardrails
+from productshot.services.screening import MockScreeningService, ScreeningService, ScreeningUnavailable
 from productshot.services.generation import (
     GenerationBackend,
     GenerationRequest,
     GenerationUnavailable,
     VariationSpec,
+    generator_for,
 )
 from productshot.services.images import prepare_mask_upload, prepare_upload, to_png
 from productshot.services.jobs import JobRunner
@@ -83,6 +87,7 @@ class SessionService:
         generator: GenerationBackend,
         summarizer: SummaryService,
         runner: JobRunner,
+        screener: ScreeningService | None = None,
     ):
         self.settings = settings
         self.repo = repo
@@ -91,6 +96,7 @@ class SessionService:
         self.generator = generator
         self.summarizer = summarizer
         self.runner = runner
+        self.screener = screener or MockScreeningService()
         self._rng = random.SystemRandom()
 
     # --- arranque ---
@@ -103,7 +109,7 @@ class SessionService:
 
     # --- 1. sesión ---
 
-    def create_session(self, data: bytes, mode: Mode) -> SessionView:
+    def create_session(self, data: bytes, mode: Mode, category: Category | None = None) -> SessionView:
         try:
             prepared = prepare_upload(
                 data,
@@ -115,8 +121,9 @@ class SessionService:
             guardrails.event("G1", None, exc.code)
             raise
         session_id, image_id = _new_id(), _new_id()
+        category_warnings = self._screen_input(session_id, prepared.working)
         metrics = guardrails.photo_metrics(prepared.working)
-        quality = guardrails.photo_warnings(metrics, self.settings)
+        quality = guardrails.photo_warnings(metrics, self.settings) + category_warnings
         for w in quality:
             guardrails.event(w.guardrail, session_id, w.code, **metrics)
         ext = "jpg" if prepared.original_format == "JPEG" else "png"
@@ -126,9 +133,10 @@ class SessionService:
         session = Session(
             id=session_id,
             mode=mode,
+            category=category,
             status=SessionStatus.UPLOADED,
             image_id=image_id,
-            base_model_revision=self.generator.model_revision,
+            base_model_revision=generator_for(self.generator, mode).model_revision,
             created_at=now,
             updated_at=now,
         )
@@ -165,6 +173,31 @@ class SessionService:
             raise StateConflict("Esta ronda usa la máscara de la ronda 1; no se puede cambiar.")
         if session.status not in MASK_EDITABLE_STATES:
             raise StateConflict(f"La máscara ya no se puede cambiar (estado {session.status}).")
+
+    def _screen_input(self, session_id: str, image: Image.Image) -> list[guardrails.GuardrailWarning]:
+        """G2, G3 y G15 antes de guardar nada: una foto rechazada no deja sesión ni archivos.
+
+        Devuelve los avisos de G15 (fuera del nicho), que no bloquean.
+        """
+        try:
+            result = self.screener.screen(image)
+        except ScreeningUnavailable as exc:
+            raise DependencyUnavailable(f"No se pudo revisar la foto: {exc}") from exc
+        if result.nsfw_score >= self.settings.nsfw_threshold:
+            guardrails.event("G2", session_id, "nsfw_input", nsfw_score=result.nsfw_score)
+            raise RejectedContent("La foto no se puede usar: el filtro de contenido la marcó como inapropiada.")
+        if result.faces:
+            guardrails.event("G3", session_id, "face_input", faces=result.faces)
+            raise RejectedContent("Esta herramienta es para fotos de productos, sin personas. "
+                                  "Sube una foto en la que no aparezca ningún rostro.")
+        warnings = guardrails.category_decision(session_id, result.categories, self.settings)
+        if result.simulated:
+            # Revisor en modo de prueba: G2, G3 y G15 no revisaron nada de verdad. Se avisa.
+            guardrails.event("G2", session_id, "screening_simulated")
+            warnings.append(guardrails.GuardrailWarning(
+                "G2", "screening_simulated",
+                "La revisión de contenido de la foto está en modo de prueba (mock): no se revisó de verdad."))
+        return warnings
 
     def segment(self, session_id: str) -> Mask:
         self._check_mask_editable(session_id)
@@ -246,10 +279,10 @@ class SessionService:
                 for i, style in enumerate(CANONICAL_STYLES)
             ]
         config = {
-            "backend": self.generator.name,
-            "simulated": self.generator.simulated,
+            "backend": generator_for(self.generator, session.mode).name,
+            "simulated": generator_for(self.generator, session.mode).simulated,
             "mode": session.mode.value,
-            "model_revision": self.generator.model_revision,
+            "model_revision": generator_for(self.generator, session.mode).model_revision,
             "prompt_version": PROMPT_VERSION,
             "round_index": session.round_index,
             "specs": [
@@ -260,7 +293,7 @@ class SessionService:
         job = GenerationJob(
             id=_new_id(),
             session_id=session_id,
-            backend=self.generator.name,
+            backend=generator_for(self.generator, session.mode).name,
             status=JobStatus.GENERATING,
             idempotency_key=idempotency_key,
             config_json=json.dumps(config),
@@ -291,7 +324,7 @@ class SessionService:
         if view.job is not None:
             gen = bool(json.loads(view.job.config_json).get("simulated", True))
         else:
-            gen = self.generator.simulated
+            gen = generator_for(self.generator, view.session.mode).simulated
         return seg or gen
 
     def _run_job(self, job: GenerationJob) -> None:
@@ -312,24 +345,37 @@ class SessionService:
                 for s in config["specs"]
             )
             artifacts = self.generator.generate(
-                GenerationRequest(session_id=job.session_id, mode=session.mode, image=image, mask=mask, specs=specs)
+                GenerationRequest(session_id=job.session_id, mode=session.mode, image=image, mask=mask, specs=specs,
+                                  category=session.category)
             )
             self._check_batch(artifacts, specs)
 
             variations = []
             for art in sorted(artifacts, key=lambda a: a.position):
-                # G8: el producto se recompone SIEMPRE desde la foto de trabajo; la métrica dice
-                # cuánto lo había cambiado el generador.
                 try:
-                    final, fidelity = guardrails.enforce_fidelity(image, mask, art.image, self.settings)
-                except ValueError as exc:
-                    raise BatchError(f"Variación {art.position}: {exc}") from exc
-                if fidelity["protected_max_diff_after"] != 0:
-                    raise BatchError(f"La variación {art.position} alteró el producto tras recomponerlo.")
-                if fidelity["drift_warning"]:
-                    guardrails.event("G8", job.session_id, "product_drift", position=art.position,
-                                     diff=fidelity["protected_mean_abs_diff"])
-                if art.params.get("simulated", self.generator.simulated):
+                    verified = guardrails.verified_fidelity(session.mode, art.params)
+                except guardrails.InvalidVerification as exc:
+                    guardrails.event("G8", job.session_id, "invalid_verification", position=art.position)
+                    raise BatchError(f"La variación {art.position} no superó la verificación del producto: {exc}.") from exc
+                if verified is not None:
+                    # G8 "verificado" (modo intermedio): el editor re-ilumina el producto, así que
+                    # no se re-pegan los píxeles originales; el worker ya verificó la candidata.
+                    if art.image.size != image.size:
+                        raise BatchError(f"La variación {art.position} no tiene el tamaño de la foto.")
+                    final, fidelity = art.image.convert("RGB"), verified
+                else:
+                    # G8 "recompuesto": el producto se recompone desde la foto de trabajo; la
+                    # métrica dice cuánto lo había cambiado el generador.
+                    try:
+                        final, fidelity = guardrails.enforce_fidelity(image, mask, art.image, self.settings)
+                    except ValueError as exc:
+                        raise BatchError(f"Variación {art.position}: {exc}") from exc
+                    if fidelity["protected_max_diff_after"] != 0:
+                        raise BatchError(f"La variación {art.position} alteró el producto tras recomponerlo.")
+                    if fidelity["drift_warning"]:
+                        guardrails.event("G8", job.session_id, "product_drift", position=art.position,
+                                         diff=fidelity["protected_mean_abs_diff"])
+                if art.params.get("simulated", generator_for(self.generator, session.mode).simulated):
                     # G9: el rótulo se pone DESPUÉS de recomponer, para no contarlo como alteración.
                     final = stamp(final, bottom=f"{art.position}/5 · {art.variant or art.style.value} · "
                                               f"modo {session.mode.value}")
@@ -421,9 +467,10 @@ class SessionService:
         child = Session(
             id=child_id,
             mode=parent.mode,
+            category=parent.category,
             status=SessionStatus.SEGMENTED,
             image_id=image_id,
-            base_model_revision=self.generator.model_revision,
+            base_model_revision=generator_for(self.generator, parent.mode).model_revision,
             created_at=now,
             updated_at=now,
             parent_session_id=session_id,

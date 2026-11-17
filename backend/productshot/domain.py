@@ -48,6 +48,16 @@ class Style(StrEnum):
     MINIMAL = "minimal"
 
 
+class Category(StrEnum):
+    """Tipo de producto: el modo intermedio elige la escena y la utilería según esto."""
+
+    TECNOLOGIA = "tecnologia"
+    HOGAR = "hogar"  # velas, jabones, cerámica, decoración
+    COCINA = "cocina"  # tazas, vasos, menaje
+    JUGUETES = "juguetes"  # juguetes y coleccionables
+    OTRO = "otro"
+
+
 # Lista canónica: la posición 1..5 corresponde a este orden.
 CANONICAL_STYLES: tuple[Style, ...] = (
     Style.STUDIO,
@@ -163,6 +173,8 @@ class Session:
     parent_session_id: str | None = None
     round_index: int = 1
     round_plan_json: str | None = None
+    # Tipo de producto (lista cerrada): el modo intermedio elige con esto la escena. Las rondas lo heredan.
+    category: Category | None = None
 
 
 @dataclass(frozen=True)
@@ -234,6 +246,13 @@ class DomainError(Exception):
 class InvalidInput(DomainError):
     code = "invalid_input"
     http_status = 400
+
+
+class RejectedContent(DomainError):
+    """G2 o G3: la foto no es apta (contenido inapropiado o una persona)."""
+
+    code = "rejected_content"
+    http_status = 422
 
 
 class PayloadTooLarge(DomainError):
