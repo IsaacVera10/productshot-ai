@@ -167,19 +167,37 @@ def category_decision(session_id: str | None, categories: dict[str, float], sett
 VERIFIED_KEYS = ("inlier_ratio", "edges", "scene_change", "aligned")
 
 
+class InvalidVerification(ValueError):
+    """La imagen dice venir verificada, pero sus métricas no lo sostienen."""
+
+
 def verified_fidelity(mode, params: dict) -> dict | None:
     """G8 por modo: devuelve las métricas si la imagen viene VERIFICADA del modo intermedio.
 
-    Solo se acepta en el modo intermedio y si trae el método y todas las métricas; si no, la
-    API recompone el producto como siempre ("recompuesto"), que es lo seguro.
+    - Si no lo dice (otro modo u otro método), devuelve None y la API recompone el producto
+      como siempre ("recompuesto").
+    - Si dice venir verificada, la API no le cree a ciegas: las métricas tienen que estar,
+      ser números finitos y pasar los MISMOS umbrales que usa el worker
+      (`fidelity.FidelityThresholds`). Si no, `InvalidVerification` y el lote falla: recomponer
+      un producto que el editor movió o re-iluminó dejaría una imagen engañosa.
     """
+    import math
+
     from productshot.domain import Mode
+    from productshot.services.fidelity import FidelityThresholds, passes
 
     fid = params.get("fidelity") if isinstance(params, dict) else None
     if mode != Mode.INTERMEDIATE or not isinstance(fid, dict) or fid.get("method") != "verificado":
         return None
-    if not all(k in fid for k in VERIFIED_KEYS) or not fid["aligned"]:
-        return None
+    missing = [k for k in VERIFIED_KEYS if k not in fid]
+    if missing:
+        raise InvalidVerification(f"faltan métricas de verificación: {', '.join(missing)}")
+    numbers = ("inlier_ratio", "edges", "scene_change")
+    if not all(isinstance(fid[k], (int, float)) and not isinstance(fid[k], bool) and math.isfinite(fid[k])
+               for k in numbers):
+        raise InvalidVerification("las métricas de verificación no son números finitos")
+    if not passes(fid, FidelityThresholds()):
+        raise InvalidVerification("las métricas no superan los umbrales de verificación")
     return dict(fid)
 
 

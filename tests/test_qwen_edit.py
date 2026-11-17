@@ -298,3 +298,62 @@ def test_advanced_worker_url_enables_routing(tmp_path):
     assert isinstance(routed, ModeRoutedGenerator)
     assert routed.for_mode(Mode.ADVANCED)._client.base_url.host == "adv"
     assert routed.for_mode(Mode.INTERMEDIATE)._client.base_url.host == "inter"
+
+
+# --- correcciones de la revisión de Isaac (2026-11-16) ---
+
+
+@pytest.mark.parametrize("bad", [
+    {"inlier_ratio": 0.0},
+    {"edges": 0.0},
+    {"edges": float("nan")},
+    {"inlier_ratio": float("inf")},
+    {"scene_change": "60"},
+    {"aligned": False},
+])
+def test_api_rejects_verified_images_with_invalid_metrics(make_client, bad):
+    class Liar(VerifiedGenerator):
+        def generate(self, req):
+            arts = super().generate(req)
+            for a in arts:
+                a.params["fidelity"].update(bad)
+            return arts
+
+    body = run_batch(make_client(generator=Liar()), "intermediate")
+    assert body["status"] == "FAILED"
+    assert "verificación" in body["failure_reason"]
+
+
+def test_api_rejects_verified_images_with_missing_metrics(make_client):
+    class Partial(VerifiedGenerator):
+        def generate(self, req):
+            arts = super().generate(req)
+            for a in arts:
+                a.params["fidelity"] = {"method": "verificado", "inlier_ratio": 0.9}
+            return arts
+
+    body = run_batch(make_client(generator=Partial()), "intermediate")
+    assert body["status"] == "FAILED" and "faltan métricas" in body["failure_reason"]
+
+
+def test_remote_generator_with_mock_screening_does_not_start(tmp_path):
+    from productshot.composition import ConfigError, build_services
+    from productshot.config import Settings
+
+    s = Settings(_env_file=None, sqlite_path=tmp_path / "db.sqlite3", asset_root=tmp_path / "a",
+                 generation_backend="remote", generation_worker_url="http://w")
+    with pytest.raises(ConfigError, match="SCREENING_BACKEND=remote"):
+        build_services(s)
+
+
+def test_mock_screening_is_visible_in_the_session(client):
+    r = create_session(client, "intermediate")
+    codes = [w["code"] for w in client.get(f"{API}/{r.json()['id']}").json()["warnings"]]
+    assert "screening_simulated" in codes
+
+
+def test_gemini_defaults_are_the_responsive_models():
+    from productshot.config import Settings
+
+    s = Settings(_env_file=None)
+    assert (s.gemini_model_id, s.gemini_fallback_model_id) == ("gemini-3.5-flash", "gemini-3.5-flash-lite")

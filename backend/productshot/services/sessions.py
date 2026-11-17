@@ -190,7 +190,14 @@ class SessionService:
             guardrails.event("G3", session_id, "face_input", faces=result.faces)
             raise RejectedContent("Esta herramienta es para fotos de productos, sin personas. "
                                   "Sube una foto en la que no aparezca ningún rostro.")
-        return guardrails.category_decision(session_id, result.categories, self.settings)
+        warnings = guardrails.category_decision(session_id, result.categories, self.settings)
+        if result.simulated:
+            # Revisor en modo de prueba: G2, G3 y G15 no revisaron nada de verdad. Se avisa.
+            guardrails.event("G2", session_id, "screening_simulated")
+            warnings.append(guardrails.GuardrailWarning(
+                "G2", "screening_simulated",
+                "La revisión de contenido de la foto está en modo de prueba (mock): no se revisó de verdad."))
+        return warnings
 
     def segment(self, session_id: str) -> Mask:
         self._check_mask_editable(session_id)
@@ -345,7 +352,11 @@ class SessionService:
 
             variations = []
             for art in sorted(artifacts, key=lambda a: a.position):
-                verified = guardrails.verified_fidelity(session.mode, art.params)
+                try:
+                    verified = guardrails.verified_fidelity(session.mode, art.params)
+                except guardrails.InvalidVerification as exc:
+                    guardrails.event("G8", job.session_id, "invalid_verification", position=art.position)
+                    raise BatchError(f"La variación {art.position} no superó la verificación del producto: {exc}.") from exc
                 if verified is not None:
                     # G8 "verificado" (modo intermedio): el editor re-ilumina el producto, así que
                     # no se re-pegan los píxeles originales; el worker ya verificó la candidata.

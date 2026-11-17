@@ -203,11 +203,13 @@ def test_defaults_are_all_local(tmp_path):
 def test_environment_variables_choose_adapters(tmp_path, monkeypatch):
     monkeypatch.setenv("GENERATION_BACKEND", "remote")
     monkeypatch.setenv("GENERATION_WORKER_URL", "http://127.0.0.1:9")
+    monkeypatch.setenv("SCREENING_BACKEND", "remote")
     monkeypatch.setenv("SUMMARY_BACKEND", "gemini")
     monkeypatch.setenv("GEMINI_API_KEY", "clave-falsa")
     monkeypatch.setenv("JOB_RUNNER", "inline")
     services = build_services(_settings(tmp_path))
     assert services.describe()["generation"] == "remote"
+    assert services.describe()["screening"] == "remote"
     assert services.describe()["summary"] == "gemini"
     assert services.describe()["runner"] == "InlineJobRunner"
 

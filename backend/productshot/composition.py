@@ -142,6 +142,13 @@ def build_runner(settings: Settings) -> JobRunner:
     raise ConfigError(f"JOB_RUNNER desconocido: {settings.job_runner!r}.")
 
 
+def check_consistency(settings: Settings) -> None:
+    """Combinaciones que dejarían un guardrail apagado en silencio."""
+    if settings.generation_backend == "remote" and settings.screening_backend == "mock":
+        raise ConfigError("GENERATION_BACKEND=remote necesita SCREENING_BACKEND=remote: con un generador real, "
+                          "G2, G3 y G15 no pueden quedar en modo de prueba.")
+
+
 def build_services(
     settings: Settings,
     *,
@@ -154,6 +161,8 @@ def build_services(
     screener: ScreeningService | None = None,
 ) -> Services:
     """Construye todas las piezas. Los argumentos explícitos (pruebas) mandan sobre la configuración."""
+    if generator is None and screener is None:
+        check_consistency(settings)
     return Services(
         repo=repo or SqliteRepository(settings.sqlite_path),
         store=store or LocalArtifactStore(settings.asset_root),
