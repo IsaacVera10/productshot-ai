@@ -93,7 +93,8 @@ def build_config(stage: str, run_id: str, steps: int | None = None, rank: int = 
                  deadline_unix: float | None = None, pack_sha256: str | None = None,
                  adapters: dict | None = None, scales: list[float] | None = None,
                  max_products: int | None = None, masked_loss: bool = False, inpaint: bool = False,
-                 layout: dict | None = None, distill: int | None = None, strength: float | None = None) -> dict:
+                 layout: dict | None = None, distill: int | None = None, strength: float | None = None,
+                 prompt_version: str = "v1") -> dict:
     """Configuración que se sube como /content/job.json. Pura: se prueba sin Colab."""
     from productshot.domain import Style
     from productshot.services.presets import NEGATIVE_PROMPT, PRESETS
@@ -111,7 +112,7 @@ def build_config(stage: str, run_id: str, steps: int | None = None, rank: int = 
         }
     if stage == "eval":
         return eval_config(run_id, adapters or {}, deadline_unix, scales, max_products, inpaint, layout,
-                           distill, strength)
+                           distill, strength, prompt_version)
     if stage not in ("smoke", "train"):
         raise ValueError(f"Etapa desconocida: {stage}")
     if stage == "train" and not dataset_remote:
@@ -167,10 +168,10 @@ def build_config(stage: str, run_id: str, steps: int | None = None, rank: int = 
 
 def eval_config(run_id: str, adapters: dict, deadline_unix: float | None, scales: list[float] | None = None,
                 max_products: int | None = None, nine: bool = False, layout: dict | None = None,
-                distill: int | None = None, strength: float | None = None) -> dict:
+                distill: int | None = None, strength: float | None = None, prompt_version: str = "v1") -> dict:
     """Mismo pipeline, prompts y parámetros que producción (SdxlParams); solo cambia el LoRA."""
     from productshot.domain import Style
-    from productshot.services.presets import NEGATIVE_PROMPT, PRESETS
+    from productshot.services.presets import NEGATIVE_PROMPTS, PROMPTS
     from productshot.services.sdxl_generation import DEFAULT_MODEL_ID, SdxlParams
 
     if not adapters and not distill:
@@ -202,8 +203,9 @@ def eval_config(run_id: str, adapters: dict, deadline_unix: float | None, scales
         "layout": layout,
         # Producción resuelve esta revisión al cargar; la evaluación fija BASE_REVISION (docs/05).
         "production_revision": p.revision,
-        "negative_prompt": NEGATIVE_PROMPT,
-        "style_prompts": {s.value: PRESETS[s].prompt for s in Style},
+        "prompt_version": prompt_version,
+        "negative_prompt": NEGATIVE_PROMPTS[prompt_version],
+        "style_prompts": {s.value: PROMPTS[prompt_version][s] for s in Style},
         # Con `distill`, en vez de comparar checkpoints se generan candidatas de entrenamiento con
         # las fotos de train (`distill` semillas por estilo); no hay adaptadores.
         "distill": {"seeds": distill} if distill else None,
@@ -544,6 +546,7 @@ def main() -> int:
     ap.add_argument("--split", choices=("val", "test"), default="val",
                     help="eval: test se usa una sola vez, con la configuración ya fijada en val")
     ap.add_argument("--distill", type=int, help="eval: candidatas de entrenamiento con N semillas por estilo")
+    ap.add_argument("--prompt-version", default="v1", help="eval: versión de presets.PROMPTS (v2: fotógrafo)")
     ap.add_argument("--strength", type=float, help="eval: strength de la generación (por defecto el de SdxlParams)")
     ap.add_argument("--layout", type=lambda v: dict(zip(("height", "bottom"), map(float, v.split(",")))),
                     help="eval: reencuadre alto,base del producto, p. ej. 0.45,0.85")
@@ -593,7 +596,7 @@ def main() -> int:
     cfg = build_config(args.stage, run_id, args.steps, args.rank, args.learning_rate, remote_tar,
                        deadline_unix=deadline - RESERVE_S, pack_sha256=pack_sha, adapters=adapters,
                        scales=args.scales, max_products=args.max_products, masked_loss=args.masked_loss, inpaint=args.inpaint, layout=args.layout,
-                       distill=args.distill, strength=args.strength)
+                       distill=args.distill, strength=args.strength, prompt_version=args.prompt_version)
     if evaluate:
         eval_parts = split_parts(eval_tar, parts_dir) if not args.dry_run else []
         cfg["eval_tar"] = {"parts": len(eval_parts), "sha256": hashlib.sha256(eval_tar.read_bytes()).hexdigest()}

@@ -7,7 +7,7 @@ Lee la corrida `run_colab.py --stage eval --distill` (metrics.jsonl e images/). 
 estilo se queda con la candidata de mayor margen CLIP contra el texto del preset, siempre que el
 estilo pedido gane, que el producto se conserve (DINOv2) y que no esté en `--exclude` (revisión
 visual). La máscara se rehace con el mismo reencuadre que usó la generación, así que cada foto
-lleva el producto exactamente donde quedó. El caption es solo el preset, igual que en inferencia.
+lleva el producto exactamente donde quedó. El caption es el prompt con el que se generó (config.style_prompts), igual que en inferencia.
 """
 
 from __future__ import annotations
@@ -22,9 +22,7 @@ from pathlib import Path
 from PIL import Image
 
 from bg60k_export import add_bytes
-from productshot.domain import Style
 from productshot.services.layout import Layout, compose
-from productshot.services.presets import PRESETS
 
 MIN_DINO = 0.9
 
@@ -83,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
             stem = f"{item}_{style}"
             add_bytes(tar, f"{stem}.jpg", image)
             add_bytes(tar, f"{stem}.mask", buf.getvalue())
-            meta.append({"file_name": f"{stem}.jpg", "text": PRESETS[Style(style)].prompt, "style": style,
+            meta.append({"file_name": f"{stem}.jpg", "text": cfg["style_prompts"][style], "style": style,
                          "mask": f"{stem}.mask", "source": r["image"], "text_margin": r["text_margin"]})
             counts[style] = counts.get(style, 0) + 1
         add_bytes(tar, "metadata.jsonl", "".join(json.dumps(m, ensure_ascii=False) + "\n" for m in meta).encode())

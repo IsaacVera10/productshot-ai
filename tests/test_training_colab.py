@@ -411,3 +411,13 @@ def test_hung_exec_is_cut_and_retried(fake, monkeypatch):
     code, calls = run()
     assert code == 0 and calls.count("exec") == 2 and "stop" in calls
     assert time.perf_counter() - t0 < 25
+
+
+def test_distill_with_photographer_prompts():
+    from productshot.services.presets import NEGATIVE_PROMPTS, PROMPTS
+
+    drv = load_driver()
+    cfg = drv.build_config("eval", "r7", inpaint=True, layout={"height": 0.45, "bottom": 0.85}, distill=3,
+                           strength=1.0, prompt_version="v2")
+    assert cfg["prompt_version"] == "v2" and cfg["negative_prompt"] == NEGATIVE_PROMPTS["v2"]
+    assert cfg["style_prompts"] == {s.value: PROMPTS["v2"][s] for s in Style}
