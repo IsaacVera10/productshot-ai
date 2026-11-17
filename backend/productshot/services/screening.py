@@ -53,7 +53,13 @@ CATEGORY_LABELS: dict[str, list[str]] = {
                  "a photo of an electronic gadget", "a photo of a toy", "a photo of a figurine",
                  "a photo of a cosmetic product", "a photo of jewelry", "a photo of a product box",
                  "a photo of a home decoration item", "a photo of a canned drink", "a photo of a jar",
-                 "a photo of a circuit board", "a photo of a bag"],
+                 "a photo of a circuit board", "a photo of a bag",
+                 # Productos comunes que CLIP confundía con «sexual» o «dinero» (evaluation/calibrar_g15.py).
+                 "a photo of a video game controller", "a photo of a computer mouse", "a photo of a keyboard",
+                 "a photo of headphones", "a photo of a speaker", "a photo of a microphone",
+                 "a photo of a remote control", "a photo of a smartphone", "a photo of a ball",
+                 "a photo of an umbrella", "a photo of a tool", "a photo of a garden tool",
+                 "a photo of a wallet", "a photo of a water bottle", "a photo of a kitchen utensil"],
 }
 BLOCKED_CATEGORIES = ("arma", "tabaco_vape", "drogas", "dinero_documentos", "sexual")
 WARNED_CATEGORIES = ("comida", "transparente", "grande", "animal", "pantalla_documento")
