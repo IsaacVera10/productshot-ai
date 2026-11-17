@@ -15,6 +15,7 @@ ADVANCED_WORKER_TOKEN de la API). El adaptador se verifica por sha256 antes de s
 from __future__ import annotations
 
 import io
+import json
 import os
 from pathlib import Path
 
@@ -23,12 +24,12 @@ import modal
 ROOT = Path(__file__).resolve().parents[2] if modal.is_local() else Path("/root")
 CACHE = "/cache"
 
-# LoRA por autodestilación confirmado en test (docs/10): checkpoint 400 de v4distill, prompts v1.
-LORA_PATH = f"{CACHE}/lora/v4distill-ckpt400.safetensors"
-LORA_SHA256 = "a1e399ca21f7679375fc5dbe4bbd17c5a80317622db9e51887c156b3eb7b886b"
+# v5distill checkpoint 1000 con prompts v2: ganó la revisión ciega y no muestra equipo de estudio (docs/10).
+LORA_PATH = f"{CACHE}/lora/v5distill-ckpt1000.safetensors"
+LORA_SHA256 = "d1ccc94a466886eddba02706a9133a6e7d993dc30a580ae607e4b05803aba531"
 STRENGTH = 1.0
 MODEL_REVISION = "115134f363124c53c7d878647567d04daf26e41e"  # la misma revisión evaluada en val y test
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -97,12 +98,12 @@ class AdvancedWorker:
         specs = tuple(VariationSpec(position=i + 1, style=s, seed=100 + i) for i, s in enumerate(Style))
         arts = self.backend.generate(GenerationRequest(session_id="smoke", mode=Mode.ADVANCED, image=image,
                                                        mask=mask, specs=specs))
-        out = {"model_revision": self.backend.model_revision, "lora": self.backend.lora, "images": {}}
+        out = {"model_revision": self.backend.model_revision, "lora": self.backend.lora, "images": {}, "params": {}}
         for art in arts:
             buf = io.BytesIO()
             art.image.save(buf, format="PNG")
             out["images"][art.style.value] = buf.getvalue()
-            out.setdefault("params", art.params)
+            out["params"][art.style.value] = art.params | {"prompt_version": art.prompt_version}
         return out
 
 
@@ -129,5 +130,14 @@ def smoke(out: str = "data/experiments/advanced_smoke") -> None:
     dest.mkdir(parents=True, exist_ok=True)
     for style, data in result["images"].items():
         (dest / f"{style}.png").write_bytes(data)
-    print(f"{result['model_revision']} · LoRA {result['lora']['sha256'][:12]} · {result['params']['strength']} "
-          f"· {result['params']['seconds']} s por imagen · {dest}")
+    manifest = {k: result[k] for k in ("model_revision", "lora", "params")}
+    (dest / "manifest.json").write_text(json.dumps(manifest, indent=1, default=str), encoding="utf-8")
+    params = result["params"].values()
+    if (len(result["images"]) != 5 or result["lora"]["sha256"] != LORA_SHA256
+            or any(p["prompt_version"] != PROMPT_VERSION or (p["lora"] or {}).get("sha256") != LORA_SHA256
+                   or p["lora"]["scale"] != 1.0
+                   or p["strength"] != STRENGTH for p in params)):
+        raise SystemExit(f"El smoke no coincide con la configuración del worker: revisar {dest / 'manifest.json'}")
+    seconds = sorted(p["seconds"] for p in params)
+    print(f"{result['model_revision']} · LoRA {LORA_SHA256[:12]} · prompts {PROMPT_VERSION} · strength {STRENGTH} "
+          f"· {seconds[2]} s por imagen (mediana) · {dest}")

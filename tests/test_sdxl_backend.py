@@ -141,3 +141,16 @@ def test_failed_attach_rolls_back_partial_load(tmp_path):
     with pytest.raises(ValueError):
         b.attach_lora(weights)
     assert pipe.lora_events == [("partial",), ("unload",)] and b.lora is None
+
+
+def test_backend_prompt_version_wins_over_request():
+    from dataclasses import replace
+
+    from productshot.services.presets import NEGATIVE_PROMPTS
+
+    pipe = FakePipe()
+    b = SdxlInpaintBackend(SdxlParams(steps=4, prompt_version="v2"), pipeline_factory=lambda p: (pipe, "abc123"))
+    arts = b.generate(replace(request(mode=Mode.ADVANCED), prompt_version="v1"))
+    assert pipe.calls[1]["prompt"] == build_prompt(Style(arts[1].style), (), "v2")
+    assert all(c["negative_prompt"] == NEGATIVE_PROMPTS["v2"] for c in pipe.calls)
+    assert all(a.prompt_version == "v2" and a.params["prompt_version"] == "v2" for a in arts)
