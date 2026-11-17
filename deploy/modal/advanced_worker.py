@@ -27,6 +27,7 @@ CACHE = "/cache"
 LORA_PATH = f"{CACHE}/lora/v4distill-ckpt400.safetensors"
 LORA_SHA256 = "a1e399ca21f7679375fc5dbe4bbd17c5a80317622db9e51887c156b3eb7b886b"
 STRENGTH = 1.0
+MODEL_REVISION = "115134f363124c53c7d878647567d04daf26e41e"  # la misma revisión evaluada en val y test
 PROMPT_VERSION = "v1"
 
 image = (
@@ -64,10 +65,13 @@ cache = modal.Volume.from_name("productshot-hf-cache", create_if_missing=True)
 class AdvancedWorker:
     @modal.enter()
     def load(self) -> None:
+        if not os.environ.get("GENERATION_WORKER_TOKEN"):
+            raise RuntimeError("Falta GENERATION_WORKER_TOKEN: el worker no se sirve sin autenticación.")
         from productshot.services.sdxl_generation import NINE_CHANNEL_MODEL_ID, SdxlInpaintBackend, SdxlParams
 
         self.backend = SdxlInpaintBackend(SdxlParams(
-            model_id=NINE_CHANNEL_MODEL_ID, strength=STRENGTH, prompt_version=PROMPT_VERSION,
+            model_id=NINE_CHANNEL_MODEL_ID, revision=MODEL_REVISION, strength=STRENGTH,
+            prompt_version=PROMPT_VERSION,
         ))
         self.backend.load()
         loaded = self.backend.attach_lora(LORA_PATH)
