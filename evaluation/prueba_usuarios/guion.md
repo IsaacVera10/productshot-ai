@@ -5,6 +5,7 @@ Protocolo de `docs/06_EVALUACION_Y_ETICA.md`, sección «Prueba con usuarios». 
 ## Antes de empezar el día
 
 - [ ] `.env` con `GENERATION_BACKEND=remote`, `SEGMENTATION_BACKEND=remote`, `SCREENING_BACKEND=remote` y `SUMMARY_BACKEND=gemini` con la clave propia.
+- [ ] Agente: `GEMINI_MODEL_ID=gemini-3.5-flash` y `GEMINI_FALLBACK_MODEL_ID=gemini-3.5-flash-lite`. Los modelos más nuevos (3.7 y 3.8) respondían 503 (saturados) el 2026-11-16; si el resumen sale como `deterministic_fallback`, revisar cuál responde.
 - [ ] La app corriendo: `uv run productshot`, en `http://127.0.0.1:8000/ui`.
 - [ ] Productos de respaldo a mano (vela, taza, caja con texto), por si alguien no trae uno.
 - [ ] Hoja de registro abierta: `registro.csv`, una fila por participante.
