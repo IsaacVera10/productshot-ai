@@ -286,10 +286,7 @@ def check_result(out_dir: Path, run_id: str) -> dict:
             raise Failure("La evaluación no completó ningún producto.")
         try:
             if manifest["config"].get("distill"):
-                expected = len(manifest["completed"]) * len(manifest["config"]["style_prompts"]) * \
-                    manifest["config"]["distill"]["seeds"]
-                if sum(1 for _ in (out_dir / "metrics.jsonl").open()) != expected:
-                    raise ValueError(f"metrics.jsonl no tiene {expected} candidatas")
+                validate_candidates(out_dir, manifest)
             else:
                 eval_report().validate(out_dir, manifest)
         except (ValueError, OSError, KeyError) as exc:
@@ -304,6 +301,25 @@ def check_result(out_dir: Path, run_id: str) -> dict:
     if manifest.get("config", {}).get("verify", {}).get("enabled") and manifest.get("verify", {}).get("passed") is not True:
         raise Failure(f"La verificación no pasó: {manifest.get('verify', {}).get('failures')}")
     return manifest
+
+
+def validate_candidates(out_dir: Path, manifest: dict) -> None:
+    """Una candidata por producto completo, estilo y semilla, con métricas finitas e imagen presente."""
+    import math
+
+    cfg = manifest["config"]
+    rows = [json.loads(line) for line in (out_dir / "metrics.jsonl").open(encoding="utf-8")]
+    ids = {int(Path(str(c)).stem) for c in manifest["completed"]}
+    wanted = {(i, s, k) for i in ids for s in cfg["style_prompts"] for k in range(cfg["distill"]["seeds"])}
+    keys = [(r.get("id"), r.get("style"), r.get("candidate")) for r in rows]
+    if len(keys) != len(set(keys)) or set(keys) != wanted:
+        raise ValueError(f"metrics.jsonl no tiene una candidata por combinación ({len(rows)} de {len(wanted)})")
+    for r in rows:
+        values = [r.get(k) for k in ("text_margin", "clip_margin", "dino_product", "protected_mean_abs_diff")]
+        if not all(isinstance(v, (int, float)) and math.isfinite(v) for v in values):
+            raise ValueError(f"Candidata con métricas no finitas: {r.get('image')}")
+        if not (out_dir / "images" / r["image"]).is_file():
+            raise ValueError(f"Falta la imagen {r['image']}")
 
 
 def check_embeddings(out_dir: Path, manifest: dict) -> None:
