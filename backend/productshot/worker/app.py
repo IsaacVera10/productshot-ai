@@ -15,18 +15,22 @@ import logging
 
 from fastapi import FastAPI, Header, HTTPException
 
-from productshot.services.generation import GenerationBackend, GenerationRequest, VariationSpec
+from productshot.services.generation import GenerationBackend, GenerationRequest, GenerationUnavailable, VariationSpec
+from productshot.services.screening import ScreeningService, UnsafeOutput
 from productshot.services.segmentation import SegmentationService
 from productshot.worker.contract import (
     CONTRACT_VERSION,
     GENERATE_PATH,
     HEALTH_PATH,
+    SCREEN_PATH,
     SEGMENT_PATH,
     ArtifactOut,
     ContractError,
     GenerateIn,
     GenerateOut,
     HealthOut,
+    ScreenIn,
+    ScreenOut,
     SegmentIn,
     SegmentOut,
     decode_png,
@@ -37,7 +41,8 @@ log = logging.getLogger(__name__)
 
 
 def create_worker_app(
-    backend: GenerationBackend, token: str | None = None, segmenter: SegmentationService | None = None
+    backend: GenerationBackend, token: str | None = None, segmenter: SegmentationService | None = None,
+    screener: ScreeningService | None = None,
 ) -> FastAPI:
     app = FastAPI(title="ProductShot AI worker", version=CONTRACT_VERSION, docs_url=None, redoc_url=None)
 
@@ -53,9 +58,25 @@ def create_worker_app(
             backend=backend.name, model_revision=backend.model_revision, simulated=backend.simulated,
             segmenter=segmenter.name if segmenter else None,
             segmenter_simulated=segmenter.simulated if segmenter else None,
+            screener=screener.name if screener else None,
             lora=({**backend.lora, "scale": backend.params.lora_scale}
                   if getattr(backend, "lora", None) else None),
         )
+
+    @app.post(SCREEN_PATH, response_model=ScreenOut)
+    def screen(body: ScreenIn, authorization: str | None = Header(default=None)) -> ScreenOut:
+        _check_auth(authorization)
+        if screener is None:
+            raise HTTPException(status_code=404, detail="Este worker no revisa fotos.")
+        if body.contract_version != CONTRACT_VERSION:
+            raise HTTPException(status_code=409, detail=f"Versión de contrato no soportada: {body.contract_version}.")
+        try:
+            image = decode_png(body.image_png_b64, "RGB")
+        except ContractError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        r = screener.screen(image)
+        return ScreenOut(screener=screener.name, simulated=r.simulated, nsfw_score=r.nsfw_score,
+                         faces=r.faces, seconds=r.seconds, categories=r.categories)
 
     @app.post(SEGMENT_PATH, response_model=SegmentOut)
     def segment(body: SegmentIn, authorization: str | None = Header(default=None)) -> SegmentOut:
@@ -97,9 +118,16 @@ def create_worker_app(
         )
         request = GenerationRequest(
             session_id=body.session_id, mode=body.mode, image=image, mask=mask, specs=specs,
-            prompt_version=body.prompt_version,
+            prompt_version=body.prompt_version, category=body.category,
         )
-        artifacts = backend.generate(request)
+        try:
+            artifacts = backend.generate(request)
+        except UnsafeOutput as exc:  # G7: el lote no se entrega
+            log.warning("G7: lote rechazado en la sesión %s: %s", body.session_id, exc)
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except GenerationUnavailable as exc:  # p. ej. ningún estilo verificado (modo intermedio)
+            log.warning("Lote no disponible en la sesión %s: %s", body.session_id, exc)
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         log.info("Lote generado: sesión %s, %d imágenes, backend %s", body.session_id, len(artifacts), backend.name)
         info = _health()
         return GenerateOut(

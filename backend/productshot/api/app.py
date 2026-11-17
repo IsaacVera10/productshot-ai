@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, FastAPI, File, Form, Header, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from productshot.api.schemas import (
@@ -30,10 +32,11 @@ from productshot.api.schemas import (
 )
 from productshot.config import Settings
 from productshot.composition import build_services
-from productshot.domain import DomainError, GenerationJob, Mask, Mode, NotFound, SessionView
+from productshot.domain import Category, DomainError, GenerationJob, Mask, Mode, NotFound, SessionView
 from productshot.services.generation import GenerationBackend
 from productshot.services.jobs import JobRunner
 from productshot.services.rounds import explain_plan, variant_label
+from productshot.services.screening import ScreeningService
 from productshot.services.segmentation import SegmentationService
 from productshot.services.sessions import SessionService
 from productshot.services.summary import SummaryService
@@ -71,6 +74,7 @@ def _session_out(view: SessionView, simulated: bool) -> SessionOut:
     return SessionOut(
         id=s.id,
         mode=s.mode,
+        category=s.category,
         status=s.status,
         image_id=s.image_id,
         image_url=asset_url(view.image.storage_key),
@@ -163,13 +167,14 @@ def _build_router() -> APIRouter:
         request: Request,
         image: Annotated[UploadFile, File(description="Foto JPG o PNG del producto")],
         mode: Annotated[Mode, Form()],
+        category: Annotated[Category | None, Form()] = None,
     ) -> SessionOut:
         # Ruta síncrona a propósito: FastAPI la ejecuta en el pool de hilos, de modo que
         # decodificar la imagen, escribir archivos y esperar el bloqueo de SQLite no
         # detiene el event loop ni las demás solicitudes (como el sondeo de la UI).
         limit = svc(request).settings.max_upload_bytes
         data = image.file.read(limit + 1)  # leer uno de más basta para detectar el exceso
-        return out(request, svc(request).create_session(data, mode))
+        return out(request, svc(request).create_session(data, mode, category))
 
     @router.get("/sessions/{session_id}", response_model=SessionOut)
     def get_session(request: Request, session_id: str) -> SessionOut:
@@ -253,11 +258,13 @@ def create_app(
     generator: GenerationBackend | None = None,
     segmenter: SegmentationService | None = None,
     summarizer: SummaryService | None = None,
+    screener: ScreeningService | None = None,
     mount_ui: bool = True,
 ) -> FastAPI:
     settings = settings or Settings()
     services = build_services(
-        settings, runner=runner, generator=generator, segmenter=segmenter, summarizer=summarizer
+        settings, runner=runner, generator=generator, segmenter=segmenter, summarizer=summarizer,
+        screener=screener,
     )
     runner = services.runner
     sessions = SessionService(
@@ -268,6 +275,7 @@ def create_app(
         generator=services.generator,
         summarizer=services.summarizer,
         runner=runner,
+        screener=services.screener,
     )
     adapters = services.describe()
     log.info("Adaptadores: %s", ", ".join(f"{k}={v}" for k, v in adapters.items()))
@@ -306,9 +314,29 @@ def create_app(
         log.exception("Error no controlado", exc_info=exc)
         return _error(500, "internal_error", "Error interno.")
 
+    _mount_web(app)
     if mount_ui:
         _mount_ui(app, settings)
     return app
+
+
+WEB_DIR = Path(__file__).resolve().parents[1] / "web"
+
+
+def _mount_web(app: FastAPI) -> None:
+    """Web app mobile-first (HTML, CSS y JS estáticos) en /app; la raíz lleva ahí.
+
+    Usa la API del mismo origen, así que funciona igual en la laptop que desde un celular en
+    la misma red (APP_HOST=0.0.0.0). La UI de Gradio sigue en /ui como panel técnico.
+    """
+    if not (WEB_DIR / "index.html").exists():
+        log.warning("No se encontró la web app en %s", WEB_DIR)
+        return
+    app.mount("/app", StaticFiles(directory=WEB_DIR, html=True), name="web")
+
+    @app.get("/", include_in_schema=False)
+    def _root() -> RedirectResponse:
+        return RedirectResponse(url="/app/")
 
 
 def _mount_ui(app: FastAPI, settings: Settings) -> None:
@@ -322,7 +350,3 @@ def _mount_ui(app: FastAPI, settings: Settings) -> None:
     host = "127.0.0.1" if settings.app_host in ("0.0.0.0", "::") else settings.app_host
     api_base = f"http://{host}:{settings.app_port}{API_PREFIX}"
     gr.mount_gradio_app(app, build_ui(api_base), path="/ui")
-
-    @app.get("/", include_in_schema=False)
-    def _root() -> RedirectResponse:
-        return RedirectResponse(url="/ui")

@@ -57,7 +57,8 @@ class RemoteSegmentationService:
     def segment(self, image: Image.Image) -> MaskResult:
         body = SegmentIn(image_png_b64=encode_png(image.convert("RGB")))
         try:
-            resp = self._client.post(SEGMENT_PATH, json=body.model_dump(mode="json"), timeout=self._timeout)
+            resp = self._client.post(SEGMENT_PATH, json=body.model_dump(mode="json"), timeout=self._timeout,
+                                     follow_redirects=True)
         except httpx.TimeoutException as exc:
             raise SegmentationUnavailable("El segmentador no respondió a tiempo.") from exc
         except httpx.HTTPError as exc:

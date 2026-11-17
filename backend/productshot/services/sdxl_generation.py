@@ -10,6 +10,12 @@ original después (G8), así que aquí solo importa el fondo y su integración.
 
 `torch` y `diffusers` se importan al cargar, no al importar el módulo: la API y las
 pruebas no los necesitan. `pipeline_factory` permite probar todo sin GPU.
+
+Experimento del 2026-11-15 (descartado para el modo intermedio): `REALVIS_INPAINT_PARAMS` usa
+un checkpoint fotorrealista de inpainting de nueve canales (RealVisXL V4.0), una mezcla del
+fondo antes de generar (`prefill`) y prompts de escena por categoría (`scenes.py`). Con fotos
+reales el producto se veía "pegado" (la luz no coincide) y el modo intermedio pasó a un editor
+por instrucciones (`qwen_edit.py`). Se conserva porque lo usan los scripts de experimento.
 """
 
 from __future__ import annotations
@@ -23,15 +29,18 @@ from pathlib import Path
 
 from PIL import Image, ImageFilter
 
-from productshot.domain import Mode
+from productshot.domain import Mode, Style
 from productshot.services.generation import GeneratedArtifact, GenerationRequest, build_prompt
-from productshot.services.presets import NEGATIVE_PROMPTS, PROMPT_VERSION
+from productshot.services.presets import NEGATIVE_PROMPTS, PRESETS, PROMPT_VERSION
+from productshot.services.scenes import SCENE_NEGATIVE, SCENE_PROMPT_VERSION, build_scene_prompt
 
 log = logging.getLogger(__name__)
 
 DEFAULT_MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
 # UNet entrenado para inpainting (nueve canales de entrada). Candidato de P4, en evaluación.
 NINE_CHANNEL_MODEL_ID = "diffusers/stable-diffusion-xl-1.0-inpainting-0.1"
+# Fine-tune fotorrealista de SDXL para inpainting (nueve canales, openrail++). Solo experimentos.
+REALVIS_INPAINT_MODEL_ID = "OzzyGT/RealVisXL_V4.0_inpainting"
 LORA_ADAPTER_NAME = "estilo"
 
 
@@ -56,6 +65,38 @@ class SdxlParams:
     lora_scale: float = 1.0
     # Versión de los prompts y del negativo (presets.PROMPTS); el LoRA se entrena con una sola.
     prompt_version: str = PROMPT_VERSION
+    # Fondo de la ENTRADA antes de generar. Con strength < 1 los latentes parten de la foto y
+    # el fondo original (pared, mantel) ancla los colores. "blend" mezcla `prefill_mix` del
+    # degradado del preset con el fondo original difuminado (conserva el plano de la mesa);
+    # "palette" usa solo el degradado; "" deja la foto tal cual.
+    prefill: str = ""
+    prefill_blur: int = 24  # px a la resolución de trabajo
+    prefill_mix: float = 0.5
+    # "preset": textos de presets.py (los del LoRA); "scene": escena por categoría (scenes.py).
+    prompt_set: str = "preset"
+
+
+# Configuración W del experimento con fotos reales del 2026-11-15 (descartada).
+REALVIS_INPAINT_PARAMS = SdxlParams(
+    model_id=REALVIS_INPAINT_MODEL_ID, strength=0.90, prefill="blend", prompt_set="scene",
+)
+
+
+def prefill_background(image: Image.Image, mask: Image.Image, style: Style, how: str,
+                       blur: int = 24, mix: float = 0.5) -> Image.Image:
+    """Reemplaza el fondo (blanco en la máscara) por el degradado del preset o una mezcla."""
+    if how not in ("blend", "palette"):
+        raise ValueError(f"prefill desconocido: {how!r}")
+    top, bottom = PRESETS[style].mock_colors
+    w, h = image.size
+    column = Image.new("RGB", (1, h))
+    for y in range(h):
+        t = y / max(1, h - 1)
+        column.putpixel((0, y), tuple(round(a + (b - a) * t) for a, b in zip(top, bottom)))
+    gradient = column.resize((w, h))
+    if how == "blend":
+        gradient = Image.blend(image.filter(ImageFilter.GaussianBlur(blur)), gradient, mix)
+    return Image.composite(gradient, image, mask.convert("L"))
 
 
 def generation_size(size: tuple[int, int], target_side: int) -> tuple[int, int]:
@@ -138,7 +179,8 @@ class SdxlInpaintBackend:
         p = self.params
         work_size = request.image.size
         gen_size = generation_size(work_size, p.target_side)
-        image = request.image.convert("RGB").resize(gen_size, Image.Resampling.LANCZOS)
+        work_image = request.image.convert("RGB")
+        image = work_image.resize(gen_size, Image.Resampling.LANCZOS)
         mask = request.mask.convert("L").resize(gen_size, Image.Resampling.BILINEAR)
         if p.mask_dilate_px:
             # Blanco = editable: un filtro de mínimo agranda lo negro (protegido).
@@ -147,18 +189,28 @@ class SdxlInpaintBackend:
             mask = self._pipe.mask_processor.blur(mask, blur_factor=p.mask_blur)
         lora = self._lora_for(request.mode)
 
+        scene = p.prompt_set == "scene"
+        negative = SCENE_NEGATIVE if scene else NEGATIVE_PROMPTS[p.prompt_version]
+        prompt_version = SCENE_PROMPT_VERSION if scene else p.prompt_version
         results = []
         for spec in request.specs:
-            prompt = build_prompt(spec.style, spec.adjustments, p.prompt_version)
-            negative = NEGATIVE_PROMPTS[p.prompt_version]
+            if scene:
+                prompt = build_scene_prompt(spec.style, request.category, spec.adjustments)
+            else:
+                prompt = build_prompt(spec.style, spec.adjustments, p.prompt_version)
             if p.prompt_prefix:
                 prompt = f"{p.prompt_prefix}, {prompt}"
+            spec_image = image
+            if p.prefill:
+                # A la resolución de trabajo, igual que en el experimento; luego al tamaño de SDXL.
+                spec_image = prefill_background(work_image, request.mask, spec.style, p.prefill,
+                                                p.prefill_blur, p.prefill_mix).resize(gen_size, Image.Resampling.LANCZOS)
             t0 = time.perf_counter()
             _reset_peak_memory()
             out = self._pipe(
                 prompt=prompt,
                 negative_prompt=negative,
-                image=image,
+                image=spec_image,
                 mask_image=mask,
                 height=gen_size[1],
                 width=gen_size[0],
@@ -177,7 +229,7 @@ class SdxlInpaintBackend:
                     image=final,
                     seed=spec.seed,
                     model_revision=self.model_revision,
-                    prompt_version=p.prompt_version,
+                    prompt_version=prompt_version,
                     params={
                         "backend": self.name,
                         "simulated": False,
@@ -185,7 +237,10 @@ class SdxlInpaintBackend:
                         "lora": lora,  # None si no hay adaptador; si no, sha256 y peso aplicado
                         "prompt": prompt,
                         "negative_prompt": negative,
-                        "prompt_version": p.prompt_version,
+                        "prompt_version": prompt_version,
+                        "prompt_set": p.prompt_set,
+                        "category": request.category.value if request.category else None,
+                        "prefill": p.prefill,
                         "adjustments": list(spec.adjustments),
                         "steps": p.steps,
                         "guidance_scale": p.guidance_scale,
