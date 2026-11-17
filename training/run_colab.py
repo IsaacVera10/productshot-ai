@@ -50,6 +50,7 @@ JOB_SCRIPT = ROOT / "training" / "colab_job.py"
 EMBED_SCRIPT = ROOT / "training" / "colab_embed.py"
 EVAL_SCRIPT = ROOT / "training" / "colab_eval.py"
 EVAL_SPLIT = ROOT / "data" / "bg60k" / "export" / "eval" / "val"
+# Test se empaqueta en la misma ruta que val (`val/` del tar) y `split` lo registra en job.json.
 TRAIN_TAR = ROOT / "data" / "bg60k" / "export" / "dataset.tar"
 DISTILL_TAR = ROOT / "data" / "bg60k" / "export" / "preset_masked.tar"  # fotos de train con su máscara
 STYLE_PROMPTS = ROOT / "training" / "bg60k_style_prompts.toml"
@@ -498,6 +499,8 @@ def main() -> int:
     ap.add_argument("--checkpoints", type=lambda v: v.split(","), help="eval: solo estos, p. ej. ckpt300,ckpt1200")
     ap.add_argument("--scales", type=lambda v: [float(x) for x in v.split(",")], help="eval: pesos del LoRA a probar")
     ap.add_argument("--max-products", type=int, help="eval: primeros N productos del orden fijo")
+    ap.add_argument("--split", choices=("val", "test"), default="val",
+                    help="eval: test se usa una sola vez, con la configuración ya fijada en val")
     ap.add_argument("--distill", type=int, help="eval: candidatas de entrenamiento con N semillas por estilo")
     ap.add_argument("--strength", type=float, help="eval: strength de la generación (por defecto el de SdxlParams)")
     ap.add_argument("--layout", type=lambda v: dict(zip(("height", "bottom"), map(float, v.split(",")))),
@@ -543,7 +546,8 @@ def main() -> int:
             if missing:
                 ap.error(f"checkpoints inexistentes: {sorted(missing)} (hay {list(found)})")
             found = {k: v for k, v in found.items() if k in args.checkpoints}
-        adapters = build_eval_tar(eval_tar, EVAL_SPLIT, DISTILL_TAR if args.distill else TRAIN_TAR, found)
+        split_dir = EVAL_SPLIT.with_name(args.split)
+        adapters = build_eval_tar(eval_tar, split_dir, DISTILL_TAR if args.distill else TRAIN_TAR, found)
     cfg = build_config(args.stage, run_id, args.steps, args.rank, args.learning_rate, remote_tar,
                        deadline_unix=deadline - RESERVE_S, pack_sha256=pack_sha, adapters=adapters,
                        scales=args.scales, max_products=args.max_products, masked_loss=args.masked_loss, inpaint=args.inpaint, layout=args.layout,
@@ -552,6 +556,7 @@ def main() -> int:
         eval_parts = split_parts(eval_tar, parts_dir) if not args.dry_run else []
         cfg["eval_tar"] = {"parts": len(eval_parts), "sha256": hashlib.sha256(eval_tar.read_bytes()).hexdigest()}
         cfg["adapters_run"] = args.adapters.name if args.adapters else None
+        cfg["split"] = args.split
     pack_parts = split_parts(args.pack, parts_dir) if embed and not args.dry_run else []
     if embed:
         cfg["pack_parts"] = len(pack_parts)
