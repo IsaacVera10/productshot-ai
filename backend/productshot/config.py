@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     generation_worker_url: str | None = None
     generation_worker_token: SecretStr | None = None
     generation_worker_timeout_s: float = 540.0  # menor que G14 para que falle antes el HTTP
+    # Un worker por modo (acordado el 2026-11-16): GENERATION_WORKER_URL sirve el intermedio (y
+    # segmenta y revisa fotos); si se define ADVANCED_WORKER_URL, las sesiones avanzadas van ahí.
+    advanced_worker_url: str | None = None
+    advanced_worker_token: SecretStr | None = None
     worker_host: str = "127.0.0.1"
     worker_port: int = 8001
 

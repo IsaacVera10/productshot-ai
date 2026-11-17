@@ -70,13 +70,23 @@ def build_generator(settings: Settings) -> GenerationBackend:
     if settings.generation_backend == "remote":
         if not settings.generation_worker_url:
             raise ConfigError("GENERATION_BACKEND=remote necesita GENERATION_WORKER_URL.")
+        from productshot.domain import Mode
+        from productshot.services.generation import ModeRoutedGenerator
         from productshot.services.remote_generation import RemoteGenerationBackend
 
-        return RemoteGenerationBackend(
+        default = RemoteGenerationBackend(
             settings.generation_worker_url,
             token=_secret(settings.generation_worker_token),
             timeout_s=settings.generation_worker_timeout_s,
         )
+        if not settings.advanced_worker_url:
+            return default
+        advanced = RemoteGenerationBackend(
+            settings.advanced_worker_url,
+            token=_secret(settings.advanced_worker_token),
+            timeout_s=settings.generation_worker_timeout_s,
+        )
+        return ModeRoutedGenerator({Mode.INTERMEDIATE: default, Mode.ADVANCED: advanced})
     raise ConfigError(f"GENERATION_BACKEND desconocido: {settings.generation_backend!r}.")
 
 

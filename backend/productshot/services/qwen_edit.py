@@ -34,6 +34,7 @@ from collections.abc import Callable
 
 from PIL import Image
 
+from productshot.domain import Mode
 from productshot.services import fidelity
 from productshot.services.generation import (
     GeneratedArtifact,
@@ -119,6 +120,11 @@ class QwenEditBackend:
                 "passed": fidelity.passes(metrics, self.thresholds)}
 
     def generate(self, request: GenerationRequest) -> list[GeneratedArtifact]:
+        if request.mode != Mode.INTERMEDIATE:
+            # El avanzado (SDXL + LoRA) tiene su propio worker: nunca se entregan fotos de este
+            # bloque rotuladas como «avanzado».
+            raise GenerationUnavailable("Este servidor solo genera el modo intermedio. El modo avanzado "
+                                        "todavía no está disponible; elige el intermedio.")
         self.load()
         start = self._clock()
         src = request.image.convert("RGB").resize(edit_size(request.image.size), Image.Resampling.LANCZOS)

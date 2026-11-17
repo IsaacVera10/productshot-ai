@@ -50,6 +50,7 @@ from productshot.services.generation import (
     GenerationRequest,
     GenerationUnavailable,
     VariationSpec,
+    generator_for,
 )
 from productshot.services.images import prepare_mask_upload, prepare_upload, to_png
 from productshot.services.jobs import JobRunner
@@ -135,7 +136,7 @@ class SessionService:
             category=category,
             status=SessionStatus.UPLOADED,
             image_id=image_id,
-            base_model_revision=self.generator.model_revision,
+            base_model_revision=generator_for(self.generator, mode).model_revision,
             created_at=now,
             updated_at=now,
         )
@@ -271,10 +272,10 @@ class SessionService:
                 for i, style in enumerate(CANONICAL_STYLES)
             ]
         config = {
-            "backend": self.generator.name,
-            "simulated": self.generator.simulated,
+            "backend": generator_for(self.generator, session.mode).name,
+            "simulated": generator_for(self.generator, session.mode).simulated,
             "mode": session.mode.value,
-            "model_revision": self.generator.model_revision,
+            "model_revision": generator_for(self.generator, session.mode).model_revision,
             "prompt_version": PROMPT_VERSION,
             "round_index": session.round_index,
             "specs": [
@@ -285,7 +286,7 @@ class SessionService:
         job = GenerationJob(
             id=_new_id(),
             session_id=session_id,
-            backend=self.generator.name,
+            backend=generator_for(self.generator, session.mode).name,
             status=JobStatus.GENERATING,
             idempotency_key=idempotency_key,
             config_json=json.dumps(config),
@@ -316,7 +317,7 @@ class SessionService:
         if view.job is not None:
             gen = bool(json.loads(view.job.config_json).get("simulated", True))
         else:
-            gen = self.generator.simulated
+            gen = generator_for(self.generator, view.session.mode).simulated
         return seg or gen
 
     def _run_job(self, job: GenerationJob) -> None:
@@ -363,7 +364,7 @@ class SessionService:
                     if fidelity["drift_warning"]:
                         guardrails.event("G8", job.session_id, "product_drift", position=art.position,
                                          diff=fidelity["protected_mean_abs_diff"])
-                if art.params.get("simulated", self.generator.simulated):
+                if art.params.get("simulated", generator_for(self.generator, session.mode).simulated):
                     # G9: el rótulo se pone DESPUÉS de recomponer, para no contarlo como alteración.
                     final = stamp(final, bottom=f"{art.position}/5 · {art.variant or art.style.value} · "
                                               f"modo {session.mode.value}")
@@ -458,7 +459,7 @@ class SessionService:
             category=parent.category,
             status=SessionStatus.SEGMENTED,
             image_id=image_id,
-            base_model_revision=self.generator.model_revision,
+            base_model_revision=generator_for(self.generator, parent.mode).model_revision,
             created_at=now,
             updated_at=now,
             parent_session_id=session_id,

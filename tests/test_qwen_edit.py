@@ -245,3 +245,56 @@ def test_unverified_batch_reaches_the_user_with_its_message(make_client):
     body = run_batch(client, "intermediate")
     assert body["status"] == "FAILED"
     assert "cables sueltos" in body["failure_reason"]
+
+
+# --- un worker por modo ---
+
+
+def test_qwen_worker_refuses_advanced_requests():
+    b, editor = backend(itertools.repeat(GOOD))
+    req = request()
+    adv = GenerationRequest(session_id="s", mode=Mode.ADVANCED, image=req.image, mask=req.mask, specs=req.specs)
+    with pytest.raises(Exception, match="solo genera el modo intermedio"):
+        b.generate(adv)
+    assert not editor.calls
+
+
+def test_api_routes_each_mode_to_its_worker(make_client):
+    import httpx
+
+    from productshot.services.generation import MockGenerationBackend, ModeRoutedGenerator
+    from productshot.services.remote_generation import RemoteGenerationBackend
+    from productshot.worker.app import create_worker_app
+    from test_ports import worker_transport
+
+    class Named(MockGenerationBackend):
+        def __init__(self, name):
+            super().__init__()
+            self.name, self.calls = name, []
+
+        def generate(self, req):
+            self.calls.append(req.mode)
+            return super().generate(req)
+
+    workers = {Mode.INTERMEDIATE: Named("qwen-edit"), Mode.ADVANCED: Named("sdxl-lora")}
+    remotes = {m: RemoteGenerationBackend("http://w", client=httpx.Client(
+        base_url="http://w", transport=worker_transport(create_worker_app(w)))) for m, w in workers.items()}
+    client = make_client(generator=ModeRoutedGenerator(remotes))
+    for mode in ("intermediate", "advanced"):
+        assert run_batch(client, mode)["status"] == "READY_FOR_REVIEW"
+    assert workers[Mode.INTERMEDIATE].calls == [Mode.INTERMEDIATE]
+    assert workers[Mode.ADVANCED].calls == [Mode.ADVANCED]
+
+
+def test_advanced_worker_url_enables_routing(tmp_path):
+    from productshot.composition import build_generator
+    from productshot.config import Settings
+    from productshot.services.generation import ModeRoutedGenerator
+
+    base = dict(_env_file=None, generation_backend="remote", generation_worker_url="http://inter")
+    single = build_generator(Settings(**base))
+    routed = build_generator(Settings(**base, advanced_worker_url="http://adv", advanced_worker_token="t"))
+    assert not isinstance(single, ModeRoutedGenerator)
+    assert isinstance(routed, ModeRoutedGenerator)
+    assert routed.for_mode(Mode.ADVANCED)._client.base_url.host == "adv"
+    assert routed.for_mode(Mode.INTERMEDIATE)._client.base_url.host == "inter"
