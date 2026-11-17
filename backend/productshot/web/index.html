@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#faf8f5" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#151413" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>ProductShot</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23c4572e'/%3E%3Ccircle cx='16' cy='17' r='6' fill='none' stroke='white' stroke-width='2.5'/%3E%3Crect x='11' y='7' width='10' height='4' rx='1.5' fill='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="logo" aria-hidden="true"></span>ProductShot</div>
+    <ol class="steps" aria-label="Pasos">
+      <li data-step="foto">Foto</li>
+      <li data-step="crear">Crear</li>
+      <li data-step="elegir">Elegir</li>
+      <li data-step="listo">Listo</li>
+    </ol>
+  </header>
+
+  <main id="app">
+    <!-- 1. Foto y tipo de producto -->
+    <section class="screen" id="s-foto" aria-labelledby="t-foto">
+      <h1 id="t-foto">Fotos de catálogo para tu producto</h1>
+      <p class="lead">Toma una foto con tu celular y te damos cinco versiones listas para vender en redes.</p>
+
+      <div class="picker" id="picker">
+        <label class="btn primary big">
+          <input type="file" accept="image/*" capture="environment" id="in-camera" hidden>
+          <span class="ico cam" aria-hidden="true"></span>Tomar foto
+        </label>
+        <label class="btn ghost big">
+          <input type="file" accept="image/jpeg,image/png,image/heic,image/*" id="in-gallery" hidden>
+          <span class="ico img" aria-hidden="true"></span>Elegir de la galería
+        </label>
+        <p class="hint">Que se vea el producto completo, solo uno, con buena luz. Sin personas.</p>
+      </div>
+
+      <figure class="preview" id="preview" hidden>
+        <img id="preview-img" alt="Tu foto">
+        <button class="link" id="btn-change" type="button">Cambiar foto</button>
+      </figure>
+
+      <fieldset class="group" id="category-group" hidden>
+        <legend>¿Qué vendes?</legend>
+        <div class="chips" role="radiogroup">
+          <button type="button" class="chip" role="radio" data-cat="hogar">🕯️ Hogar y deco</button>
+          <button type="button" class="chip" role="radio" data-cat="cocina">☕ Tazas y cocina</button>
+          <button type="button" class="chip" role="radio" data-cat="tecnologia">🎧 Tecnología</button>
+          <button type="button" class="chip" role="radio" data-cat="juguetes">🧸 Juguetes y colección</button>
+          <button type="button" class="chip" role="radio" data-cat="otro">📦 Otro</button>
+        </div>
+      </fieldset>
+
+      <details class="group more" id="mode-group" hidden>
+        <summary>Modo de generación</summary>
+        <div class="segmented" role="radiogroup">
+          <button type="button" class="seg" role="radio" data-mode="intermediate" aria-checked="true">Intermedio<small>La IA ajusta la luz de tu producto a la escena</small></button>
+          <button type="button" class="seg" role="radio" data-mode="advanced" aria-checked="false">Avanzado<small>Modelo entrenado por el equipo (LoRA)</small></button>
+        </div>
+      </details>
+
+      <div class="actions" id="foto-actions" hidden>
+        <button class="btn primary block" id="btn-create" type="button" disabled>Crear mis fotos</button>
+      </div>
+    </section>
+
+    <!-- 2. Espera -->
+    <section class="screen" id="s-crear" hidden aria-labelledby="t-crear">
+      <div class="waiting">
+        <div class="pulse" aria-hidden="true"><img id="wait-img" alt=""></div>
+        <h1 id="t-crear">Creando tus fotos</h1>
+        <p class="lead" id="wait-msg" aria-live="polite">Revisando tu foto…</p>
+        <div class="bar" aria-hidden="true"><span id="wait-bar"></span></div>
+        <p class="hint" id="wait-time">Suele tardar alrededor de un minuto.</p>
+      </div>
+    </section>
+
+    <!-- 3. Elegir -->
+    <section class="screen" id="s-elegir" hidden aria-labelledby="t-elegir">
+      <div class="head-row">
+        <h1 id="t-elegir">Elige tus favoritas</h1>
+        <span class="badge" id="round-badge" hidden></span>
+      </div>
+      <p class="lead">Marca las que publicarías. Si quieres, dinos por qué: lo usamos en la próxima ronda.</p>
+      <div class="cards" id="cards"></div>
+      <div class="actions sticky">
+        <span class="counter" id="counter">0 de 5 elegidas</span>
+        <button class="btn primary" id="btn-summary" type="button" disabled>Ver resumen</button>
+      </div>
+    </section>
+
+    <!-- 4. Listo -->
+    <section class="screen" id="s-listo" hidden aria-labelledby="t-listo">
+      <h1 id="t-listo">Tu resumen</h1>
+      <article class="summary" id="summary" aria-live="polite"></article>
+
+      <h2 class="h2">Tus fotos elegidas</h2>
+      <div class="thumbs" id="chosen"></div>
+
+      <div class="group" id="next-group">
+        <h2 class="h2">¿Otra ronda?</h2>
+        <p class="lead">Creamos cinco fotos nuevas a partir de lo que elegiste.</p>
+        <input class="field" id="next-note" maxlength="200" placeholder="Opcional: «más luminoso», «fondo de madera»…">
+        <button class="btn primary block" id="btn-next" type="button">Crear otra ronda</button>
+      </div>
+
+      <div class="actions column">
+        <button class="btn ghost block" id="btn-new" type="button">Empezar con otro producto</button>
+        <button class="link danger" id="btn-delete" type="button">Borrar mis fotos del servidor</button>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="alert" hidden></div>
+  <p class="foot">Imágenes generadas con IA · Las fotos se usan solo para esta sesión</p>
+  <script src="app.js" defer></script>
+</body>
+</html>

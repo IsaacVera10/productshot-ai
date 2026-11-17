@@ -357,3 +357,14 @@ def test_gemini_defaults_are_the_responsive_models():
 
     s = Settings(_env_file=None)
     assert (s.gemini_model_id, s.gemini_fallback_model_id) == ("gemini-3.5-flash", "gemini-3.5-flash-lite")
+
+
+# --- web app mobile-first ---
+
+
+def test_web_app_is_served_and_root_redirects(client):
+    r = client.get("/", follow_redirects=False)
+    assert r.status_code in (302, 307) and r.headers["location"] == "/app/"
+    page = client.get("/app/")
+    assert page.status_code == 200 and 'capture="environment"' in page.text
+    assert client.get("/app/app.js").status_code == 200 and client.get("/app/app.css").status_code == 200

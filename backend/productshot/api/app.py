@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, FastAPI, File, Form, Header, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from productshot.api.schemas import (
@@ -312,9 +314,29 @@ def create_app(
         log.exception("Error no controlado", exc_info=exc)
         return _error(500, "internal_error", "Error interno.")
 
+    _mount_web(app)
     if mount_ui:
         _mount_ui(app, settings)
     return app
+
+
+WEB_DIR = Path(__file__).resolve().parents[1] / "web"
+
+
+def _mount_web(app: FastAPI) -> None:
+    """Web app mobile-first (HTML, CSS y JS estáticos) en /app; la raíz lleva ahí.
+
+    Usa la API del mismo origen, así que funciona igual en la laptop que desde un celular en
+    la misma red (APP_HOST=0.0.0.0). La UI de Gradio sigue en /ui como panel técnico.
+    """
+    if not (WEB_DIR / "index.html").exists():
+        log.warning("No se encontró la web app en %s", WEB_DIR)
+        return
+    app.mount("/app", StaticFiles(directory=WEB_DIR, html=True), name="web")
+
+    @app.get("/", include_in_schema=False)
+    def _root() -> RedirectResponse:
+        return RedirectResponse(url="/app/")
 
 
 def _mount_ui(app: FastAPI, settings: Settings) -> None:
@@ -328,7 +350,3 @@ def _mount_ui(app: FastAPI, settings: Settings) -> None:
     host = "127.0.0.1" if settings.app_host in ("0.0.0.0", "::") else settings.app_host
     api_base = f"http://{host}:{settings.app_port}{API_PREFIX}"
     gr.mount_gradio_app(app, build_ui(api_base), path="/ui")
-
-    @app.get("/", include_in_schema=False)
-    def _root() -> RedirectResponse:
-        return RedirectResponse(url="/ui")
