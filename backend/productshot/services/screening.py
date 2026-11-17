@@ -162,6 +162,12 @@ class SafetyCheckedBackend:
     def model_revision(self) -> str:
         return self.inner.model_revision
 
+    def __getattr__(self, name: str):
+        # El resto (lora, params, attach_lora) es del backend envuelto: el health lo informa.
+        if name == "inner":
+            raise AttributeError(name)
+        return getattr(self.inner, name)
+
     def load(self) -> None:
         if hasattr(self.inner, "load"):
             self.inner.load()

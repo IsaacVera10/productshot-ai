@@ -70,14 +70,20 @@ class AdvancedWorker:
             raise RuntimeError("Falta GENERATION_WORKER_TOKEN: el worker no se sirve sin autenticación.")
         from productshot.services.sdxl_generation import NINE_CHANNEL_MODEL_ID, SdxlInpaintBackend, SdxlParams
 
-        self.backend = SdxlInpaintBackend(SdxlParams(
+        from productshot.config import Settings
+        from productshot.services.screening import SafetyCheckedBackend, _load_nsfw_classifier
+
+        sdxl = SdxlInpaintBackend(SdxlParams(
             model_id=NINE_CHANNEL_MODEL_ID, revision=MODEL_REVISION, strength=STRENGTH,
             prompt_version=PROMPT_VERSION,
         ))
-        self.backend.load()
-        loaded = self.backend.attach_lora(LORA_PATH)
+        sdxl.load()
+        loaded = sdxl.attach_lora(LORA_PATH)
         if loaded["sha256"] != LORA_SHA256:
             raise RuntimeError(f"El LoRA del volumen no coincide: {loaded['sha256']}")
+        # G7: cada salida pasa por el mismo clasificador NSFW que el worker principal.
+        self.backend = SafetyCheckedBackend(sdxl, _load_nsfw_classifier("cuda"),
+                                            threshold=Settings(_env_file=None).nsfw_threshold)
         cache.commit()
 
     @modal.asgi_app()
@@ -136,7 +142,7 @@ def smoke(out: str = "data/experiments/advanced_smoke") -> None:
     if (len(result["images"]) != 5 or result["lora"]["sha256"] != LORA_SHA256
             or any(p["prompt_version"] != PROMPT_VERSION or (p["lora"] or {}).get("sha256") != LORA_SHA256
                    or p["lora"]["scale"] != 1.0
-                   or p["strength"] != STRENGTH for p in params)):
+                   or p["strength"] != STRENGTH or "g7" not in p for p in params)):
         raise SystemExit(f"El smoke no coincide con la configuración del worker: revisar {dest / 'manifest.json'}")
     seconds = sorted(p["seconds"] for p in params)
     print(f"{result['model_revision']} · LoRA {LORA_SHA256[:12]} · prompts {PROMPT_VERSION} · strength {STRENGTH} "

@@ -175,3 +175,17 @@ def test_g15_lets_niche_products_through(make_client):
     r = post_photo(client)
     assert r.status_code == 201
     assert not [w for w in client.get(f"{API}/{r.json()['id']}").json()["warnings"] if w["guardrail"] == "G15"]
+
+
+def test_safety_wrapper_keeps_lora_visible_in_worker_health():
+    from fastapi.testclient import TestClient
+
+    from productshot.worker.app import create_worker_app
+
+    inner = MockGenerationBackend()
+    inner.lora = {"sha256": "abc", "path": "/cache/lora/x.safetensors"}
+    inner.params = type("P", (), {"lora_scale": 1.0})()
+    safe = SafetyCheckedBackend(inner, lambda img: 0.0)
+    health = TestClient(create_worker_app(safe, token="t")).get(
+        "/v1/health", headers={"Authorization": "Bearer t"}).json()
+    assert health["lora"] == {"sha256": "abc", "path": "/cache/lora/x.safetensors", "scale": 1.0}

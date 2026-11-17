@@ -140,6 +140,8 @@ WORKER_GPUS = os.environ.get("WORKER_GPUS", "H100,A100-80GB").split(",")
 class Worker:
     @modal.enter()
     def load(self) -> None:
+        if not os.environ.get("GENERATION_WORKER_TOKEN"):
+            raise RuntimeError("Falta GENERATION_WORKER_TOKEN: el worker no se sirve sin autenticación.")
         try:
             import onnxruntime
 
