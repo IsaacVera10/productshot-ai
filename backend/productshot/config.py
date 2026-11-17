@@ -41,7 +41,8 @@ class Settings(BaseSettings):
 
     # Agente de resumen (SUMMARY_BACKEND=gemini). Solo recibe decisiones y motivos.
     gemini_api_key: SecretStr | None = None
-    gemini_model_id: str = "gemini-3.8-flash"
+    # 3.5-flash y su lite: los más nuevos (3.7 y 3.8) respondían 503 por saturación el 2026-11-16.
+    gemini_model_id: str = "gemini-3.5-flash"
     gemini_fallback_model_id: str | None = "gemini-3.5-flash-lite"
     gemini_timeout_s: float = 20.0  # por llamada
     gemini_budget_s: float = 45.0  # todos los intentos juntos; la UI espera 60 s
