@@ -27,13 +27,15 @@ from productshot.services.layout import Layout, compose
 MIN_DINO = 0.9
 
 
-def choose(rows: list[dict], excluded: set[str]) -> dict[tuple[int, str], dict]:
+def choose(rows: list[dict], excluded: set[str], score: str = "text") -> dict[tuple[int, str], dict]:
+    """`score`: "text" (prompt de cada estilo) o "neutral" (descripciones de distill_rescore.py)."""
+    margin, top1 = f"{score}_margin", f"{score}_top1"
     best: dict[tuple[int, str], dict] = {}
     for r in rows:
-        if r["text_top1"] != r["style"] or r["dino_product"] < MIN_DINO or r["image"] in excluded:
+        if r[top1] != r["style"] or r["dino_product"] < MIN_DINO or r["image"] in excluded:
             continue
         key = (r["id"], r["style"])
-        if key not in best or r["text_margin"] > best[key]["text_margin"]:
+        if key not in best or r[margin] > best[key][margin]:
             best[key] = r
     return best
 
@@ -53,17 +55,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("run", type=Path)
     parser.add_argument("--source", type=Path, default=Path("data/bg60k/export/preset_masked.tar"))
     parser.add_argument("--out", type=Path, default=Path("data/bg60k/export/distill.tar"))
+    parser.add_argument("--neutral", action="store_true",
+                        help="elegir con metrics_neutral.jsonl (distill_rescore.py) en vez del texto del prompt")
     parser.add_argument("--exclude", type=Path, help="CSV con la columna image de las candidatas descartadas")
     args = parser.parse_args(argv)
 
     manifest = json.loads((args.run / "manifest.json").read_text(encoding="utf-8"))
     cfg = manifest["config"]
-    rows = [json.loads(line) for line in (args.run / "metrics.jsonl").open(encoding="utf-8")]
+    metrics = "metrics_neutral.jsonl" if args.neutral else "metrics.jsonl"
+    rows = [json.loads(line) for line in (args.run / metrics).open(encoding="utf-8")]
     excluded = set()
     if args.exclude:
         with args.exclude.open(encoding="utf-8") as f:
             excluded = {r["image"] for r in csv.DictReader(f)}
-    chosen = choose(rows, excluded)
+    chosen = choose(rows, excluded, "neutral" if args.neutral else "text")
 
     with tarfile.open(args.source) as src:
         files = {m.name: src.extractfile(m).read() for m in src.getmembers() if m.isfile()}
@@ -82,7 +87,7 @@ def main(argv: list[str] | None = None) -> int:
             add_bytes(tar, f"{stem}.jpg", image)
             add_bytes(tar, f"{stem}.mask", buf.getvalue())
             meta.append({"file_name": f"{stem}.jpg", "text": cfg["style_prompts"][style], "style": style,
-                         "mask": f"{stem}.mask", "source": r["image"], "text_margin": r["text_margin"]})
+                         "mask": f"{stem}.mask", "source": r["image"], "margin": r["neutral_margin" if args.neutral else "text_margin"]})
             counts[style] = counts.get(style, 0) + 1
         add_bytes(tar, "metadata.jsonl", "".join(json.dumps(m, ensure_ascii=False) + "\n" for m in meta).encode())
     tmp.replace(args.out)
