@@ -15,7 +15,7 @@ from typing import Protocol
 from PIL import Image, ImageDraw
 
 from productshot.domain import Mode, Style
-from productshot.services.presets import NEGATIVE_PROMPT, PRESETS, PROMPT_VERSION
+from productshot.services.presets import NEGATIVE_PROMPT, PRESETS, PROMPT_VERSION, PROMPTS
 from productshot.services.rounds import prompt_fragments, variant_key
 
 
@@ -32,9 +32,9 @@ class VariationSpec:
         return variant_key(self.style, self.adjustments)
 
 
-def build_prompt(style: Style, adjustments: tuple[str, ...]) -> str:
+def build_prompt(style: Style, adjustments: tuple[str, ...], version: str = PROMPT_VERSION) -> str:
     """Prompt del preset más los fragmentos FIJOS de cada ajuste. Ningún texto del usuario entra aquí."""
-    return ", ".join([PRESETS[style].prompt, *prompt_fragments(adjustments)])
+    return ", ".join([PROMPTS[version][style], *prompt_fragments(adjustments)])
 
 
 @dataclass(frozen=True)

@@ -25,7 +25,7 @@ from PIL import Image, ImageFilter
 
 from productshot.domain import Mode
 from productshot.services.generation import GeneratedArtifact, GenerationRequest, build_prompt
-from productshot.services.presets import NEGATIVE_PROMPT
+from productshot.services.presets import NEGATIVE_PROMPTS, PROMPT_VERSION
 
 log = logging.getLogger(__name__)
 
@@ -54,6 +54,8 @@ class SdxlParams:
     prompt_prefix: str = ""
     # Peso del LoRA en las solicitudes `advanced` cuando hay un adaptador cargado.
     lora_scale: float = 1.0
+    # Versión de los prompts y del negativo (presets.PROMPTS); el LoRA se entrena con una sola.
+    prompt_version: str = PROMPT_VERSION
 
 
 def generation_size(size: tuple[int, int], target_side: int) -> tuple[int, int]:
@@ -147,14 +149,15 @@ class SdxlInpaintBackend:
 
         results = []
         for spec in request.specs:
-            prompt = build_prompt(spec.style, spec.adjustments)
+            prompt = build_prompt(spec.style, spec.adjustments, p.prompt_version)
+            negative = NEGATIVE_PROMPTS[p.prompt_version]
             if p.prompt_prefix:
                 prompt = f"{p.prompt_prefix}, {prompt}"
             t0 = time.perf_counter()
             _reset_peak_memory()
             out = self._pipe(
                 prompt=prompt,
-                negative_prompt=NEGATIVE_PROMPT,
+                negative_prompt=negative,
                 image=image,
                 mask_image=mask,
                 height=gen_size[1],
@@ -181,7 +184,8 @@ class SdxlInpaintBackend:
                         "mode": request.mode.value,
                         "lora": lora,  # None si no hay adaptador; si no, sha256 y peso aplicado
                         "prompt": prompt,
-                        "negative_prompt": NEGATIVE_PROMPT,
+                        "negative_prompt": negative,
+                        "prompt_version": p.prompt_version,
                         "adjustments": list(spec.adjustments),
                         "steps": p.steps,
                         "guidance_scale": p.guidance_scale,
