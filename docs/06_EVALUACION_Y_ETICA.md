@@ -68,8 +68,11 @@ Cada problema observado se registra con la tarea, cuántas personas lo tuvieron 
    - U1: subir la foto y elegir el modo indicado.
    - U2: revisar las cinco imágenes y aceptar o rechazar cada una, con el motivo de al menos una.
    - U3: pedir el resumen y decir si refleja lo que decidió.
+   - U4 (2026-11-16): pedir una nueva ronda y decir si las fotos tienen en cuenta lo que eligió (coherencia entre preferencias e iteraciones, criterio de la rúbrica).
 4. Durante las tareas, la persona piensa en voz alta y quien observa no ayuda. Si queda bloqueada más de dos minutos, se le ayuda y la tarea cuenta como no completada.
 5. Al final: cuestionario SUS y tres preguntas abiertas: qué fue lo más confuso, qué cambiaría y si usaría la herramienta para sus ventas.
+
+**Materiales (2026-11-16):** guion con consentimiento, tareas, SEQ y SUS en `evaluation/prueba_usuarios/guion.md`; hoja `registro.csv`; `calentar.py` para despertar el worker antes de cada sesión y `analizar.py` para las métricas (SUS, éxito con IC de Wilson, medianas). Si el modo avanzado no está disponible el día de la prueba, todas las sesiones usan el intermedio y se declara.
 
 **Registro:** una hoja por participante con tiempos, errores, respuestas y observaciones. No se graba el rostro; si se graba la pantalla, con consentimiento. Las decisiones de estas sesiones también alimentan la métrica de preferencia.
 
