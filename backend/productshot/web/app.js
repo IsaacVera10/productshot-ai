@@ -370,6 +370,9 @@ function reset() {
 
 $("in-camera").addEventListener("change", onPick);
 $("in-gallery").addEventListener("change", onPick);
+// Se abren desde el botón (gesto directo de la persona), como exigen iOS Safari y Chrome móvil.
+$("btn-camera").addEventListener("click", () => $("in-camera").click());
+$("btn-gallery").addEventListener("click", () => $("in-gallery").click());
 $("btn-change").addEventListener("click", () => { $("picker").hidden = false; $("preview").hidden = true; });
 for (const b of document.querySelectorAll("#category-group [role=radio]")) {
   b.addEventListener("click", () => pickChip(b, $("category-group"), "category"));

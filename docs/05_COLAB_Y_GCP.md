@@ -223,7 +223,7 @@ Costo de todos los experimentos: unos USD 10 de los créditos de Modal (estimado
 
 ### Worker del modo intermedio (2026-11-16)
 
-Clase `Worker` de `deploy/modal/worker.py`, con imagen propia (torch 2.8, diffusers 0.43, transformers 5.23, onnxruntime-gpu 1.22) y GPU L40S con respaldo A100 y H100. Carga Qwen-Image-2.1-Turbo, BiRefNet (GPU), el clasificador NSFW (G2 y G7), Haar (G3) y CLIP (G15).
+Clase `Worker` de `deploy/modal/worker.py`, con imagen propia (torch 2.8, diffusers 0.43, transformers 5.23, onnxruntime-gpu 1.22) y GPU A100 de 80 GB con respaldo H100 (la L40S, de 44 GB útiles, quedó sin memoria con el editor y BiRefNet juntos). Carga Qwen-Image-2.1-Turbo, BiRefNet (GPU), el clasificador NSFW (G2 y G7), Haar (G3) y CLIP (G15).
 
 ```bash
 PYTHONPATH=backend uv run --with modal modal deploy deploy/modal/worker.py

@@ -108,15 +108,22 @@ edit_image = (
     )
     # rembg arrastra el onnxruntime de CPU, que tapa al de GPU: se quita y se reinstala el de GPU.
     .run_commands("pip uninstall -y onnxruntime", "pip install --force-reinstall --no-deps onnxruntime-gpu==1.22.0")
-    .env({"HF_HOME": f"{CACHE}/hf", "U2NET_HOME": f"{CACHE}/u2net", "HF_HUB_DISABLE_TELEMETRY": "1"})
+    .env({"HF_HOME": f"{CACHE}/hf", "U2NET_HOME": f"{CACHE}/u2net", "HF_HUB_DISABLE_TELEMETRY": "1",
+          # Menos fragmentación de la memoria de la GPU.
+          "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"})
     .add_local_dir(ROOT / "backend" / "productshot", "/root/productshot")
 )
+
+# GPU del worker: A100 de 80 GB y H100 de respaldo. La L40S (44 GB útiles) NO alcanza: el editor
+# llega a ~40 GB de pico y BiRefNet necesita varios GB más (OOM el 2026-11-16 sin tope; con un
+# tope de 2 GB falla BiRefNet). WORKER_GPUS permite forzar una para pruebas.
+WORKER_GPUS = os.environ.get("WORKER_GPUS", "A100-80GB,H100").split(",")
 
 
 @app.cls(
     image=edit_image,
-    # Qwen-Image-2.1-Turbo usa ~39 GB de pico en bf16: L40S (48 GB) primero, A100/H100 de respaldo.
-    gpu=["L40S", "A100-80GB", "H100"],
+    # Qwen-Image-2.1-Turbo usa ~40 GB de pico en bf16, más BiRefNet y los clasificadores.
+    gpu=WORKER_GPUS,
     volumes={CACHE: cache},
     secrets=[secret],
     # Tope por llamada: el lote verifica candidatas con un presupuesto de 420 s (QwenEditBackend)
