@@ -53,6 +53,8 @@ def create_worker_app(
             backend=backend.name, model_revision=backend.model_revision, simulated=backend.simulated,
             segmenter=segmenter.name if segmenter else None,
             segmenter_simulated=segmenter.simulated if segmenter else None,
+            lora=({**backend.lora, "scale": backend.params.lora_scale}
+                  if getattr(backend, "lora", None) else None),
         )
 
     @app.post(SEGMENT_PATH, response_model=SegmentOut)

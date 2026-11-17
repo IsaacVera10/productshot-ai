@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import types
 import re
 from pathlib import Path
 
@@ -281,3 +282,13 @@ def test_remote_segmentation_requires_worker_url(tmp_path):
 
     with pytest.raises(ConfigError, match="GENERATION_WORKER_URL"):
         build_segmenter(_settings(tmp_path, segmentation_backend="remote"))
+
+
+def test_worker_health_reports_the_loaded_lora():
+    backend = MockGenerationBackend()
+    headers = {"Authorization": f"Bearer {TOKEN}"}
+    assert TestClient(create_worker_app(backend, token=TOKEN)).get(HEALTH_PATH, headers=headers).json()["lora"] is None
+    backend.lora = {"path": "/cache/lora/x.safetensors", "sha256": "abc"}
+    backend.params = types.SimpleNamespace(lora_scale=1.0)
+    lora = TestClient(create_worker_app(backend, token=TOKEN)).get(HEALTH_PATH, headers=headers).json()["lora"]
+    assert lora == {"path": "/cache/lora/x.safetensors", "sha256": "abc", "scale": 1.0}

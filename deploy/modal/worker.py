@@ -25,6 +25,7 @@ va en el `.env` de la API).
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 import os
@@ -94,8 +95,16 @@ class Worker:
     def load(self) -> None:
         from productshot.services.sdxl_generation import DEFAULT_MODEL_ID
 
-        # SDXL_MODEL_ID permite cambiar de checkpoint sin tocar código (P3, P4).
+        # SDXL_MODEL_ID permite cambiar de checkpoint sin tocar código (P3, P4). El worker del modo
+        # avanzado usa el UNet de nueve canales con SDXL_STRENGTH=1.0 y el LoRA del volumen, que se
+        # verifica por sha256 antes de servir (docs/10).
         _load_pieces(self, os.environ.get("SDXL_MODEL_ID", DEFAULT_MODEL_ID))
+        if os.environ.get("SDXL_STRENGTH"):
+            self.backend.params = dataclasses.replace(self.backend.params, strength=float(os.environ["SDXL_STRENGTH"]))
+        if os.environ.get("LORA_ADAPTER_PATH"):
+            loaded = self.backend.attach_lora(os.environ["LORA_ADAPTER_PATH"])
+            if loaded["sha256"] != os.environ.get("LORA_ADAPTER_SHA256"):
+                raise RuntimeError(f"El LoRA del volumen no coincide: {loaded['sha256']}")
 
     @modal.asgi_app()
     def web(self):
