@@ -1,0 +1,129 @@
+"""Worker del modo avanzado en Modal: UNet de inpainting de nueve canales con el LoRA propio.
+
+La API lo usa con ADVANCED_WORKER_URL y ADVANCED_WORKER_TOKEN; el intermedio sigue en
+`worker.py`. Solo sirve /v1/health y /v1/generate: la API recibe el lienzo ya reencuadrado
+(`services/layout.py`) y recompone el producto con G8.
+
+    modal volume put productshot-hf-cache <adaptador> lora/<nombre>.safetensors
+    modal run deploy/modal/advanced_worker.py::smoke     # un lote de cinco con un producto sintético
+    modal deploy deploy/modal/advanced_worker.py
+
+Secreto requerido: `productshot-advanced` con `GENERATION_WORKER_TOKEN` (el mismo valor va en
+ADVANCED_WORKER_TOKEN de la API). El adaptador se verifica por sha256 antes de servir.
+"""
+
+from __future__ import annotations
+
+import io
+import os
+from pathlib import Path
+
+import modal
+
+ROOT = Path(__file__).resolve().parents[2] if modal.is_local() else Path("/root")
+CACHE = "/cache"
+
+# LoRA por autodestilación confirmado en test (docs/10): checkpoint 400 de v4distill, prompts v1.
+LORA_PATH = f"{CACHE}/lora/v4distill-ckpt400.safetensors"
+LORA_SHA256 = "a1e399ca21f7679375fc5dbe4bbd17c5a80317622db9e51887c156b3eb7b886b"
+STRENGTH = 1.0
+PROMPT_VERSION = "v1"
+
+image = (
+    modal.Image.debian_slim(python_version="3.11")
+    .pip_install(
+        "torch==2.5.1",
+        "diffusers==0.31.0",
+        "transformers==4.46.3",
+        "accelerate==1.1.1",
+        "safetensors==0.4.5",
+        "huggingface_hub==0.26.2",
+        "peft==0.13.2",
+        "fastapi==0.162.0",
+        "pydantic==2.14.2",
+        "pydantic-settings==2.16.2",
+        "pillow==12.3.0",
+        "httpx==0.28.1",
+    )
+    .env({"HF_HOME": f"{CACHE}/hf", "HF_HUB_DISABLE_TELEMETRY": "1"})
+    .add_local_dir(ROOT / "backend" / "productshot", "/root/productshot")
+)
+
+app = modal.App("productshot-advanced", image=image)
+cache = modal.Volume.from_name("productshot-hf-cache", create_if_missing=True)
+
+
+@app.cls(
+    gpu=["L4", "A10G"],  # A10G si no hay L4 libres: Modal llegó a no tener capacidad L4
+    volumes={CACHE: cache},
+    secrets=[modal.Secret.from_name("productshot-advanced")],
+    timeout=600,
+    scaledown_window=120,
+    max_containers=1,
+)
+class AdvancedWorker:
+    @modal.enter()
+    def load(self) -> None:
+        from productshot.services.sdxl_generation import NINE_CHANNEL_MODEL_ID, SdxlInpaintBackend, SdxlParams
+
+        self.backend = SdxlInpaintBackend(SdxlParams(
+            model_id=NINE_CHANNEL_MODEL_ID, strength=STRENGTH, prompt_version=PROMPT_VERSION,
+        ))
+        self.backend.load()
+        loaded = self.backend.attach_lora(LORA_PATH)
+        if loaded["sha256"] != LORA_SHA256:
+            raise RuntimeError(f"El LoRA del volumen no coincide: {loaded['sha256']}")
+        cache.commit()
+
+    @modal.asgi_app()
+    def web(self):
+        from productshot.worker.app import create_worker_app
+
+        return create_worker_app(self.backend, token=os.environ.get("GENERATION_WORKER_TOKEN"))
+
+    @modal.method()
+    def smoke(self, image_png: bytes, mask_png: bytes) -> dict:
+        from PIL import Image
+
+        from productshot.domain import Mode, Style
+        from productshot.services.generation import GenerationRequest, VariationSpec
+
+        image = Image.open(io.BytesIO(image_png)).convert("RGB")
+        mask = Image.open(io.BytesIO(mask_png)).convert("L")
+        specs = tuple(VariationSpec(position=i + 1, style=s, seed=100 + i) for i, s in enumerate(Style))
+        arts = self.backend.generate(GenerationRequest(session_id="smoke", mode=Mode.ADVANCED, image=image,
+                                                       mask=mask, specs=specs))
+        out = {"model_revision": self.backend.model_revision, "lora": self.backend.lora, "images": {}}
+        for art in arts:
+            buf = io.BytesIO()
+            art.image.save(buf, format="PNG")
+            out["images"][art.style.value] = buf.getvalue()
+            out.setdefault("params", art.params)
+        return out
+
+
+@app.local_entrypoint()
+def smoke(out: str = "data/experiments/advanced_smoke") -> None:
+    """Un lote de cinco con un producto sintético reencuadrado como lo hace la API."""
+    from PIL import Image, ImageDraw
+
+    from productshot.services.layout import Layout, compose
+
+    photo = Image.new("RGB", (1024, 768), (200, 200, 200))
+    ImageDraw.Draw(photo).rounded_rectangle((420, 180, 600, 560), radius=40, fill=(245, 245, 240))
+    mask = Image.new("L", photo.size, 255)
+    ImageDraw.Draw(mask).rounded_rectangle((420, 180, 600, 560), radius=40, fill=0)
+    canvas, canvas_mask = compose(photo, mask, Layout())
+
+    def png(im) -> bytes:
+        buf = io.BytesIO()
+        im.save(buf, format="PNG")
+        return buf.getvalue()
+
+    result = AdvancedWorker().smoke.remote(png(canvas), png(canvas_mask))
+    dest = Path(out)
+    dest.mkdir(parents=True, exist_ok=True)
+    for style, data in result["images"].items():
+        (dest / f"{style}.png").write_bytes(data)
+    print(f"{result['model_revision']} · LoRA {result['lora']['sha256'][:12]} · {result['params']['strength']} "
+          f"· {result['params']['seconds']} s por imagen · {dest}")
