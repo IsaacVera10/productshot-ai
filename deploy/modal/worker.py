@@ -546,6 +546,17 @@ EXPERIMENT_SETS = {
         "S_nueve_reencuadre_45_s100": {"engine": "nine", "strength": 1.0,
                                        "layout": {"height": 0.45, "bottom": 0.85}},
     },
+    # 2026-11-16: prompts v2 de fotógrafo (lente, luz, sombra de contacto y negativo sin equipo de
+    # estudio) frente a v1, sobre la base del avanzado; borde protegido y strength 0.95 contra las
+    # partes agregadas.
+    "fotografo": {
+        "V1": {"engine": "nine", "strength": 1.0, "layout": {"height": 0.45, "bottom": 0.85}},
+        "V2": {"engine": "nine", "strength": 1.0, "prompt_version": "v2", "layout": {"height": 0.45, "bottom": 0.85}},
+        "V2_borde4": {"engine": "nine", "strength": 1.0, "prompt_version": "v2", "mask_dilate_px": 4,
+                      "layout": {"height": 0.45, "bottom": 0.85}},
+        "V2_s095": {"engine": "nine", "strength": 0.95, "prompt_version": "v2",
+                    "layout": {"height": 0.45, "bottom": 0.85}},
+    },
     # 2026-11-14: verificación del LoRA del smoke test de Colab (P4, ADR-009). Controles por
     # motor: sin adaptador, adaptador con peso 0 dos veces (repetibilidad) y peso 1. En nueve
     # canales, además, strength 0.99 y 1.0. Con 1.0 los latentes parten de ruido puro, pero el
