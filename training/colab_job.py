@@ -13,6 +13,7 @@ Etapas:
    preset del estilo); `upload` usa una carpeta imagefolder subida como tar.
 3. Entrenamiento: `train_text_to_image_lora_sdxl.py` de diffusers 0.31.0 sobre SDXL base,
    con checkpoints para reanudar (`--resume_from_checkpoint latest`).
+   Con `masked_loss`, una copia parcheada del script pondera el error solo sobre el fondo.
 4. Verificación (smoke test de P4): carga el adaptador en el pipeline de inpainting de cuatro
    canales y en el de nueve, genera con el LoRA apagado y encendido con la misma semilla y
    mide cuánto cambia el fondo. Falla si algún pipeline no tiene los canales esperados, si no
@@ -53,6 +54,80 @@ SCRIPT_URL = (
     "examples/text_to_image/train_text_to_image_lora_sdxl.py"
 )
 SCRIPT_SHA256 = "5860e4a50f5d7a75b3f5c73d1df153ea604069e2f90bdd0994308749541fe959"
+MASKED_SCRIPT = CONTENT / "train_masked.py"
+
+# Pérdida solo sobre el fondo: cada imagen trae en `mask` el nombre de su máscara del producto
+# (blanco = producto). La máscara sigue el mismo resize y recorte que la foto, se reduce a la
+# resolución latente y el error del producto pesa 0. La hipótesis es que así el LoRA aprende
+# el entorno y no a dibujar productos; no lo garantiza, porque la VAE mezcla vecinos y los pesos
+# del LoRA se comparten.
+MASKED_PATCH = [
+    ("import numpy as np\n", "import numpy as np\nfrom PIL import Image\n"),
+    ("    def preprocess_train(examples):\n",
+     "    if args.random_flip or args.snr_gamma is not None:\n"
+     "        raise ValueError(\"La pérdida con máscara no admite --random_flip ni --snr_gamma.\")\n\n"
+     "    def preprocess_train(examples):\n"),
+    ('        images = [image.convert("RGB") for image in examples[image_column]]\n',
+     '        images = [image.convert("RGB") for image in examples[image_column]]\n'
+     '        masks = [Image.open(os.path.join(args.train_data_dir, n)).convert("L") for n in examples["mask"]]\n'
+     "        all_weights = []\n"),
+    ("            image = train_resize(image)\n",
+     "            if masks[len(all_images)].size != image.size:\n"
+     "                raise ValueError(\"La máscara no tiene el tamaño de la foto.\")\n"
+     "            image = train_resize(image)\n"
+     "            resized = image.size\n"),
+    ("            crop_top_lefts.append(crop_top_left)\n",
+     "            crop_top_lefts.append(crop_top_left)\n"
+     "            mask = masks[len(all_images)].resize(resized, Image.BILINEAR)\n"
+     "            mask = crop(mask, y1, x1, args.resolution, args.resolution)\n"
+     "            product = torch.from_numpy(np.array(mask, dtype=np.float32) / 255.0)[None, None]\n"
+     "            all_weights.append(1.0 - F.avg_pool2d(product, 8)[0])\n"),
+    ('        examples["pixel_values"] = all_images\n',
+     '        examples["pixel_values"] = all_images\n'
+     '        examples["loss_weights"] = all_weights\n'),
+    ('            "crop_top_lefts": crop_top_lefts,\n',
+     '            "crop_top_lefts": crop_top_lefts,\n'
+     '            "loss_weights": torch.stack([example["loss_weights"] for example in examples]),\n'),
+    ('                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")\n',
+     '                    weights = batch["loss_weights"].to(model_pred.device, torch.float32)\n'
+     "                    error = (model_pred.float() - target.float()) ** 2 * weights\n"
+     "                    loss = error.sum() / (weights.sum() * model_pred.shape[1]).clamp(min=1.0)\n"),
+]
+
+# Objetivo de inpainting sobre el UNet de nueve canales (va encima de MASKED_PATCH): la entrada
+# es el latente con ruido, la máscara de lo editable (el fondo) y la foto con solo el producto,
+# igual que en StableDiffusionXLInpaintPipeline. Así el LoRA aprende a generar el entorno real
+# de cada producto (superficie, sombra y reflejos) en vez de la foto entera.
+INPAINT_PATCH = [
+    ("        all_weights = []\n", "        all_weights = []\n        all_products = []\n"),
+    ("            all_weights.append(1.0 - F.avg_pool2d(product, 8)[0])\n",
+     "            all_weights.append(1.0 - F.avg_pool2d(product, 8)[0])\n"
+     "            all_products.append(product[0])\n"),
+    ('        examples["loss_weights"] = all_weights\n',
+     '        examples["loss_weights"] = all_weights\n'
+     '        examples["product_pixels"] = all_products\n'),
+    ('            "loss_weights": torch.stack([example["loss_weights"] for example in examples]),\n',
+     '            "loss_weights": torch.stack([example["loss_weights"] for example in examples]),\n'
+     '            "product_pixels": torch.stack([example["product_pixels"] for example in examples]),\n'),
+    ("                noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)\n",
+     "                noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)\n"
+     '                keep = (batch["product_pixels"].to(pixel_values.device) > 0.5).to(pixel_values.dtype)\n'
+     "                masked_latents = vae.encode(pixel_values * keep).latent_dist.sample() * vae.config.scaling_factor\n"
+     "                masked_latents = masked_latents.to(noisy_model_input.dtype)\n"
+     "                inpaint_mask = F.interpolate(1.0 - keep, size=noisy_model_input.shape[-2:])\n"
+     "                inpaint_mask = inpaint_mask.to(noisy_model_input.dtype)\n"),
+    ("                model_pred = unet(\n                    noisy_model_input,\n",
+     "                model_pred = unet(\n"
+     "                    torch.cat([noisy_model_input, inpaint_mask, masked_latents], dim=1),\n"),
+]
+
+
+def patch_script(source: str, inpaint: bool = False) -> str:
+    for old, new in MASKED_PATCH + (INPAINT_PATCH if inpaint else []):
+        if source.count(old) != 1:
+            raise RuntimeError(f"El script oficial cambió: no encuentro una sola vez {old.strip()!r}.")
+        source = source.replace(old, new)
+    return source
 
 
 def log(msg: str) -> None:
@@ -191,6 +266,10 @@ def environment(cfg: dict) -> dict:
     if sha256(script) != SCRIPT_SHA256:
         raise RuntimeError("El script oficial de diffusers no coincide con el sha256 esperado.")
     info["train_script"] = {"url": SCRIPT_URL, "sha256": SCRIPT_SHA256}
+    if cfg.get("train", {}).get("masked_loss"):
+        source = patch_script(script.read_text(encoding="utf-8"), inpaint=cfg["train"].get("objective") == "inpaint")
+        MASKED_SCRIPT.write_text(source, encoding="utf-8")
+        info["train_script"]["masked_sha256"] = sha256(MASKED_SCRIPT)
     log(f"Entorno: {info['gpu']} ({info['vram_total_gb']} GB), {info['packages']}")
     return info
 
@@ -200,11 +279,21 @@ def build_dataset(cfg: dict) -> dict:
     ds = cfg["dataset"]
     if ds["kind"] == "upload":
         tar_path = CONTENT / ds["remote_tar"]
+        if ds.get("parts"):
+            with tar_path.open("wb") as dst:
+                for k in range(ds["parts"]):
+                    part = CONTENT / f"{ds['remote_tar']}.part{k:03d}"
+                    dst.write(part.read_bytes())
+                    part.unlink()
+        if ds.get("sha256") and sha256(tar_path) != ds["sha256"]:
+            raise RuntimeError("El dataset subido no coincide con el sha256 de la laptop.")
         DATA.mkdir(parents=True, exist_ok=True)
         with tarfile.open(tar_path) as tar:
             tar.extractall(DATA, filter="data")
-        n = sum(1 for _ in (DATA / "metadata.jsonl").open())
-        return {"kind": "upload", "images": n, "tar_sha256": sha256(tar_path)}
+        rows = [json.loads(line) for line in (DATA / "metadata.jsonl").open(encoding="utf-8")]
+        if cfg["train"].get("masked_loss"):
+            check_masks(rows)
+        return {"kind": "upload", "images": len(rows), "tar_sha256": sha256(tar_path)}
 
     # kind == "generate": dataset mínimo para comprobar la mecánica, no la calidad.
     import torch
@@ -236,25 +325,39 @@ def build_dataset(cfg: dict) -> dict:
     return {"kind": "generate", "images": len(rows), "seed_rule": "1000 + 10 * producto + estilo"}
 
 
+def check_masks(rows: list[dict], min_background: float = 0.2) -> None:
+    from PIL import Image
+
+    for r in rows:
+        path = DATA / r.get("mask", "")
+        if not path.is_file():
+            raise RuntimeError(f"Falta la máscara de {r['file_name']}.")
+        with Image.open(path) as mask, Image.open(DATA / r["file_name"]) as photo:
+            if mask.size != photo.size:
+                raise RuntimeError(f"La máscara de {r['file_name']} no tiene el tamaño de la foto.")
+            hist = mask.convert("L").histogram()
+        if sum(hist[:128]) / sum(hist) < min_background:
+            raise RuntimeError(f"La máscara de {r['file_name']} deja menos de {min_background:.0%} de fondo.")
+
+
 def train(cfg: dict) -> dict:
     t = cfg["train"]
     cmd = [
         sys.executable, "-m", "accelerate.commands.launch", "--num_processes", "1",
         "--mixed_precision", t["mixed_precision"],
-        str(CONTENT / "train_text_to_image_lora_sdxl.py"),
-        "--pretrained_model_name_or_path", cfg["base_model"],
-        "--revision", cfg["base_revision"],
+        str(MASKED_SCRIPT if t.get("masked_loss") else CONTENT / "train_text_to_image_lora_sdxl.py"),
+        "--pretrained_model_name_or_path", t.get("model", cfg["base_model"]),
+        "--revision", t.get("model_revision", cfg["base_revision"]),
         "--variant", "fp16",  # los mismos archivos que la generación: una sola descarga
         "--train_data_dir", str(DATA),
         "--caption_column", "text",
         "--resolution", str(t["resolution"]),
-        "--random_flip",
         "--train_batch_size", "1",
         "--gradient_accumulation_steps", str(t["grad_accum"]),
         "--gradient_checkpointing",
         "--max_train_steps", str(t["steps"]),
         "--checkpointing_steps", str(t["checkpointing_steps"]),
-        "--checkpoints_total_limit", "2",
+        "--checkpoints_total_limit", "8",
         "--resume_from_checkpoint", "latest",
         "--learning_rate", str(t["learning_rate"]),
         "--lr_scheduler", "constant",
@@ -428,7 +531,9 @@ def verify(cfg: dict) -> dict:
                 "background_mean_abs_diff_lora_on_vs_off": round(diff, 3),
                 "warnings": own_warnings, "checks": checks,
             }
-            failures += [f"{name}: {k}" for k, ok in checks.items() if not ok]
+            required = cfg["verify"].get("effect_required", True)
+            failures += [f"{name}: {k}" for k, ok in checks.items()
+                         if not ok and (required or k != "el_lora_cambia_la_imagen")]
             log(f"  {in_channels} canales, {len(lora_a)}/{file_layers} capas, error máx. "
                 f"{loaded['max_rel_err']:.2e}, fondo {diff:.2f}/255, fallas: {[k for k, ok in checks.items() if not ok]}")
             del pipe
@@ -458,11 +563,10 @@ def package(manifest_path: Path) -> None:
             tar.add(weights, arcname=weights.name)
         if (TRAIN_OUT / "logs").exists():
             tar.add(TRAIN_OUT / "logs", arcname="logs")
-        checkpoints = sorted(TRAIN_OUT.glob("checkpoint-*"), key=lambda d: int(d.name.split("-")[1]))
-        if checkpoints:
-            last = checkpoints[-1] / "pytorch_lora_weights.safetensors"
-            if last.exists():
-                tar.add(last, arcname=f"{checkpoints[-1].name}_pytorch_lora_weights.safetensors")
+        for checkpoint in sorted(TRAIN_OUT.glob("checkpoint-*"), key=lambda d: int(d.name.split("-")[1])):
+            weights = checkpoint / "pytorch_lora_weights.safetensors"
+            if weights.exists():
+                tar.add(weights, arcname=f"{checkpoint.name}_pytorch_lora_weights.safetensors")
 
 
 def main() -> None:

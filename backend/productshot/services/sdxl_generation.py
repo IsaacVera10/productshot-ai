@@ -31,7 +31,7 @@ from PIL import Image, ImageFilter
 
 from productshot.domain import Mode, Style
 from productshot.services.generation import GeneratedArtifact, GenerationRequest, build_prompt
-from productshot.services.presets import NEGATIVE_PROMPT, PRESETS
+from productshot.services.presets import NEGATIVE_PROMPTS, PRESETS, PROMPT_VERSION
 from productshot.services.scenes import SCENE_NEGATIVE, SCENE_PROMPT_VERSION, build_scene_prompt
 
 log = logging.getLogger(__name__)
@@ -63,6 +63,8 @@ class SdxlParams:
     prompt_prefix: str = ""
     # Peso del LoRA en las solicitudes `advanced` cuando hay un adaptador cargado.
     lora_scale: float = 1.0
+    # Versión de los prompts y del negativo (presets.PROMPTS); el LoRA se entrena con una sola.
+    prompt_version: str = PROMPT_VERSION
     # Fondo de la ENTRADA antes de generar. Con strength < 1 los latentes parten de la foto y
     # el fondo original (pared, mantel) ancla los colores. "blend" mezcla `prefill_mix` del
     # degradado del preset con el fondo original difuminado (conserva el plano de la mesa);
@@ -188,14 +190,14 @@ class SdxlInpaintBackend:
         lora = self._lora_for(request.mode)
 
         scene = p.prompt_set == "scene"
-        negative = SCENE_NEGATIVE if scene else NEGATIVE_PROMPT
-        prompt_version = SCENE_PROMPT_VERSION if scene else request.prompt_version
+        negative = SCENE_NEGATIVE if scene else NEGATIVE_PROMPTS[p.prompt_version]
+        prompt_version = SCENE_PROMPT_VERSION if scene else p.prompt_version
         results = []
         for spec in request.specs:
             if scene:
                 prompt = build_scene_prompt(spec.style, request.category, spec.adjustments)
             else:
-                prompt = build_prompt(spec.style, spec.adjustments)
+                prompt = build_prompt(spec.style, spec.adjustments, p.prompt_version)
             if p.prompt_prefix:
                 prompt = f"{p.prompt_prefix}, {prompt}"
             spec_image = image
@@ -235,6 +237,7 @@ class SdxlInpaintBackend:
                         "lora": lora,  # None si no hay adaptador; si no, sha256 y peso aplicado
                         "prompt": prompt,
                         "negative_prompt": negative,
+                        "prompt_version": prompt_version,
                         "prompt_set": p.prompt_set,
                         "category": request.category.value if request.category else None,
                         "prefill": p.prefill,

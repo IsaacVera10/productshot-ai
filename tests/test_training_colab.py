@@ -47,6 +47,13 @@ FAKE_COLAB = textwrap.dedent('''\
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(rest[0], dest)
     elif cmd == "exec":
+        marker = remote / "exec_failed_once"
+        if os.environ.get("FAKE_EXEC_HANGS") and not marker.exists():
+            marker.write_text("1")
+            time.sleep(30)  # como el CLI real tras perder la conexión: no corre el trabajo ni termina
+        if os.environ.get("FAKE_EXEC_NOT_STARTED") and not marker.exists():
+            marker.write_text("1")
+            sys.exit(1)
         job = json.loads((remote / "content/job.json").read_text())
         out = remote / "content/out"
         out.mkdir(parents=True, exist_ok=True)
@@ -65,6 +72,7 @@ FAKE_COLAB = textwrap.dedent('''\
             if not os.environ.get("FAKE_NO_ADAPTER"):
                 tar.add(weights, arcname=weights.name)
         # Como el CLI real: devuelve 0 aunque el código remoto falle.
+        sys.exit(int(os.environ.get("FAKE_EXEC_CODE", "0")))
     elif cmd == "download":
         src = remote / rest[0].lstrip("/")
         if not src.exists():
@@ -283,3 +291,141 @@ def test_deadline_kills_the_whole_process_group(tmp_path):
     time.sleep(0.5)
     with pytest.raises(ProcessLookupError):
         os.kill(child, 0)
+
+
+def load_job():
+    spec = importlib.util.spec_from_file_location("colab_job", ROOT / "training" / "colab_job.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_masked_patch_replaces_each_anchor_once():
+    job = load_job()
+    source = "".join(old for old, _ in job.MASKED_PATCH)
+    patched = job.patch_script(source)
+    assert 'examples["loss_weights"] = all_weights' in patched
+    assert "reduction=\"mean\"" not in patched
+    with pytest.raises(RuntimeError):
+        job.patch_script(source.replace("crop_top_lefts.append(crop_top_left)", "otra cosa"))
+
+
+def test_masked_loss_reaches_the_config():
+    drv = load_driver()
+    assert drv.build_config("train", "r3", dataset_remote="dataset.tar")["train"]["masked_loss"] is False
+    cfg = drv.build_config("train", "r3", dataset_remote="dataset.tar", masked_loss=True)
+    assert cfg["train"]["masked_loss"] is True
+
+
+def test_check_masks_rejects_wrong_size_or_no_background(tmp_path, monkeypatch):
+    from PIL import Image
+
+    job = load_job()
+    monkeypatch.setattr(job, "DATA", tmp_path)
+    Image.new("RGB", (8, 8)).save(tmp_path / "1.png")
+    rows = [{"file_name": "1.png", "mask": "1.mask"}]
+    Image.new("L", (8, 8), 0).save(tmp_path / "1.mask", format="PNG")
+    job.check_masks(rows)
+    Image.new("L", (8, 8), 255).save(tmp_path / "1.mask", format="PNG")
+    with pytest.raises(RuntimeError, match="fondo"):
+        job.check_masks(rows)
+    Image.new("L", (4, 8), 0).save(tmp_path / "1.mask", format="PNG")
+    with pytest.raises(RuntimeError, match="tamaño"):
+        job.check_masks(rows)
+    with pytest.raises(RuntimeError, match="Falta"):
+        job.check_masks([{"file_name": "1.png"}])
+
+
+def test_lost_exec_connection_waits_for_the_job(fake, monkeypatch):
+    drv, run, server = fake
+    monkeypatch.setenv("FAKE_EXEC_CODE", "1")
+    code, calls = run()
+    assert code == 0 and "stop" in calls
+
+
+def test_exec_is_retried_when_the_job_never_started(fake, monkeypatch):
+    drv, run, server = fake
+    monkeypatch.setenv("FAKE_EXEC_NOT_STARTED", "1")
+    code, calls = run()
+    assert code == 0 and calls.count("exec") == 2 and "stop" in calls
+
+
+def test_inpaint_trains_the_nine_channel_unet_with_masks():
+    drv = load_driver()
+    t = drv.build_config("train", "r4", dataset_remote="dataset.tar", inpaint=True)["train"]
+    assert t["objective"] == "inpaint" and t["masked_loss"] is True
+    assert t["model"] == drv.NINE_MODEL and t["model_revision"] == drv.NINE_REVISION
+    job = load_job()
+    masked = "".join(old for old, _ in job.MASKED_PATCH)
+    with pytest.raises(RuntimeError):
+        job.patch_script(masked, inpaint=True)
+    patched = job.patch_script(masked + "".join(old for old, _ in job.INPAINT_PATCH[4:]), inpaint=True)
+    assert "torch.cat([noisy_model_input, inpaint_mask, masked_latents], dim=1)" in patched
+    assert 'examples["product_pixels"] = all_products' in patched
+
+
+def test_inpaint_eval_uses_nine_channels_and_the_layout():
+    drv = load_driver()
+    adapters = {"ckpt400": {"file": "adapters/ckpt400.safetensors", "source": "x", "sha256": "0"}}
+    cfg = drv.build_config("eval", "r5", adapters=adapters, inpaint=True, layout={"height": 0.45, "bottom": 0.85})
+    assert cfg["base_model"] == drv.NINE_MODEL and cfg["base_revision"] == drv.NINE_REVISION
+    assert cfg["layout"] == {"height": 0.45, "bottom": 0.85} and cfg["generation"]["strength"] == 0.99
+    assert drv.build_config("eval", "r5", adapters=adapters)["base_model"] == drv.BASE_MODEL
+
+
+def test_eval_frame_matches_the_backend_layout():
+    from PIL import Image, ImageChops
+
+    from productshot.services.layout import Layout, compose
+
+    spec = importlib.util.spec_from_file_location("colab_eval", ROOT / "training" / "colab_eval.py")
+    ev = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ev)
+    photo = Image.new("RGB", (400, 300), (128, 128, 128))
+    photo.paste((10, 120, 30), (100, 50, 300, 250))
+    alpha = Image.new("L", (400, 300), 0)
+    alpha.paste(255, (100, 50, 300, 250))
+    framed, framed_alpha = ev.frame(photo, alpha, {"height": 0.45, "bottom": 0.85}, 128)
+    canvas, canvas_mask = compose(photo, alpha.point(lambda v: 255 - v), Layout(height=0.45, bottom=0.85))
+    assert not ImageChops.difference(framed, canvas).getbbox()
+    assert not ImageChops.difference(framed_alpha, canvas_mask.point(lambda v: 255 - v)).getbbox()
+
+
+def test_distill_generates_candidates_with_the_advanced_pipeline():
+    drv = load_driver()
+    layout = {"height": 0.45, "bottom": 0.85}
+    cfg = drv.build_config("eval", "r6", inpaint=True, layout=layout, distill=2, strength=1.0, max_products=60)
+    assert cfg["distill"] == {"seeds": 2} and cfg["variants"] == {} and cfg["generation"]["strength"] == 1.0
+    assert cfg["base_model"] == drv.NINE_MODEL and cfg["layout"] == layout
+    with pytest.raises(ValueError):
+        drv.build_config("eval", "r6", distill=2)
+    with pytest.raises(ValueError):
+        drv.build_config("eval", "r6", inpaint=True, layout=layout)
+
+
+def test_hung_exec_is_cut_and_retried(fake, monkeypatch):
+    drv, run, server = fake
+    monkeypatch.setattr(drv, "EXEC_GRACE_S", 1.0)
+    monkeypatch.setenv("FAKE_EXEC_HANGS", "1")
+    t0 = time.perf_counter()
+    code, calls = run()
+    assert code == 0 and calls.count("exec") == 2 and "stop" in calls
+    assert time.perf_counter() - t0 < 25
+
+
+def test_distill_with_photographer_prompts():
+    from productshot.services.presets import NEGATIVE_PROMPTS, PROMPTS
+
+    drv = load_driver()
+    cfg = drv.build_config("eval", "r7", inpaint=True, layout={"height": 0.45, "bottom": 0.85}, distill=3,
+                           strength=1.0, prompt_version="v2")
+    assert cfg["prompt_version"] == "v2" and cfg["negative_prompt"] == NEGATIVE_PROMPTS["v2"]
+    assert cfg["style_prompts"] == {s.value: PROMPTS["v2"][s] for s in Style}
+
+
+def test_extra_adapters_go_after_checkpoints():
+    drv = load_driver()
+    adapters = {n: {"file": f"adapters/{n}.safetensors", "source": n, "sha256": "0"}
+                for n in ("v4_ckpt400", "ckpt800", "ckpt200")}
+    cfg = drv.build_config("eval", "r8", adapters=adapters, inpaint=True, layout={"height": 0.45, "bottom": 0.85})
+    assert list(cfg["variants"]) == ["ckpt200", "ckpt800", "v4_ckpt400"]

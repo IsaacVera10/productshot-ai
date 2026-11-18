@@ -1,0 +1,40 @@
+# Descripciones para puntuar el estilo con CLIP (etapa 5 de docs/10).
+# `styles` son paralelas a los presets de backend/productshot/services/presets.py: describen el
+# entorno, sin categoría de producto ni adjetivos de calidad; se promedian por estilo.
+# `other` son subclases independientes que permiten abstenerse; cada una se calibra por separado.
+
+[styles]
+studio = [
+  "a product on a seamless light grey studio backdrop with soft studio lighting",
+  "a product photographed in a studio against a plain light grey background with a soft shadow",
+  "a catalog photo of an object on a smooth neutral grey studio background",
+]
+natural = [
+  "a product on a stone surface outdoors with green leaves blurred in the background",
+  "a product outdoors in soft daylight surrounded by plants and nature",
+  "an object placed on a rock or wood outside with greenery behind it",
+]
+warm = [
+  "a product on a wooden surface in warm golden light with amber tones",
+  "an object on a wooden table with warm cozy lighting and soft bokeh",
+  "a product in golden hour light with warm orange and brown tones",
+]
+lifestyle = [
+  "a product on a kitchen table in a bright modern home with props in the background",
+  "an object in an everyday home interior scene with furniture behind it",
+  "a product in a living room or kitchen with a shallow depth of field",
+]
+minimal = [
+  "a single object on a flat off-white background with large empty negative space and no props",
+  "a minimalist composition with one object, a blank off-white background and nothing else",
+  "a clean geometric composition of a lone object surrounded by empty off-white space",
+]
+
+[other]
+gradient = ["a product on a colorful gradient background with graphic effects"]
+neon = ["a product render with neon lights and a dark futuristic background"]
+black = ["a product on a pure black background"]
+collage = ["a collage of several product photos with text"]
+poster = ["an advertisement poster with large text and a product"]
+food = ["a close-up photo of food on a plate"]
+splash = ["a product floating in water with splashes"]

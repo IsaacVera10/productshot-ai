@@ -1,0 +1,17 @@
+# Familias de producto para los topes del piloto de BG60k (docs/10).
+# Por defecto, la familia es la palabra clave de nicho que clasificó la categoría
+# (bg60k_categories.toml). Aquí se agrupan las categorías que esa regla deja separadas.
+
+laptop = ["Game notebook", "second hand notebook", "laptop"]
+cup = ["cup", "Ceramic or Mug", "plastic cup", "thermos cup", "Kettle or cup", "Sport Bottle", "mug"]
+decor = ["decorative ornaments", "Ornaments", "ornament", "decorative", "everlasting flower",
+         "vase floral arrangement", "vase"]
+figure = ["Cartoon peripherals", "Movie peripherals", "Trend blind box", "Gundam or deformed model",
+          "car model", "blind box", "model", "toys", "toy"]
+paper = ["Draw paper", "Paper", "This booklet or notes", "notes", "booklet", "stationery", "pens"]
+craft = ["Small leaf rosewood", "Bodhi", "Agarwood"]
+phone = ["phone", "mobile phone"]
+cosmetics_skin = ["lotion", "cream", "essence", "toner", "skin care", "emollient", "hand cream"]
+cosmetics_makeup = ["makeup", "lipstick", "lip gloss", "eye shadow", "powder", "foundation", "primer", "bb"]
+hair_body = ["shampoo", "body wash", "shower", "soap"]
+tea_ware = ["teapot", "tea set", "tea tray", "tea accessories", "tea bar"]

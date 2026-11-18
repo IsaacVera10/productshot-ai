@@ -55,6 +55,7 @@ from productshot.services.generation import (
 from productshot.services.images import prepare_mask_upload, prepare_upload, to_png
 from productshot.services.jobs import JobRunner
 from productshot.services.labels import stamp
+from productshot.services.layout import Layout, compose
 from productshot.services.presets import PROMPT_VERSION
 from productshot.services.rounds import RoundPlan, plan_next_round
 from productshot.services.segmentation import SegmentationService, SegmentationUnavailable, render_mask_preview
@@ -344,6 +345,10 @@ class SessionService:
                 )
                 for s in config["specs"]
             )
+            if session.mode == Mode.ADVANCED and self.settings.advanced_layout_height > 0:
+                # El avanzado reencuadra antes de generar; G8 compara contra este lienzo.
+                image, mask = compose(image, mask, Layout(height=self.settings.advanced_layout_height,
+                                                          bottom=self.settings.advanced_layout_bottom))
             artifacts = self.generator.generate(
                 GenerationRequest(session_id=job.session_id, mode=session.mode, image=image, mask=mask, specs=specs,
                                   category=session.category)

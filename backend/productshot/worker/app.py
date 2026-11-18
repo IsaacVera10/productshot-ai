@@ -59,6 +59,8 @@ def create_worker_app(
             segmenter=segmenter.name if segmenter else None,
             segmenter_simulated=segmenter.simulated if segmenter else None,
             screener=screener.name if screener else None,
+            lora=({**backend.lora, "scale": backend.params.lora_scale}
+                  if getattr(backend, "lora", None) else None),
         )
 
     @app.post(SCREEN_PATH, response_model=ScreenOut)

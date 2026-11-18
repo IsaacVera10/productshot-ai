@@ -1,0 +1,48 @@
+{
+ "split": {
+  "studio": {
+   "train": 36,
+   "val": 4,
+   "test": 4
+  },
+  "warm": {
+   "train": 36,
+   "val": 3,
+   "test": 4
+  },
+  "lifestyle": {
+   "train": 48,
+   "val": 6,
+   "test": 6
+  },
+  "natural": {
+   "train": 42,
+   "val": 5,
+   "test": 5
+  },
+  "minimal": {
+   "train": 47,
+   "val": 5,
+   "test": 6
+  }
+ },
+ "decisions_by_reviewer": {
+  "asistido": 589
+ },
+ "matches": 2,
+ "moved_components": [
+  [
+   1728,
+   45185
+  ],
+  [
+   37868,
+   53718
+  ]
+ ],
+ "residual": {
+  "pairs": 93,
+  "positives": 0,
+  "population": 10487
+ }
+}

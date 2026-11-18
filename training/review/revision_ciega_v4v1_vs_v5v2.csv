@@ -1,0 +1,16 @@
+pair,id,style,image_1,image_2,choice,preferred,note
+0,479,studio,v4_ckpt400_v1,v5_ckpt1000_v2,2,v5_ckpt1000_v2,
+1,17567,lifestyle,v4_ckpt400_v1,v5_ckpt1000_v2,2,v5_ckpt1000_v2,la 1 también se ve bien
+2,20250,warm,v4_ckpt400_v1,v5_ckpt1000_v2,,,sin respuesta
+3,23097,studio,v4_ckpt400_v1,v5_ckpt1000_v2,,,"una con trípode, otra con el producto mal segmentado"
+4,26648,studio,v4_ckpt400_v1,v5_ckpt1000_v2,2,v5_ckpt1000_v2,
+5,33119,warm,v5_ckpt1000_v2,v4_ckpt400_v1,2,v4_ckpt400_v1,la 1 deja el producto muy pequeño para la profundidad del fondo
+6,35227,warm,v5_ckpt1000_v2,v4_ckpt400_v1,,,ninguna tiene sentido
+7,41423,natural,v5_ckpt1000_v2,v4_ckpt400_v1,,,producto irreconocible
+8,41483,lifestyle,v4_ckpt400_v1,v5_ckpt1000_v2,2,v5_ckpt1000_v2,
+9,45460,warm,v5_ckpt1000_v2,v4_ckpt400_v1,1,v5_ckpt1000_v2,la 2 recorta el producto
+10,45950,natural,v5_ckpt1000_v2,v4_ckpt400_v1,1,v5_ckpt1000_v2,la 2 recorta el producto
+11,46095,lifestyle,v4_ckpt400_v1,v5_ckpt1000_v2,,,producto irreconocible
+12,46158,studio,v5_ckpt1000_v2,v4_ckpt400_v1,1,v5_ckpt1000_v2,
+13,47680,natural,v4_ckpt400_v1,v5_ckpt1000_v2,1,v4_ckpt400_v1,
+14,53299,natural,v5_ckpt1000_v2,v4_ckpt400_v1,1,v5_ckpt1000_v2,

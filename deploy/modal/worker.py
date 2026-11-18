@@ -25,6 +25,7 @@ va en el `.env` de la API).
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 import os
@@ -139,6 +140,8 @@ WORKER_GPUS = os.environ.get("WORKER_GPUS", "H100,A100-80GB").split(",")
 class Worker:
     @modal.enter()
     def load(self) -> None:
+        if not os.environ.get("GENERATION_WORKER_TOKEN"):
+            raise RuntimeError("Falta GENERATION_WORKER_TOKEN: el worker no se sirve sin autenticación.")
         try:
             import onnxruntime
 
@@ -214,7 +217,8 @@ class Worker:
 
 
 @app.cls(
-    gpu="L4",
+    # A10G (24 GB) si no hay L4 libres: los resultados se comparan dentro de cada corrida.
+    gpu=["L4", "A10G"],
     volumes={CACHE: cache},
     secrets=[secret],
     # Solo experimentos (hasta ~40 min). Clase aparte para que el tope largo no alcance
@@ -262,6 +266,7 @@ class Lab:
         from productshot.domain import Mode, Style
         from productshot.services.generation import GenerationRequest, VariationSpec, build_prompt
         from productshot.services.guardrails import enforce_fidelity
+        from productshot.services.layout import Layout, compose
         from productshot.services.presets import NEGATIVE_PROMPT
 
         def png(img, side=None) -> bytes:
@@ -359,6 +364,27 @@ class Lab:
 
         write_manifest()
 
+        def geometry(mask) -> dict:
+            product = binary(mask)  # 255 = producto
+            near = product.filter(ImageFilter.MaxFilter(81))
+            edge = product.filter(ImageFilter.MaxFilter(9))
+            return {"area": max(1, sum(1 for v in product.getdata() if v)),
+                    "band": ImageChops.subtract(near, edge)}  # franja de ~4 a 40 px alrededor del producto
+
+        framed: dict[tuple, dict] = {}
+
+        def frame(p, layout: dict | None) -> dict:
+            """El caso tal cual o reencuadrado (modo avanzado); G8 y la métrica usan el lienzo."""
+            if not layout:
+                return p
+            key = (p["case"]["name"], tuple(sorted(layout.items())))
+            if key not in framed:
+                photo, mask = compose(p["photo"], p["mask"], Layout(**layout))
+                tag = "_".join(f"{k}{v}" for k, v in sorted(layout.items()))
+                save(f"{p['case']['name']}__0_lienzo_{tag}.png", png(photo))
+                framed[key] = {**p, "photo": photo, "mask": mask, **geometry(mask)}
+            return framed[key]
+
         # 1) Fotos y máscaras, una vez por caso (mismas semillas: mismas fotos en cada corrida).
         prepared = []
         for case in cases:
@@ -368,15 +394,8 @@ class Lab:
                 generator=torch.Generator("cuda").manual_seed(case["seed"]),
             ).images[0]
             mask = self.segmenter.segment(photo).mask
-            product = binary(mask)  # 255 = producto
-            near = product.filter(ImageFilter.MaxFilter(81))
-            edge = product.filter(ImageFilter.MaxFilter(9))
-            prepared.append({
-                "case": case, "photo": photo, "mask": mask,
-                "area": max(1, sum(1 for v in product.getdata() if v)),
-                "band": ImageChops.subtract(near, edge),  # franja de ~4 a 40 px alrededor del producto
-                "entry": {"name": case["name"], "results": []},
-            })
+            prepared.append({"case": case, "photo": photo, "mask": mask, **geometry(mask),
+                             "entry": {"name": case["name"], "results": []}})
             # Resolución completa: son la entrada de todas las configuraciones.
             save(f"{case['name']}__0_foto.png", png(photo))
             save(f"{case['name']}__1_mascara.png", png(mask))
@@ -420,6 +439,7 @@ class Lab:
                 engine = cfg.pop("engine", "four")
                 use_hint = cfg.pop("use_hint", False)
                 lora_scale = cfg.pop("lora", None)
+                layout = cfg.pop("layout", None)
                 if engine not in ("four", "nine", "composite"):
                     raise ValueError(f"{cfg_name}: motor desconocido {engine!r}")
                 if lora_scale is not None and (engine == "composite" or not adapter):
@@ -445,7 +465,7 @@ class Lab:
                     write_manifest()
                 if engine != "nine" and nine is not None:
                     raise ValueError("Las configuraciones de nueve canales deben ir al final.")
-                for p in prepared:
+                for p in (frame(case, layout) for case in prepared):
                     for seed in seeds:
                         specs = tuple(
                             VariationSpec(position=i + 1, style=Style(st), seed=seed + i) for i, st in enumerate(styles)
@@ -573,6 +593,37 @@ EXPERIMENT_SETS = {
     "nueve_strength": {
         "I_nueve_strength_090": {"engine": "nine", "strength": 0.90},
         "J_nueve_strength_095": {"engine": "nine", "strength": 0.95},
+    },
+    # 2026-11-16: reencuadre del modo avanzado (producto más chico y apoyado en el tercio
+    # inferior) frente a la base, con el mismo motor y las mismas semillas.
+    "integracion": {
+        "A_base": {},
+        "L_reencuadre_45": {"layout": {"height": 0.45, "bottom": 0.85}},
+        "L_reencuadre_30": {"layout": {"height": 0.30, "bottom": 0.80}},
+    },
+    # El mismo reencuadre con el UNet de inpainting de nueve canales, que sabe que lo protegido
+    # es contenido dado. A y L de cuatro canales son reproducibles (corrida integracion).
+    "integracion_nueve": {
+        "N_nueve_reencuadre_45": {"engine": "nine", "layout": {"height": 0.45, "bottom": 0.85}},
+        "N_nueve_reencuadre_30": {"engine": "nine", "layout": {"height": 0.30, "bottom": 0.80}},
+    },
+    # 2026-11-16: con strength 0.99 el fondo gris del lienzo sobrevive en warm y studio. Con 1.0
+    # los latentes parten de ruido puro; el UNet sigue recibiendo la máscara y el producto.
+    "integracion_strength": {
+        "N_nueve_reencuadre_45": {"engine": "nine", "layout": {"height": 0.45, "bottom": 0.85}},
+        "S_nueve_reencuadre_45_s100": {"engine": "nine", "strength": 1.0,
+                                       "layout": {"height": 0.45, "bottom": 0.85}},
+    },
+    # 2026-11-16: prompts v2 de fotógrafo (lente, luz, sombra de contacto y negativo sin equipo de
+    # estudio) frente a v1, sobre la base del avanzado; borde protegido y strength 0.95 contra las
+    # partes agregadas.
+    "fotografo": {
+        "V1": {"engine": "nine", "strength": 1.0, "layout": {"height": 0.45, "bottom": 0.85}},
+        "V2": {"engine": "nine", "strength": 1.0, "prompt_version": "v2", "layout": {"height": 0.45, "bottom": 0.85}},
+        "V2_borde4": {"engine": "nine", "strength": 1.0, "prompt_version": "v2", "mask_dilate_px": 4,
+                      "layout": {"height": 0.45, "bottom": 0.85}},
+        "V2_s095": {"engine": "nine", "strength": 0.95, "prompt_version": "v2",
+                    "layout": {"height": 0.45, "bottom": 0.85}},
     },
     # 2026-11-14: verificación del LoRA del smoke test de Colab (P4, ADR-009). Controles por
     # motor: sin adaptador, adaptador con peso 0 dos veces (repetibilidad) y peso 1. En nueve

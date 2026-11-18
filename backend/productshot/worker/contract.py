@@ -88,6 +88,7 @@ class HealthOut(BaseModel):
     segmenter: str | None = None  # None: el worker no ofrece /v1/segment
     segmenter_simulated: bool | None = None
     screener: str | None = None  # None: el worker no ofrece /v1/screen
+    lora: dict | None = None  # sha256 y peso del adaptador cargado; None sin LoRA
 
 
 class SegmentIn(BaseModel):

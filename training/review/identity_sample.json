@@ -1,0 +1,2888 @@
+{
+ "seed": 0,
+ "per_band": 40,
+ "phash_close": 6,
+ "neighbors_rank": 0,
+ "pairs": [
+  {
+   "a": 34070,
+   "b": 37488,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.634268045425415,
+   "phash_distance": 30,
+   "stratum_size": 1714,
+   "pair": 0
+  },
+  {
+   "a": 36049,
+   "b": 50029,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6265778541564941,
+   "phash_distance": 32,
+   "stratum_size": 1714,
+   "pair": 1
+  },
+  {
+   "a": 19805,
+   "b": 19739,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6457705497741699,
+   "phash_distance": 28,
+   "stratum_size": 1714,
+   "pair": 2
+  },
+  {
+   "a": 27479,
+   "b": 29968,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9893520474433899,
+   "phash_distance": 2,
+   "stratum_size": 1205,
+   "pair": 3
+  },
+  {
+   "a": 15456,
+   "b": 40498,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6712386608123779,
+   "phash_distance": 38,
+   "stratum_size": 1714,
+   "pair": 4
+  },
+  {
+   "a": 5747,
+   "b": 44063,
+   "stratum": "phash_close",
+   "cosine": 0.9975171089172363,
+   "phash_distance": 2,
+   "stratum_size": 1380,
+   "pair": 5
+  },
+  {
+   "a": 23050,
+   "b": 4133,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6073602437973022,
+   "phash_distance": 30,
+   "stratum_size": 1714,
+   "pair": 6
+  },
+  {
+   "a": 52753,
+   "b": 32538,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7683749794960022,
+   "phash_distance": 24,
+   "stratum_size": 2516,
+   "pair": 7
+  },
+  {
+   "a": 53773,
+   "b": 57753,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8383430242538452,
+   "phash_distance": 34,
+   "stratum_size": 1660,
+   "pair": 8
+  },
+  {
+   "a": 16050,
+   "b": 21876,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9623072147369385,
+   "phash_distance": 22,
+   "stratum_size": 824,
+   "pair": 9
+  },
+  {
+   "a": 49639,
+   "b": 49640,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7832005023956299,
+   "phash_distance": 28,
+   "stratum_size": 2516,
+   "pair": 10
+  },
+  {
+   "a": 59485,
+   "b": 59763,
+   "stratum": "phash_close",
+   "cosine": 0.9977824687957764,
+   "phash_distance": 2,
+   "stratum_size": 1380,
+   "pair": 11
+  },
+  {
+   "a": 36587,
+   "b": 36588,
+   "stratum": "phash_close",
+   "cosine": 0.998790979385376,
+   "phash_distance": 2,
+   "stratum_size": 1380,
+   "pair": 12
+  },
+  {
+   "a": 29687,
+   "b": 38583,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7570719718933105,
+   "phash_distance": 28,
+   "stratum_size": 2516,
+   "pair": 13
+  },
+  {
+   "a": 27029,
+   "b": 6360,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8364042639732361,
+   "phash_distance": 18,
+   "stratum_size": 1660,
+   "pair": 14
+  },
+  {
+   "a": 15846,
+   "b": 17643,
+   "stratum": "phash_close",
+   "cosine": 0.9952747821807861,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 15
+  },
+  {
+   "a": 33530,
+   "b": 36316,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6048972606658936,
+   "phash_distance": 32,
+   "stratum_size": 1714,
+   "pair": 16
+  },
+  {
+   "a": 2386,
+   "b": 22735,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9988791942596436,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 17
+  },
+  {
+   "a": 46968,
+   "b": 46969,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9209743738174438,
+   "phash_distance": 38,
+   "stratum_size": 2484,
+   "pair": 18
+  },
+  {
+   "a": 37580,
+   "b": 31885,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9078443050384521,
+   "phash_distance": 20,
+   "stratum_size": 2484,
+   "pair": 19
+  },
+  {
+   "a": 7983,
+   "b": 47419,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8232122659683228,
+   "phash_distance": 22,
+   "stratum_size": 1660,
+   "pair": 20
+  },
+  {
+   "a": 52217,
+   "b": 27523,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.826285183429718,
+   "phash_distance": 22,
+   "stratum_size": 1660,
+   "pair": 21
+  },
+  {
+   "a": 6689,
+   "b": 62588,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7219489216804504,
+   "phash_distance": 28,
+   "stratum_size": 2516,
+   "pair": 22
+  },
+  {
+   "a": 39488,
+   "b": 53327,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8390481472015381,
+   "phash_distance": 26,
+   "stratum_size": 1660,
+   "pair": 23
+  },
+  {
+   "a": 5189,
+   "b": 20187,
+   "stratum": "phash_close",
+   "cosine": 0.9986931085586548,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 24
+  },
+  {
+   "a": 88,
+   "b": 27516,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9964631795883179,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 25
+  },
+  {
+   "a": 43815,
+   "b": 878,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6115482449531555,
+   "phash_distance": 32,
+   "stratum_size": 1714,
+   "pair": 26
+  },
+  {
+   "a": 56635,
+   "b": 3293,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6214148998260498,
+   "phash_distance": 34,
+   "stratum_size": 1714,
+   "pair": 27
+  },
+  {
+   "a": 11167,
+   "b": 3868,
+   "stratum": "phash_close",
+   "cosine": 0.9920583963394165,
+   "phash_distance": 2,
+   "stratum_size": 1380,
+   "pair": 28
+  },
+  {
+   "a": 56507,
+   "b": 56506,
+   "stratum": "phash_close",
+   "cosine": 0.7308621406555176,
+   "phash_distance": 6,
+   "stratum_size": 1380,
+   "pair": 29
+  },
+  {
+   "a": 56358,
+   "b": 56359,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9727358818054199,
+   "phash_distance": 18,
+   "stratum_size": 824,
+   "pair": 30
+  },
+  {
+   "a": 32067,
+   "b": 48119,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.98909592628479,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 31
+  },
+  {
+   "a": 31695,
+   "b": 46050,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.814979076385498,
+   "phash_distance": 24,
+   "stratum_size": 1660,
+   "pair": 32
+  },
+  {
+   "a": 99,
+   "b": 51337,
+   "stratum": "phash_close",
+   "cosine": 0.9982926845550537,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 33
+  },
+  {
+   "a": 38043,
+   "b": 42637,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8221920728683472,
+   "phash_distance": 22,
+   "stratum_size": 1660,
+   "pair": 34
+  },
+  {
+   "a": 10900,
+   "b": 2250,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6432796120643616,
+   "phash_distance": 38,
+   "stratum_size": 1714,
+   "pair": 35
+  },
+  {
+   "a": 57347,
+   "b": 57348,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9769339561462402,
+   "phash_distance": 26,
+   "stratum_size": 824,
+   "pair": 36
+  },
+  {
+   "a": 15477,
+   "b": 21298,
+   "stratum": "phash_close",
+   "cosine": 0.9031785130500793,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 37
+  },
+  {
+   "a": 28057,
+   "b": 49208,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7877470850944519,
+   "phash_distance": 32,
+   "stratum_size": 2516,
+   "pair": 38
+  },
+  {
+   "a": 49549,
+   "b": 49550,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9777292013168335,
+   "phash_distance": 24,
+   "stratum_size": 824,
+   "pair": 39
+  },
+  {
+   "a": 5177,
+   "b": 21019,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7874867916107178,
+   "phash_distance": 12,
+   "stratum_size": 2516,
+   "pair": 40
+  },
+  {
+   "a": 62976,
+   "b": 56269,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.716747522354126,
+   "phash_distance": 40,
+   "stratum_size": 2516,
+   "pair": 41
+  },
+  {
+   "a": 58949,
+   "b": 58950,
+   "stratum": "phash_close",
+   "cosine": 0.9934333562850952,
+   "phash_distance": 4,
+   "stratum_size": 1380,
+   "pair": 42
+  },
+  {
+   "a": 5603,
+   "b": 37003,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8451620936393738,
+   "phash_distance": 34,
+   "stratum_size": 1660,
+   "pair": 43
+  },
+  {
+   "a": 3123,
+   "b": 9695,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9969788193702698,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 44
+  },
+  {
+   "a": 10359,
+   "b": 36513,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9939314126968384,
+   "phash_distance": 2,
+   "stratum_size": 1205,
+   "pair": 45
+  },
+  {
+   "a": 12029,
+   "b": 40243,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8475692868232727,
+   "phash_distance": 36,
+   "stratum_size": 1660,
+   "pair": 46
+  },
+  {
+   "a": 55767,
+   "b": 56070,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7686026096343994,
+   "phash_distance": 28,
+   "stratum_size": 2516,
+   "pair": 47
+  },
+  {
+   "a": 14338,
+   "b": 35100,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.84261155128479,
+   "phash_distance": 18,
+   "stratum_size": 1660,
+   "pair": 48
+  },
+  {
+   "a": 7368,
+   "b": 5818,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7022273540496826,
+   "phash_distance": 30,
+   "stratum_size": 2516,
+   "pair": 49
+  },
+  {
+   "a": 2293,
+   "b": 19497,
+   "stratum": "phash_close",
+   "cosine": 0.9516831636428833,
+   "phash_distance": 4,
+   "stratum_size": 1380,
+   "pair": 50
+  },
+  {
+   "a": 29317,
+   "b": 29318,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7999272346496582,
+   "phash_distance": 30,
+   "stratum_size": 2516,
+   "pair": 51
+  },
+  {
+   "a": 2633,
+   "b": 30729,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9565138816833496,
+   "phash_distance": 18,
+   "stratum_size": 824,
+   "pair": 52
+  },
+  {
+   "a": 37746,
+   "b": 1808,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8292862176895142,
+   "phash_distance": 52,
+   "stratum_size": 1660,
+   "pair": 53
+  },
+  {
+   "a": 44109,
+   "b": 44065,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9992897510528564,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 54
+  },
+  {
+   "a": 19360,
+   "b": 45025,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8507681488990784,
+   "phash_distance": 26,
+   "stratum_size": 2341,
+   "pair": 55
+  },
+  {
+   "a": 10277,
+   "b": 18136,
+   "stratum": "phash_close",
+   "cosine": 0.9972764253616333,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 56
+  },
+  {
+   "a": 11906,
+   "b": 37020,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.999515950679779,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 57
+  },
+  {
+   "a": 61830,
+   "b": 26883,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8412978649139404,
+   "phash_distance": 32,
+   "stratum_size": 1660,
+   "pair": 58
+  },
+  {
+   "a": 54415,
+   "b": 62840,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6112831234931946,
+   "phash_distance": 26,
+   "stratum_size": 1714,
+   "pair": 59
+  },
+  {
+   "a": 41439,
+   "b": 22099,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9314547777175903,
+   "phash_distance": 30,
+   "stratum_size": 2484,
+   "pair": 60
+  },
+  {
+   "a": 23578,
+   "b": 30029,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.90819251537323,
+   "phash_distance": 22,
+   "stratum_size": 2484,
+   "pair": 61
+  },
+  {
+   "a": 22853,
+   "b": 28649,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9026551246643066,
+   "phash_distance": 38,
+   "stratum_size": 2484,
+   "pair": 62
+  },
+  {
+   "a": 4827,
+   "b": 57927,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8652210235595703,
+   "phash_distance": 14,
+   "stratum_size": 2341,
+   "pair": 63
+  },
+  {
+   "a": 54788,
+   "b": 54790,
+   "stratum": "phash_close",
+   "cosine": 0.9948877096176147,
+   "phash_distance": 2,
+   "stratum_size": 1380,
+   "pair": 64
+  },
+  {
+   "a": 47885,
+   "b": 47547,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7386257648468018,
+   "phash_distance": 26,
+   "stratum_size": 2516,
+   "pair": 65
+  },
+  {
+   "a": 42047,
+   "b": 12737,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6781699657440186,
+   "phash_distance": 28,
+   "stratum_size": 1714,
+   "pair": 66
+  },
+  {
+   "a": 6335,
+   "b": 58457,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8622249364852905,
+   "phash_distance": 16,
+   "stratum_size": 2341,
+   "pair": 67
+  },
+  {
+   "a": 14750,
+   "b": 62539,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8449064493179321,
+   "phash_distance": 40,
+   "stratum_size": 1660,
+   "pair": 68
+  },
+  {
+   "a": 30947,
+   "b": 535,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7890006899833679,
+   "phash_distance": 42,
+   "stratum_size": 2516,
+   "pair": 69
+  },
+  {
+   "a": 13929,
+   "b": 10495,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.865241527557373,
+   "phash_distance": 24,
+   "stratum_size": 2341,
+   "pair": 70
+  },
+  {
+   "a": 55887,
+   "b": 56313,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9122662544250488,
+   "phash_distance": 30,
+   "stratum_size": 2484,
+   "pair": 71
+  },
+  {
+   "a": 16955,
+   "b": 54027,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7651353478431702,
+   "phash_distance": 32,
+   "stratum_size": 2516,
+   "pair": 72
+  },
+  {
+   "a": 25487,
+   "b": 4260,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6327781081199646,
+   "phash_distance": 34,
+   "stratum_size": 1714,
+   "pair": 73
+  },
+  {
+   "a": 34750,
+   "b": 18266,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.680962085723877,
+   "phash_distance": 26,
+   "stratum_size": 1714,
+   "pair": 74
+  },
+  {
+   "a": 743,
+   "b": 27758,
+   "stratum": "phash_close",
+   "cosine": 0.9999217987060547,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 75
+  },
+  {
+   "a": 21928,
+   "b": 27779,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8600258827209473,
+   "phash_distance": 26,
+   "stratum_size": 2341,
+   "pair": 76
+  },
+  {
+   "a": 54176,
+   "b": 54177,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9978206157684326,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 77
+  },
+  {
+   "a": 45277,
+   "b": 45278,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8089075684547424,
+   "phash_distance": 18,
+   "stratum_size": 1660,
+   "pair": 78
+  },
+  {
+   "a": 46376,
+   "b": 51935,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8315601348876953,
+   "phash_distance": 26,
+   "stratum_size": 1660,
+   "pair": 79
+  },
+  {
+   "a": 43870,
+   "b": 20417,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7796592712402344,
+   "phash_distance": 36,
+   "stratum_size": 2516,
+   "pair": 80
+  },
+  {
+   "a": 18848,
+   "b": 59290,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.865673303604126,
+   "phash_distance": 20,
+   "stratum_size": 2341,
+   "pair": 81
+  },
+  {
+   "a": 58638,
+   "b": 58639,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8950870037078857,
+   "phash_distance": 30,
+   "stratum_size": 2341,
+   "pair": 82
+  },
+  {
+   "a": 43546,
+   "b": 47485,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9054768681526184,
+   "phash_distance": 24,
+   "stratum_size": 2484,
+   "pair": 83
+  },
+  {
+   "a": 20155,
+   "b": 3950,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.764940619468689,
+   "phash_distance": 34,
+   "stratum_size": 2516,
+   "pair": 84
+  },
+  {
+   "a": 15907,
+   "b": 15908,
+   "stratum": "phash_close",
+   "cosine": 0.9876172542572021,
+   "phash_distance": 2,
+   "stratum_size": 1380,
+   "pair": 85
+  },
+  {
+   "a": 20675,
+   "b": 51159,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9749784469604492,
+   "phash_distance": 4,
+   "stratum_size": 824,
+   "pair": 86
+  },
+  {
+   "a": 44246,
+   "b": 55160,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9654287099838257,
+   "phash_distance": 28,
+   "stratum_size": 824,
+   "pair": 87
+  },
+  {
+   "a": 33103,
+   "b": 42038,
+   "stratum": "phash_close",
+   "cosine": 0.9847816824913025,
+   "phash_distance": 6,
+   "stratum_size": 1380,
+   "pair": 88
+  },
+  {
+   "a": 23673,
+   "b": 13440,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9589532613754272,
+   "phash_distance": 18,
+   "stratum_size": 824,
+   "pair": 89
+  },
+  {
+   "a": 3285,
+   "b": 36980,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9061424732208252,
+   "phash_distance": 30,
+   "stratum_size": 2484,
+   "pair": 90
+  },
+  {
+   "a": 7856,
+   "b": 37373,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9928423166275024,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 91
+  },
+  {
+   "a": 17296,
+   "b": 60176,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9604940414428711,
+   "phash_distance": 26,
+   "stratum_size": 824,
+   "pair": 92
+  },
+  {
+   "a": 6093,
+   "b": 35558,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9182460308074951,
+   "phash_distance": 20,
+   "stratum_size": 2484,
+   "pair": 93
+  },
+  {
+   "a": 30910,
+   "b": 39786,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9530854225158691,
+   "phash_distance": 18,
+   "stratum_size": 824,
+   "pair": 94
+  },
+  {
+   "a": 6995,
+   "b": 15349,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6399040222167969,
+   "phash_distance": 38,
+   "stratum_size": 1714,
+   "pair": 95
+  },
+  {
+   "a": 8456,
+   "b": 20386,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9777019023895264,
+   "phash_distance": 8,
+   "stratum_size": 824,
+   "pair": 96
+  },
+  {
+   "a": 17209,
+   "b": 46190,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9771246910095215,
+   "phash_distance": 2,
+   "stratum_size": 824,
+   "pair": 97
+  },
+  {
+   "a": 44850,
+   "b": 5938,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8679307699203491,
+   "phash_distance": 28,
+   "stratum_size": 2341,
+   "pair": 98
+  },
+  {
+   "a": 39343,
+   "b": 42477,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8957552313804626,
+   "phash_distance": 32,
+   "stratum_size": 2341,
+   "pair": 99
+  },
+  {
+   "a": 4936,
+   "b": 33585,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9975254535675049,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 100
+  },
+  {
+   "a": 35140,
+   "b": 44075,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8575072884559631,
+   "phash_distance": 28,
+   "stratum_size": 2341,
+   "pair": 101
+  },
+  {
+   "a": 7287,
+   "b": 35923,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8895106911659241,
+   "phash_distance": 32,
+   "stratum_size": 2341,
+   "pair": 102
+  },
+  {
+   "a": 59307,
+   "b": 59308,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9977544546127319,
+   "phash_distance": 2,
+   "stratum_size": 1205,
+   "pair": 103
+  },
+  {
+   "a": 3317,
+   "b": 3319,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9863036274909973,
+   "phash_distance": 6,
+   "stratum_size": 1205,
+   "pair": 104
+  },
+  {
+   "a": 56177,
+   "b": 52230,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.96431964635849,
+   "phash_distance": 16,
+   "stratum_size": 824,
+   "pair": 105
+  },
+  {
+   "a": 5723,
+   "b": 36443,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6626524329185486,
+   "phash_distance": 34,
+   "stratum_size": 1714,
+   "pair": 106
+  },
+  {
+   "a": 8980,
+   "b": 57689,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7176256775856018,
+   "phash_distance": 32,
+   "stratum_size": 2516,
+   "pair": 107
+  },
+  {
+   "a": 12159,
+   "b": 10136,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7861858606338501,
+   "phash_distance": 30,
+   "stratum_size": 2516,
+   "pair": 108
+  },
+  {
+   "a": 45903,
+   "b": 45905,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8696974515914917,
+   "phash_distance": 24,
+   "stratum_size": 2341,
+   "pair": 109
+  },
+  {
+   "a": 11636,
+   "b": 11637,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8934446573257446,
+   "phash_distance": 8,
+   "stratum_size": 2341,
+   "pair": 110
+  },
+  {
+   "a": 13170,
+   "b": 31768,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.974568247795105,
+   "phash_distance": 0,
+   "stratum_size": 824,
+   "pair": 111
+  },
+  {
+   "a": 27403,
+   "b": 30968,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6190555691719055,
+   "phash_distance": 26,
+   "stratum_size": 1714,
+   "pair": 112
+  },
+  {
+   "a": 53765,
+   "b": 53766,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9596630334854126,
+   "phash_distance": 6,
+   "stratum_size": 824,
+   "pair": 113
+  },
+  {
+   "a": 8513,
+   "b": 37977,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9142353534698486,
+   "phash_distance": 26,
+   "stratum_size": 2484,
+   "pair": 114
+  },
+  {
+   "a": 33720,
+   "b": 37915,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8078374862670898,
+   "phash_distance": 36,
+   "stratum_size": 1660,
+   "pair": 115
+  },
+  {
+   "a": 9933,
+   "b": 47037,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.999577522277832,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 116
+  },
+  {
+   "a": 49130,
+   "b": 48277,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8550387620925903,
+   "phash_distance": 32,
+   "stratum_size": 2341,
+   "pair": 117
+  },
+  {
+   "a": 29799,
+   "b": 8363,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9503042697906494,
+   "phash_distance": 18,
+   "stratum_size": 824,
+   "pair": 118
+  },
+  {
+   "a": 11213,
+   "b": 14637,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8691022396087646,
+   "phash_distance": 26,
+   "stratum_size": 2341,
+   "pair": 119
+  },
+  {
+   "a": 1237,
+   "b": 21837,
+   "stratum": "phash_close",
+   "cosine": 0.9988840818405151,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 120
+  },
+  {
+   "a": 4488,
+   "b": 32800,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9648154973983765,
+   "phash_distance": 6,
+   "stratum_size": 824,
+   "pair": 121
+  },
+  {
+   "a": 41703,
+   "b": 12279,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.954146146774292,
+   "phash_distance": 12,
+   "stratum_size": 824,
+   "pair": 122
+  },
+  {
+   "a": 8469,
+   "b": 53205,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9376369714736938,
+   "phash_distance": 28,
+   "stratum_size": 2484,
+   "pair": 123
+  },
+  {
+   "a": 57629,
+   "b": 57630,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.793487548828125,
+   "phash_distance": 30,
+   "stratum_size": 2516,
+   "pair": 124
+  },
+  {
+   "a": 58550,
+   "b": 59105,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.905005693435669,
+   "phash_distance": 34,
+   "stratum_size": 2484,
+   "pair": 125
+  },
+  {
+   "a": 51930,
+   "b": 62177,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8163405656814575,
+   "phash_distance": 36,
+   "stratum_size": 1660,
+   "pair": 126
+  },
+  {
+   "a": 60499,
+   "b": 60859,
+   "stratum": "phash_close",
+   "cosine": 0.999619722366333,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 127
+  },
+  {
+   "a": 5615,
+   "b": 14283,
+   "stratum": "phash_close",
+   "cosine": 0.9771255254745483,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 128
+  },
+  {
+   "a": 38477,
+   "b": 3646,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7143579125404358,
+   "phash_distance": 58,
+   "stratum_size": 2516,
+   "pair": 129
+  },
+  {
+   "a": 2467,
+   "b": 5893,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8089329600334167,
+   "phash_distance": 34,
+   "stratum_size": 1660,
+   "pair": 130
+  },
+  {
+   "a": 18133,
+   "b": 42227,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9988101720809937,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 131
+  },
+  {
+   "a": 17776,
+   "b": 50685,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6151121258735657,
+   "phash_distance": 32,
+   "stratum_size": 1714,
+   "pair": 132
+  },
+  {
+   "a": 58813,
+   "b": 52033,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6524313688278198,
+   "phash_distance": 28,
+   "stratum_size": 1714,
+   "pair": 133
+  },
+  {
+   "a": 11120,
+   "b": 33387,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8737809062004089,
+   "phash_distance": 20,
+   "stratum_size": 2341,
+   "pair": 134
+  },
+  {
+   "a": 11355,
+   "b": 11356,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8741483688354492,
+   "phash_distance": 30,
+   "stratum_size": 2341,
+   "pair": 135
+  },
+  {
+   "a": 38620,
+   "b": 57895,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9983009099960327,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 136
+  },
+  {
+   "a": 52670,
+   "b": 60977,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8851181268692017,
+   "phash_distance": 34,
+   "stratum_size": 2341,
+   "pair": 137
+  },
+  {
+   "a": 11095,
+   "b": 49535,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8429664969444275,
+   "phash_distance": 20,
+   "stratum_size": 1660,
+   "pair": 138
+  },
+  {
+   "a": 54256,
+   "b": 55448,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9369166493415833,
+   "phash_distance": 22,
+   "stratum_size": 2484,
+   "pair": 139
+  },
+  {
+   "a": 5150,
+   "b": 42913,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9119945764541626,
+   "phash_distance": 2,
+   "stratum_size": 2484,
+   "pair": 140
+  },
+  {
+   "a": 62759,
+   "b": 45255,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7134532332420349,
+   "phash_distance": 32,
+   "stratum_size": 2516,
+   "pair": 141
+  },
+  {
+   "a": 44583,
+   "b": 26597,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8213359713554382,
+   "phash_distance": 26,
+   "stratum_size": 1660,
+   "pair": 142
+  },
+  {
+   "a": 47628,
+   "b": 56140,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9624010324478149,
+   "phash_distance": 14,
+   "stratum_size": 824,
+   "pair": 143
+  },
+  {
+   "a": 2308,
+   "b": 46008,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6631886959075928,
+   "phash_distance": 30,
+   "stratum_size": 1714,
+   "pair": 144
+  },
+  {
+   "a": 2363,
+   "b": 4308,
+   "stratum": "phash_close",
+   "cosine": 0.9993998408317566,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 145
+  },
+  {
+   "a": 88,
+   "b": 27516,
+   "stratum": "phash_close",
+   "cosine": 0.9964631795883179,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 146
+  },
+  {
+   "a": 51005,
+   "b": 36399,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6046153903007507,
+   "phash_distance": 26,
+   "stratum_size": 1714,
+   "pair": 147
+  },
+  {
+   "a": 22385,
+   "b": 51455,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7781758308410645,
+   "phash_distance": 26,
+   "stratum_size": 2516,
+   "pair": 148
+  },
+  {
+   "a": 38449,
+   "b": 39709,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9999942779541016,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 149
+  },
+  {
+   "a": 940,
+   "b": 21530,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9119539856910706,
+   "phash_distance": 34,
+   "stratum_size": 2484,
+   "pair": 150
+  },
+  {
+   "a": 7705,
+   "b": 37207,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9732980132102966,
+   "phash_distance": 4,
+   "stratum_size": 824,
+   "pair": 151
+  },
+  {
+   "a": 58773,
+   "b": 60176,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9516870975494385,
+   "phash_distance": 34,
+   "stratum_size": 824,
+   "pair": 152
+  },
+  {
+   "a": 759,
+   "b": 15536,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9767136573791504,
+   "phash_distance": 4,
+   "stratum_size": 824,
+   "pair": 153
+  },
+  {
+   "a": 21396,
+   "b": 8796,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8856821656227112,
+   "phash_distance": 24,
+   "stratum_size": 2341,
+   "pair": 154
+  },
+  {
+   "a": 27137,
+   "b": 26917,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7824738621711731,
+   "phash_distance": 22,
+   "stratum_size": 2516,
+   "pair": 155
+  },
+  {
+   "a": 37637,
+   "b": 47480,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.950995922088623,
+   "phash_distance": 26,
+   "stratum_size": 824,
+   "pair": 156
+  },
+  {
+   "a": 11219,
+   "b": 15006,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8046458959579468,
+   "phash_distance": 26,
+   "stratum_size": 1660,
+   "pair": 157
+  },
+  {
+   "a": 30583,
+   "b": 38506,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6304219365119934,
+   "phash_distance": 38,
+   "stratum_size": 1714,
+   "pair": 158
+  },
+  {
+   "a": 3946,
+   "b": 18690,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9950779676437378,
+   "phash_distance": 4,
+   "stratum_size": 1205,
+   "pair": 159
+  },
+  {
+   "a": 5066,
+   "b": 21613,
+   "stratum": "phash_close",
+   "cosine": 0.9957617521286011,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 160
+  },
+  {
+   "a": 47469,
+   "b": 42798,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9079306125640869,
+   "phash_distance": 34,
+   "stratum_size": 2484,
+   "pair": 161
+  },
+  {
+   "a": 52366,
+   "b": 57227,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9526770710945129,
+   "phash_distance": 22,
+   "stratum_size": 824,
+   "pair": 162
+  },
+  {
+   "a": 62836,
+   "b": 58905,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6435087323188782,
+   "phash_distance": 30,
+   "stratum_size": 1714,
+   "pair": 163
+  },
+  {
+   "a": 51425,
+   "b": 60426,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9040039777755737,
+   "phash_distance": 30,
+   "stratum_size": 2484,
+   "pair": 164
+  },
+  {
+   "a": 61895,
+   "b": 473,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8086013793945312,
+   "phash_distance": 34,
+   "stratum_size": 1660,
+   "pair": 165
+  },
+  {
+   "a": 5790,
+   "b": 59887,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8327411413192749,
+   "phash_distance": 30,
+   "stratum_size": 1660,
+   "pair": 166
+  },
+  {
+   "a": 26529,
+   "b": 39848,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9539943337440491,
+   "phash_distance": 10,
+   "stratum_size": 824,
+   "pair": 167
+  },
+  {
+   "a": 7776,
+   "b": 10523,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9576460719108582,
+   "phash_distance": 38,
+   "stratum_size": 824,
+   "pair": 168
+  },
+  {
+   "a": 3989,
+   "b": 39490,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8859469890594482,
+   "phash_distance": 32,
+   "stratum_size": 2341,
+   "pair": 169
+  },
+  {
+   "a": 10637,
+   "b": 10639,
+   "stratum": "phash_close",
+   "cosine": 0.9526207447052002,
+   "phash_distance": 6,
+   "stratum_size": 1380,
+   "pair": 170
+  },
+  {
+   "a": 26478,
+   "b": 26479,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.996853768825531,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 171
+  },
+  {
+   "a": 43708,
+   "b": 43709,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9971085786819458,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 172
+  },
+  {
+   "a": 18615,
+   "b": 24160,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9283725023269653,
+   "phash_distance": 28,
+   "stratum_size": 2484,
+   "pair": 173
+  },
+  {
+   "a": 0,
+   "b": 53776,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9989820718765259,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 174
+  },
+  {
+   "a": 34058,
+   "b": 34700,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.959913432598114,
+   "phash_distance": 16,
+   "stratum_size": 824,
+   "pair": 175
+  },
+  {
+   "a": 45576,
+   "b": 1710,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8022511005401611,
+   "phash_distance": 26,
+   "stratum_size": 1660,
+   "pair": 176
+  },
+  {
+   "a": 20429,
+   "b": 5678,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9528053998947144,
+   "phash_distance": 12,
+   "stratum_size": 824,
+   "pair": 177
+  },
+  {
+   "a": 7917,
+   "b": 16836,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8988478183746338,
+   "phash_distance": 10,
+   "stratum_size": 2341,
+   "pair": 178
+  },
+  {
+   "a": 1537,
+   "b": 22187,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8827959299087524,
+   "phash_distance": 12,
+   "stratum_size": 2341,
+   "pair": 179
+  },
+  {
+   "a": 32485,
+   "b": 32486,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9766601920127869,
+   "phash_distance": 6,
+   "stratum_size": 824,
+   "pair": 180
+  },
+  {
+   "a": 42780,
+   "b": 13313,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9202973246574402,
+   "phash_distance": 34,
+   "stratum_size": 2484,
+   "pair": 181
+  },
+  {
+   "a": 38358,
+   "b": 44873,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.995678722858429,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 182
+  },
+  {
+   "a": 4483,
+   "b": 24049,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8435547947883606,
+   "phash_distance": 34,
+   "stratum_size": 1660,
+   "pair": 183
+  },
+  {
+   "a": 7820,
+   "b": 33098,
+   "stratum": "phash_close",
+   "cosine": 0.9984884262084961,
+   "phash_distance": 2,
+   "stratum_size": 1380,
+   "pair": 184
+  },
+  {
+   "a": 62287,
+   "b": 15937,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9332916736602783,
+   "phash_distance": 38,
+   "stratum_size": 2484,
+   "pair": 185
+  },
+  {
+   "a": 53279,
+   "b": 59065,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8843099474906921,
+   "phash_distance": 32,
+   "stratum_size": 2341,
+   "pair": 186
+  },
+  {
+   "a": 41837,
+   "b": 47429,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8725848197937012,
+   "phash_distance": 30,
+   "stratum_size": 2341,
+   "pair": 187
+  },
+  {
+   "a": 10166,
+   "b": 39619,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9218798875808716,
+   "phash_distance": 28,
+   "stratum_size": 2484,
+   "pair": 188
+  },
+  {
+   "a": 25107,
+   "b": 32416,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6039870381355286,
+   "phash_distance": 34,
+   "stratum_size": 1714,
+   "pair": 189
+  },
+  {
+   "a": 34896,
+   "b": 43403,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8555021286010742,
+   "phash_distance": 22,
+   "stratum_size": 2341,
+   "pair": 190
+  },
+  {
+   "a": 43370,
+   "b": 56889,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8296083211898804,
+   "phash_distance": 36,
+   "stratum_size": 1660,
+   "pair": 191
+  },
+  {
+   "a": 34670,
+   "b": 43758,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9989067316055298,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 192
+  },
+  {
+   "a": 17676,
+   "b": 35187,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8174680471420288,
+   "phash_distance": 30,
+   "stratum_size": 1660,
+   "pair": 193
+  },
+  {
+   "a": 11679,
+   "b": 40718,
+   "stratum": "phash_close",
+   "cosine": 0.9998965859413147,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 194
+  },
+  {
+   "a": 61230,
+   "b": 48330,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6611428260803223,
+   "phash_distance": 30,
+   "stratum_size": 1714,
+   "pair": 195
+  },
+  {
+   "a": 7530,
+   "b": 55639,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.681433379650116,
+   "phash_distance": 24,
+   "stratum_size": 1714,
+   "pair": 196
+  },
+  {
+   "a": 18219,
+   "b": 58030,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8595856428146362,
+   "phash_distance": 14,
+   "stratum_size": 2341,
+   "pair": 197
+  },
+  {
+   "a": 20223,
+   "b": 5470,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9541220664978027,
+   "phash_distance": 20,
+   "stratum_size": 824,
+   "pair": 198
+  },
+  {
+   "a": 21513,
+   "b": 63190,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6484183073043823,
+   "phash_distance": 32,
+   "stratum_size": 1714,
+   "pair": 199
+  },
+  {
+   "a": 1866,
+   "b": 1867,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9392842054367065,
+   "phash_distance": 30,
+   "stratum_size": 2484,
+   "pair": 200
+  },
+  {
+   "a": 58,
+   "b": 58148,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7286702990531921,
+   "phash_distance": 28,
+   "stratum_size": 2516,
+   "pair": 201
+  },
+  {
+   "a": 54803,
+   "b": 58430,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7731918096542358,
+   "phash_distance": 28,
+   "stratum_size": 2516,
+   "pair": 202
+  },
+  {
+   "a": 16309,
+   "b": 38229,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8214540481567383,
+   "phash_distance": 36,
+   "stratum_size": 1660,
+   "pair": 203
+  },
+  {
+   "a": 33849,
+   "b": 42787,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8526301383972168,
+   "phash_distance": 26,
+   "stratum_size": 2341,
+   "pair": 204
+  },
+  {
+   "a": 7358,
+   "b": 1250,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6743847131729126,
+   "phash_distance": 22,
+   "stratum_size": 1714,
+   "pair": 205
+  },
+  {
+   "a": 7523,
+   "b": 52176,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7925985455513,
+   "phash_distance": 20,
+   "stratum_size": 2516,
+   "pair": 206
+  },
+  {
+   "a": 46183,
+   "b": 22266,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9746719598770142,
+   "phash_distance": 0,
+   "stratum_size": 824,
+   "pair": 207
+  },
+  {
+   "a": 6848,
+   "b": 33095,
+   "stratum": "phash_close",
+   "cosine": 0.9999614953994751,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 208
+  },
+  {
+   "a": 54450,
+   "b": 54528,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8211614489555359,
+   "phash_distance": 28,
+   "stratum_size": 1660,
+   "pair": 209
+  },
+  {
+   "a": 28339,
+   "b": 13320,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8511077761650085,
+   "phash_distance": 36,
+   "stratum_size": 2341,
+   "pair": 210
+  },
+  {
+   "a": 28506,
+   "b": 51458,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.660126805305481,
+   "phash_distance": 34,
+   "stratum_size": 1714,
+   "pair": 211
+  },
+  {
+   "a": 62263,
+   "b": 48528,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.941378116607666,
+   "phash_distance": 18,
+   "stratum_size": 2484,
+   "pair": 212
+  },
+  {
+   "a": 13476,
+   "b": 13478,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9797689914703369,
+   "phash_distance": 12,
+   "stratum_size": 824,
+   "pair": 213
+  },
+  {
+   "a": 44477,
+   "b": 45018,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9952952265739441,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 214
+  },
+  {
+   "a": 21900,
+   "b": 44728,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6950960159301758,
+   "phash_distance": 32,
+   "stratum_size": 1714,
+   "pair": 215
+  },
+  {
+   "a": 34616,
+   "b": 43577,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.997611939907074,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 216
+  },
+  {
+   "a": 55310,
+   "b": 47600,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7151676416397095,
+   "phash_distance": 36,
+   "stratum_size": 2516,
+   "pair": 217
+  },
+  {
+   "a": 5143,
+   "b": 27727,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8485760688781738,
+   "phash_distance": 22,
+   "stratum_size": 1660,
+   "pair": 218
+  },
+  {
+   "a": 18468,
+   "b": 56930,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7226014137268066,
+   "phash_distance": 30,
+   "stratum_size": 2516,
+   "pair": 219
+  },
+  {
+   "a": 14953,
+   "b": 21510,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9192014932632446,
+   "phash_distance": 24,
+   "stratum_size": 2484,
+   "pair": 220
+  },
+  {
+   "a": 51217,
+   "b": 55598,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9553488492965698,
+   "phash_distance": 30,
+   "stratum_size": 824,
+   "pair": 221
+  },
+  {
+   "a": 14410,
+   "b": 37729,
+   "stratum": "phash_close",
+   "cosine": 0.9980131387710571,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 222
+  },
+  {
+   "a": 1006,
+   "b": 21597,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9958083629608154,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 223
+  },
+  {
+   "a": 19170,
+   "b": 4397,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8123877048492432,
+   "phash_distance": 18,
+   "stratum_size": 1660,
+   "pair": 224
+  },
+  {
+   "a": 50313,
+   "b": 44316,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9898263812065125,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 225
+  },
+  {
+   "a": 9028,
+   "b": 41918,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8108438849449158,
+   "phash_distance": 34,
+   "stratum_size": 1660,
+   "pair": 226
+  },
+  {
+   "a": 47655,
+   "b": 47657,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9913638830184937,
+   "phash_distance": 6,
+   "stratum_size": 1205,
+   "pair": 227
+  },
+  {
+   "a": 9837,
+   "b": 10146,
+   "stratum": "phash_close",
+   "cosine": 0.9999701976776123,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 228
+  },
+  {
+   "a": 17243,
+   "b": 38589,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9352422952651978,
+   "phash_distance": 28,
+   "stratum_size": 2484,
+   "pair": 229
+  },
+  {
+   "a": 5625,
+   "b": 49997,
+   "stratum": "phash_close",
+   "cosine": 0.9493598937988281,
+   "phash_distance": 4,
+   "stratum_size": 1380,
+   "pair": 230
+  },
+  {
+   "a": 51725,
+   "b": 53607,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9595789909362793,
+   "phash_distance": 26,
+   "stratum_size": 824,
+   "pair": 231
+  },
+  {
+   "a": 37728,
+   "b": 30338,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8823716640472412,
+   "phash_distance": 30,
+   "stratum_size": 2341,
+   "pair": 232
+  },
+  {
+   "a": 27303,
+   "b": 12023,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.80519700050354,
+   "phash_distance": 20,
+   "stratum_size": 1660,
+   "pair": 233
+  },
+  {
+   "a": 55696,
+   "b": 58780,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7319282293319702,
+   "phash_distance": 26,
+   "stratum_size": 2516,
+   "pair": 234
+  },
+  {
+   "a": 25037,
+   "b": 41563,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8705505132675171,
+   "phash_distance": 28,
+   "stratum_size": 2341,
+   "pair": 235
+  },
+  {
+   "a": 9655,
+   "b": 30245,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8767402172088623,
+   "phash_distance": 18,
+   "stratum_size": 2341,
+   "pair": 236
+  },
+  {
+   "a": 50097,
+   "b": 50099,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8186440467834473,
+   "phash_distance": 28,
+   "stratum_size": 1660,
+   "pair": 237
+  },
+  {
+   "a": 52508,
+   "b": 30295,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6338993310928345,
+   "phash_distance": 26,
+   "stratum_size": 1714,
+   "pair": 238
+  },
+  {
+   "a": 29595,
+   "b": 50018,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6136640310287476,
+   "phash_distance": 40,
+   "stratum_size": 1714,
+   "pair": 239
+  },
+  {
+   "a": 2170,
+   "b": 279,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8043822646141052,
+   "phash_distance": 38,
+   "stratum_size": 1660,
+   "pair": 240
+  },
+  {
+   "a": 35700,
+   "b": 7893,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6151012182235718,
+   "phash_distance": 24,
+   "stratum_size": 1714,
+   "pair": 241
+  },
+  {
+   "a": 31056,
+   "b": 46393,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.740296483039856,
+   "phash_distance": 24,
+   "stratum_size": 2516,
+   "pair": 242
+  },
+  {
+   "a": 13875,
+   "b": 14040,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9409407377243042,
+   "phash_distance": 20,
+   "stratum_size": 2484,
+   "pair": 243
+  },
+  {
+   "a": 24858,
+   "b": 18853,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9940227270126343,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 244
+  },
+  {
+   "a": 18108,
+   "b": 24056,
+   "stratum": "phash_close",
+   "cosine": 0.9964104890823364,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 245
+  },
+  {
+   "a": 2035,
+   "b": 45745,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9885028004646301,
+   "phash_distance": 2,
+   "stratum_size": 1205,
+   "pair": 246
+  },
+  {
+   "a": 10238,
+   "b": 30789,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6829742789268494,
+   "phash_distance": 34,
+   "stratum_size": 1714,
+   "pair": 247
+  },
+  {
+   "a": 60023,
+   "b": 28428,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6099808216094971,
+   "phash_distance": 30,
+   "stratum_size": 1714,
+   "pair": 248
+  },
+  {
+   "a": 5488,
+   "b": 49493,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9322642087936401,
+   "phash_distance": 28,
+   "stratum_size": 2484,
+   "pair": 249
+  },
+  {
+   "a": 60608,
+   "b": 60609,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9973561763763428,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 250
+  },
+  {
+   "a": 57177,
+   "b": 46669,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9973526000976562,
+   "phash_distance": 2,
+   "stratum_size": 1205,
+   "pair": 251
+  },
+  {
+   "a": 11308,
+   "b": 40658,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8239744901657104,
+   "phash_distance": 10,
+   "stratum_size": 1660,
+   "pair": 252
+  },
+  {
+   "a": 21779,
+   "b": 35628,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8628749847412109,
+   "phash_distance": 26,
+   "stratum_size": 2341,
+   "pair": 253
+  },
+  {
+   "a": 10876,
+   "b": 50440,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9446122050285339,
+   "phash_distance": 20,
+   "stratum_size": 2484,
+   "pair": 254
+  },
+  {
+   "a": 19010,
+   "b": 53527,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8476302623748779,
+   "phash_distance": 26,
+   "stratum_size": 1660,
+   "pair": 255
+  },
+  {
+   "a": 54536,
+   "b": 16353,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7988419532775879,
+   "phash_distance": 32,
+   "stratum_size": 2516,
+   "pair": 256
+  },
+  {
+   "a": 6288,
+   "b": 41456,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9032276272773743,
+   "phash_distance": 30,
+   "stratum_size": 2484,
+   "pair": 257
+  },
+  {
+   "a": 59707,
+   "b": 57096,
+   "stratum": "phash_close",
+   "cosine": 0.9992464780807495,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 258
+  },
+  {
+   "a": 56340,
+   "b": 16955,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6994069218635559,
+   "phash_distance": 36,
+   "stratum_size": 1714,
+   "pair": 259
+  },
+  {
+   "a": 18893,
+   "b": 24807,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9511928558349609,
+   "phash_distance": 26,
+   "stratum_size": 824,
+   "pair": 260
+  },
+  {
+   "a": 38755,
+   "b": 38756,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.995336651802063,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 261
+  },
+  {
+   "a": 5245,
+   "b": 59556,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7561084628105164,
+   "phash_distance": 20,
+   "stratum_size": 2516,
+   "pair": 262
+  },
+  {
+   "a": 15719,
+   "b": 15720,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9988160133361816,
+   "phash_distance": 2,
+   "stratum_size": 1205,
+   "pair": 263
+  },
+  {
+   "a": 21906,
+   "b": 22229,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.730754017829895,
+   "phash_distance": 32,
+   "stratum_size": 2516,
+   "pair": 264
+  },
+  {
+   "a": 15463,
+   "b": 53555,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9216232895851135,
+   "phash_distance": 32,
+   "stratum_size": 2484,
+   "pair": 265
+  },
+  {
+   "a": 27648,
+   "b": 16520,
+   "stratum": "phash_close",
+   "cosine": 0.998803973197937,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 266
+  },
+  {
+   "a": 12283,
+   "b": 39775,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9999761581420898,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 267
+  },
+  {
+   "a": 14297,
+   "b": 42900,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9953423738479614,
+   "phash_distance": 2,
+   "stratum_size": 1205,
+   "pair": 268
+  },
+  {
+   "a": 978,
+   "b": 53806,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7446362376213074,
+   "phash_distance": 28,
+   "stratum_size": 2516,
+   "pair": 269
+  },
+  {
+   "a": 50016,
+   "b": 57906,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7849465608596802,
+   "phash_distance": 22,
+   "stratum_size": 2516,
+   "pair": 270
+  },
+  {
+   "a": 39845,
+   "b": 39846,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.973347544670105,
+   "phash_distance": 0,
+   "stratum_size": 824,
+   "pair": 271
+  },
+  {
+   "a": 8773,
+   "b": 41658,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.89146488904953,
+   "phash_distance": 22,
+   "stratum_size": 2341,
+   "pair": 272
+  },
+  {
+   "a": 23540,
+   "b": 37795,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9443912506103516,
+   "phash_distance": 14,
+   "stratum_size": 2484,
+   "pair": 273
+  },
+  {
+   "a": 48686,
+   "b": 4488,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9643557667732239,
+   "phash_distance": 8,
+   "stratum_size": 824,
+   "pair": 274
+  },
+  {
+   "a": 39160,
+   "b": 38536,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8949759006500244,
+   "phash_distance": 28,
+   "stratum_size": 2341,
+   "pair": 275
+  },
+  {
+   "a": 39727,
+   "b": 13608,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.659623920917511,
+   "phash_distance": 24,
+   "stratum_size": 1714,
+   "pair": 276
+  },
+  {
+   "a": 51063,
+   "b": 51065,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9982425570487976,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 277
+  },
+  {
+   "a": 44526,
+   "b": 44528,
+   "stratum": "phash_close",
+   "cosine": 0.9970001578330994,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 278
+  },
+  {
+   "a": 2227,
+   "b": 8085,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8856958150863647,
+   "phash_distance": 8,
+   "stratum_size": 2341,
+   "pair": 279
+  },
+  {
+   "a": 37417,
+   "b": 8955,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6807971000671387,
+   "phash_distance": 34,
+   "stratum_size": 1714,
+   "pair": 280
+  },
+  {
+   "a": 28769,
+   "b": 58240,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8917549252510071,
+   "phash_distance": 22,
+   "stratum_size": 2341,
+   "pair": 281
+  },
+  {
+   "a": 10020,
+   "b": 41276,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9970064759254456,
+   "phash_distance": 2,
+   "stratum_size": 1205,
+   "pair": 282
+  },
+  {
+   "a": 30088,
+   "b": 28956,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7359747886657715,
+   "phash_distance": 24,
+   "stratum_size": 2516,
+   "pair": 283
+  },
+  {
+   "a": 18546,
+   "b": 40969,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.861269474029541,
+   "phash_distance": 26,
+   "stratum_size": 2341,
+   "pair": 284
+  },
+  {
+   "a": 44519,
+   "b": 44518,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7151740789413452,
+   "phash_distance": 24,
+   "stratum_size": 2516,
+   "pair": 285
+  },
+  {
+   "a": 19166,
+   "b": 49879,
+   "stratum": "phash_close",
+   "cosine": 0.9989488124847412,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 286
+  },
+  {
+   "a": 25796,
+   "b": 25797,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9543834328651428,
+   "phash_distance": 14,
+   "stratum_size": 824,
+   "pair": 287
+  },
+  {
+   "a": 33848,
+   "b": 43803,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9013702869415283,
+   "phash_distance": 20,
+   "stratum_size": 2484,
+   "pair": 288
+  },
+  {
+   "a": 2765,
+   "b": 17497,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8665737509727478,
+   "phash_distance": 24,
+   "stratum_size": 2341,
+   "pair": 289
+  },
+  {
+   "a": 10346,
+   "b": 32063,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7088514566421509,
+   "phash_distance": 20,
+   "stratum_size": 2516,
+   "pair": 290
+  },
+  {
+   "a": 40318,
+   "b": 46808,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8222889304161072,
+   "phash_distance": 26,
+   "stratum_size": 1660,
+   "pair": 291
+  },
+  {
+   "a": 14218,
+   "b": 48956,
+   "stratum": "phash_close",
+   "cosine": 0.9987322092056274,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 292
+  },
+  {
+   "a": 1067,
+   "b": 32568,
+   "stratum": "phash_close",
+   "cosine": 0.9983569383621216,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 293
+  },
+  {
+   "a": 10263,
+   "b": 61103,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6706028580665588,
+   "phash_distance": 32,
+   "stratum_size": 1714,
+   "pair": 294
+  },
+  {
+   "a": 32979,
+   "b": 48888,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9330973029136658,
+   "phash_distance": 10,
+   "stratum_size": 2484,
+   "pair": 295
+  },
+  {
+   "a": 24169,
+   "b": 45518,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7099922299385071,
+   "phash_distance": 24,
+   "stratum_size": 2516,
+   "pair": 296
+  },
+  {
+   "a": 17847,
+   "b": 22390,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9143637418746948,
+   "phash_distance": 32,
+   "stratum_size": 2484,
+   "pair": 297
+  },
+  {
+   "a": 28019,
+   "b": 6316,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9228216409683228,
+   "phash_distance": 20,
+   "stratum_size": 2484,
+   "pair": 298
+  },
+  {
+   "a": 19778,
+   "b": 42450,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9269655346870422,
+   "phash_distance": 20,
+   "stratum_size": 2484,
+   "pair": 299
+  },
+  {
+   "a": 16345,
+   "b": 46800,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8554843664169312,
+   "phash_distance": 18,
+   "stratum_size": 2341,
+   "pair": 300
+  },
+  {
+   "a": 55148,
+   "b": 55149,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.7522976398468018,
+   "phash_distance": 24,
+   "stratum_size": 2516,
+   "pair": 301
+  },
+  {
+   "a": 51565,
+   "b": 23869,
+   "stratum": "[0.7, 0.8)",
+   "cosine": 0.789603590965271,
+   "phash_distance": 28,
+   "stratum_size": 2516,
+   "pair": 302
+  },
+  {
+   "a": 18385,
+   "b": 24346,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6989661455154419,
+   "phash_distance": 22,
+   "stratum_size": 1714,
+   "pair": 303
+  },
+  {
+   "a": 12039,
+   "b": 31286,
+   "stratum": "[0.85, 0.9)",
+   "cosine": 0.8790808916091919,
+   "phash_distance": 32,
+   "stratum_size": 2341,
+   "pair": 304
+  },
+  {
+   "a": 4373,
+   "b": 22570,
+   "stratum": "phash_close",
+   "cosine": 0.995006799697876,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 305
+  },
+  {
+   "a": 32173,
+   "b": 33808,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.900644063949585,
+   "phash_distance": 36,
+   "stratum_size": 2484,
+   "pair": 306
+  },
+  {
+   "a": 58286,
+   "b": 47323,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8457167148590088,
+   "phash_distance": 34,
+   "stratum_size": 1660,
+   "pair": 307
+  },
+  {
+   "a": 21237,
+   "b": 44573,
+   "stratum": "[0.8, 0.85)",
+   "cosine": 0.8435505032539368,
+   "phash_distance": 12,
+   "stratum_size": 1660,
+   "pair": 308
+  },
+  {
+   "a": 5155,
+   "b": 13467,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.9989204406738281,
+   "phash_distance": 2,
+   "stratum_size": 1205,
+   "pair": 309
+  },
+  {
+   "a": 13588,
+   "b": 34156,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9435454607009888,
+   "phash_distance": 36,
+   "stratum_size": 2484,
+   "pair": 310
+  },
+  {
+   "a": 15658,
+   "b": 60755,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9525920152664185,
+   "phash_distance": 30,
+   "stratum_size": 824,
+   "pair": 311
+  },
+  {
+   "a": 46945,
+   "b": 10299,
+   "stratum": "[0.95, 0.98)",
+   "cosine": 0.9664710760116577,
+   "phash_distance": 28,
+   "stratum_size": 824,
+   "pair": 312
+  },
+  {
+   "a": 60499,
+   "b": 60859,
+   "stratum": "[0.98, 1.01)",
+   "cosine": 0.999619722366333,
+   "phash_distance": 0,
+   "stratum_size": 1205,
+   "pair": 313
+  },
+  {
+   "a": 21798,
+   "b": 48617,
+   "stratum": "phash_close",
+   "cosine": 0.9983021020889282,
+   "phash_distance": 2,
+   "stratum_size": 1380,
+   "pair": 314
+  },
+  {
+   "a": 44856,
+   "b": 44853,
+   "stratum": "[0.6, 0.7)",
+   "cosine": 0.6793774366378784,
+   "phash_distance": 32,
+   "stratum_size": 1714,
+   "pair": 315
+  },
+  {
+   "a": 54287,
+   "b": 61743,
+   "stratum": "phash_close",
+   "cosine": 0.9991188049316406,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 316
+  },
+  {
+   "a": 14466,
+   "b": 20437,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9342962503433228,
+   "phash_distance": 36,
+   "stratum_size": 2484,
+   "pair": 317
+  },
+  {
+   "a": 48498,
+   "b": 2777,
+   "stratum": "[0.9, 0.95)",
+   "cosine": 0.9121798872947693,
+   "phash_distance": 10,
+   "stratum_size": 2484,
+   "pair": 318
+  },
+  {
+   "a": 45676,
+   "b": 1946,
+   "stratum": "phash_close",
+   "cosine": 0.9975298047065735,
+   "phash_distance": 0,
+   "stratum_size": 1380,
+   "pair": 319
+  }
+ ]
+}
