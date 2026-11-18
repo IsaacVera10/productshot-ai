@@ -1,6 +1,6 @@
 # 10: Curación de BG60k para el LoRA del modo avanzado
 
-**Estado (2026-11-15):** protocolo acordado y revisado con Codex en dos rondas. La etapa 1 (manifiesto) está hecha sobre los 44 304 pares (`training/bg60k_manifest.py`, resultados abajo); las demás etapas siguen pendientes. Cumple el Hito 4 de `04_ROADMAP_Y_TESTS.md` y alimenta la etapa `train` de `training/README.md`.
+**Estado (2026-11-15):** protocolo acordado y revisado con Codex en dos rondas. Están hechas la etapa 1 (manifiesto) y la preclasificación de las etapas 2 y 3 (nicho por categoría y alertas de máscara; resultados abajo, revisados con Codex). Las demás etapas siguen pendientes. Cumple el Hito 4 de `04_ROADMAP_Y_TESTS.md` y alimenta la etapa `train` de `training/README.md`.
 
 ## Qué hay en la descarga
 
@@ -22,8 +22,8 @@
 | # | Etapa | Entrada | Salida | Dónde corre |
 |---|---|---|---|---|
 | 1 | Manifiesto: metadatos, máscara, calidad y hashes de cada par | Zip de `data/raw/bg60k` | `data/bg60k/manifest.parquet` y `manifest_summary.json` | Laptop, CPU |
-| 2 | Nicho: excluir categorías fuera del alcance de `docs/00` (productos grandes, ropa en personas, transparentes, muy reflectantes, alimentos preparados) | Manifiesto y lista de categorías revisada a mano | Columna `niche` con motivo | Laptop |
-| 3 | Máscara: alertas calibradas a mano (componentes, área, bordes tocados, fondo visible) | Manifiesto | Columna `mask_ok` con motivo | Laptop |
+| 2 | Nicho: excluir categorías fuera del alcance de `docs/00` (productos grandes, ropa en personas, transparentes, muy reflectantes, alimentos preparados) | Manifiesto y reglas de `training/bg60k_categories.toml` | Columnas `niche` y `niche_rule`; `training/bg60k_categories_review.csv` | Laptop |
+| 3 | Máscara: alertas geométricas (componentes, área, bordes tocados, fondo visible) | Manifiesto | Columna `alerts` | Laptop |
 | 4 | Identidad y duplicados: DINOv2 ViT-B/14 sobre el recorte del producto (con padding a cuadrado, sin recorte central) y pHash del recorte; grupos indivisibles | Candidatos de 2 y 3 | `groups.parquet` y auditoría | Laptop, GPU |
 | 5 | Estilo: CLIP contra cinco descripciones paralelas a los presets, con paráfrasis y abstención («ninguno de los cinco»); propone, no decide | Candidatos | Puntajes y margen por estilo | Laptop, GPU |
 | 6 | OCR del fondo (texto fuera del producto) | Candidatos de estilo | Alerta `bg_text` | Laptop |
@@ -74,7 +74,7 @@ Los 44 304 pares se leyeron completos, con el CRC verificado y sin errores. Toda
 
 | Medida (alfa > 127) | Resultado | Qué implica para las etapas siguientes |
 |---|---|---|
-| Componentes que superan el 1 % de la imagen | 1: 37 002 (83,5 %) · 2: 5 362 · 3 o más: 1 934 · 0 (máscara vacía): 6 | Varios productos o máscaras partidas en el 16 %: alerta de la etapa 3 |
+| Componentes que superan el 1 % de la imagen | 1: 37 002 (83,5 %) · 2: 5 362 · 3 o más: 1 934 · 0: 6 (no están vacías: su producto ocupa entre el 1,6 % y el 9,2 %, pero en piezas menores al 1 % de la imagen) | Varios productos o máscaras partidas en el 16 %: alerta de la etapa 3 |
 | Bordes tocados por el bbox | 0: 35 553 (80,2 %) · 1: 4 669 · 2: 2 734 · 3: 903 · 4: 445 | Producto posiblemente recortado por el encuadre en el 20 % |
 | Área del producto | p1 5,3 % · p5 10,4 % · mediana 31,3 % · p95 61,4 % · p99 77,4 % · máx. 100 % | Fondo visible escaso en la cola alta; las máscaras del 100 % se revisan |
 | Brillo del fondo (0 a 255) | p5 22,5 · mediana 163,9 · p95 237,9 | Hay fondos casi negros: relevantes para el estilo y para G12 |
@@ -83,3 +83,52 @@ Los 44 304 pares se leyeron completos, con el CRC verificado y sin errores. Toda
 | Mismo pHash del recorte del producto | 3 007 repetidas | El mismo producto aparece con varios fondos: la agrupación por identidad es necesaria |
 
 Corrida en la laptop con 1 proceso, CPU limitada al 60 % de un núcleo (cgroup), prioridad mínima y pausa automática a 80 °C. Con más procesos la laptop llegó a 100 °C y llegó a apagarse. Tardó unos 28 minutos de cómputo efectivo.
+
+## Etapas 2 y 3: nicho y alertas de máscara
+
+```bash
+uv run --group dataset python training/bg60k_filters.py
+uv run --group dataset python training/bg60k_filters.py --sheet truncated --n 24 --seed 0 --out-sheet hoja.jpg
+```
+
+Es una **preclasificación**: no descarta nada ni demuestra que cada imagen cumpla el nicho. Escribe `data/bg60k/candidates.parquet` (el manifiesto más `niche`, `niche_rule` y `alerts`) y `filters_summary.json`, con los hashes del manifiesto y de las reglas y los umbrales usados. También escribe `training/bg60k_categories_review.csv`, versionado, con el nivel, la regla y los conteos de cada categoría.
+
+**Nicho por categoría** (`training/bg60k_categories.toml`). Primero se aplican las excepciones exactas y después las palabras clave, con límite de palabra y plural opcional. Si coinciden varias, gana la frase más específica, la que contiene a la otra («tv accessories» frente a «tv»); si no, `out` gana a `near`, y `near` a `core`.
+
+| Nivel | Qué incluye | Pares | Sin alertas geométricas |
+|---|---|---|---|
+| `core` | Pequeño, rígido y opaco **por categoría**: tazas, teteras, cosméticos, decoración, electrónica pequeña, papelería, utensilios | 14 912 | 9 932 |
+| `near` | Tamaño parecido, pero blando, transparente, reflectante, joyería o alimento que suele mostrarse sin envase | 15 806 | 9 459 |
+| `out` | Grande, ropa puesta, personas, alimentos frescos o preparados, plantas y animales, lo que no es un producto | 10 395 | 7 230 |
+| `unclassified` | Nombre ambiguo (`notebook`, `Early childhood education`, `object`) | 3 191 | 2 055 |
+
+El nicho de `docs/00` pide superficies mates o semimates, y la categoría no lo garantiza: teléfonos, laptops y lentes, por ejemplo, tienen pantallas o vidrios. El material, el producto único y la ausencia de comida servida se verifican **imagen por imagen** en la revisión del piloto (etapa 7). Prueba de ello: en una muestra de `core` sin alertas aparecieron un frasco transparente (36596), dos fundas de teléfono (20403), varias vistas del mismo teléfono (43299) y un plato servido (57945).
+
+**Revisión de las reglas.** Se revisó a mano la asignación de las ~170 categorías más frecuentes de cada nivel, unas 510 categorías que cubren más del 80 % de los pares. Las correcciones quedaron como excepciones con motivo en el TOML, y las de la revisión de Codex como pruebas de regresión en `tests/test_bg60k_filters.py`:
+- `shower room` y `Outdoor sun protection clothing` se colaban en `core` por palabras generales;
+- `instant food`, plantas y flores estaban en `near` pese a ser exclusiones del nicho;
+- los alimentos sin envase estaban en `core`.
+
+Las categorías por debajo de ese corte no se revisaron una por una.
+
+**Alertas geométricas** (sobre el alfa > 127; no descartan):
+
+| Alerta | Regla | Pares |
+|---|---|---|
+| `truncated` | El bbox queda a 2 px o menos de algún borde | 8 751 |
+| `multi_object` | 2 o más componentes de al menos el 1 % de la imagen | 7 296 |
+| `fragmented` | El componente mayor tiene menos del 85 % del área | 6 726 |
+| `large_product` | Producto de más del 60 % de la imagen | 2 538 |
+| `tiny_product` | Producto de menos del 5 % | 388 |
+| `mask_mismatch` | El RGB de la máscara difiere de la imagen en más de 1/255 | 203 |
+
+Las hojas de contacto muestran la imagen junto a su superposición (fondo en magenta según el alfa) y devuelven los ids con la semilla, así la revisión se puede repetir. Lo observado hasta ahora es **exploratorio, no una precisión medida**:
+- con 2 componentes suelen verse composiciones con accesorios (hervidor con taza, teclado con mouse);
+- cuando el producto toca 1 borde, suele ser un cable o un mango que sale del cuadro, o un primer plano;
+- un solo componente no garantiza un solo producto, porque dos objetos que se tocan forman un único componente.
+
+**Política provisional** (revisada con Codex):
+- Pool principal: `core` sin alertas geométricas. Tiene 9 932 pares, pero hay imágenes repetidas y falta agrupar por identidad, así que el total no prueba que cada estilo llegue a 150.
+- Antes de congelar la política se mide la cobertura por estilo, tanto de los candidatos aceptados como de los rechazados, por familia y por alerta, con revisión humana de ambos lados. Ninguna alerta leve se admite automáticamente.
+- `near` entra solo con tope fijado antes de seleccionar y declarado en el informe. `out` y `unclassified` quedan fuera.
+- Los topes del piloto se cuentan por familias de categorías, por ejemplo teléfonos nuevos y de segunda mano juntos, con un mapa versionado, y se comprueba que la mezcla de familias sea comparable entre estilos.
