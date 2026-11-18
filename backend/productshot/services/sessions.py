@@ -9,6 +9,7 @@ import json
 import logging
 import random
 import uuid
+from datetime import datetime, timedelta
 
 from PIL import Image
 
@@ -31,6 +32,7 @@ from productshot.domain import (
     JobStatus,
     Mask,
     Mode,
+    NotFound,
     Session,
     SessionStatus,
     SessionView,
@@ -503,6 +505,37 @@ class SessionService:
             self.store.delete_session_dir(sid)
         log.info("Cadena borrada: %d sesiones (pedido sobre %s)", len(deleted), session_id)
         return deleted
+
+    def purge_expired(self, now: datetime | None = None) -> list[str]:
+        """Retención (G11): borra cada cadena cuya primera ronda superó `session_retention_hours`.
+
+        Una cadena que está generando se salta y se reintenta en la pasada siguiente; un lote
+        colgado pasa antes a FAILED por G14, así que no bloquea el borrado para siempre. Un
+        error en una cadena no detiene la pasada. Devuelve los IDs borrados.
+        """
+        hours = self.settings.session_retention_hours
+        if hours <= 0:
+            return []
+        cutoff = (now or utcnow()) - timedelta(hours=hours)
+        purged: list[str] = []
+        for root in self.repo.chain_roots_created_before(cutoff):
+            try:
+                sid: str | None = root
+                while sid is not None:
+                    self._expire_if_stale(self.repo.get_session(sid))
+                    sid = self.repo.child_session_id(sid)
+                chain = self.delete_session(root)
+            except StateConflict:
+                log.info("Retención: %s sigue generando; se reintenta en la próxima pasada", root)
+                continue
+            except NotFound:
+                continue  # la persona la borró mientras tanto
+            except Exception:  # noqa: BLE001 - una cadena con problemas no debe frenar las demás
+                log.exception("Retención: no se pudo borrar la cadena %s", root)
+                continue
+            guardrails.event("G11", root, "retention_expired", sessions=len(chain), hours=hours)
+            purged.extend(chain)
+        return purged
 
     # --- lectura ---
 

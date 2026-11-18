@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import logging
 from contextlib import asynccontextmanager
@@ -160,7 +162,11 @@ def _build_router() -> APIRouter:
     @router.get("/healthz")
     def healthz(request: Request) -> dict:
         # Solo nombres de adaptadores: nunca URLs, claves ni rutas.
-        return {"status": "ok", "adapters": request.app.state.adapters}
+        return {
+            "status": "ok",
+            "adapters": request.app.state.adapters,
+            "retention_hours": svc(request).settings.session_retention_hours,
+        }
 
     @router.post("/sessions", status_code=201, response_model=SessionOut)
     def create_session(
@@ -283,7 +289,11 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         sessions.recover_interrupted_jobs()
+        sweeper = asyncio.create_task(_retention_loop(sessions, settings))
         yield
+        sweeper.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await sweeper
         runner.shutdown()
 
     app = FastAPI(
@@ -320,6 +330,26 @@ def create_app(
     return app
 
 
+async def _retention_loop(sessions: SessionService, settings: Settings) -> None:
+    """G11: borra las cadenas vencidas al arrancar y después cada `retention_sweep_interval_s`.
+
+    Corre en un hilo para no bloquear el servidor, y un fallo de una pasada no detiene las
+    siguientes.
+    """
+    if settings.session_retention_hours <= 0:
+        log.info("Retención desactivada: las sesiones solo se borran a pedido.")
+        return
+    log.info("Retención: las cadenas se borran a las %s h de su primera ronda", settings.session_retention_hours)
+    while True:
+        try:
+            purged = await asyncio.to_thread(sessions.purge_expired)
+            if purged:
+                log.info("Retención: %d sesiones borradas", len(purged))
+        except Exception:  # noqa: BLE001
+            log.exception("Retención: falló la pasada")
+        await asyncio.sleep(max(settings.retention_sweep_interval_s, 1.0))
+
+
 WEB_DIR = Path(__file__).resolve().parents[1] / "web"
 
 
@@ -349,4 +379,4 @@ def _mount_ui(app: FastAPI, settings: Settings) -> None:
         return
     host = "127.0.0.1" if settings.app_host in ("0.0.0.0", "::") else settings.app_host
     api_base = f"http://{host}:{settings.app_port}{API_PREFIX}"
-    gr.mount_gradio_app(app, build_ui(api_base), path="/ui")
+    gr.mount_gradio_app(app, build_ui(api_base, retention_hours=settings.session_retention_hours), path="/ui")

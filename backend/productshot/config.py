@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     # Límite de píxeles al decodificar (protección contra "decompression bombs").
     max_image_pixels: int = 40_000_000
 
+    # Retención (G11): cada cadena de rondas se borra, con sus fotos, cuando su primera ronda
+    # cumple este plazo. Con 0 no se borra nada automáticamente.
+    session_retention_hours: float = 24.0
+    retention_sweep_interval_s: float = 600.0  # cada cuánto se buscan cadenas vencidas
+
     # Guardrails (ADR-008). Umbrales PROVISIONALES: se calibran con los casos del Hito 2.
     quality_min_brightness: float = 45.0  # G12: brillo medio 0 a 255
     quality_max_brightness: float = 230.0

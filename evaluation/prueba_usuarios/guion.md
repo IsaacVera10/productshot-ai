@@ -20,7 +20,7 @@ Protocolo de `docs/06_EVALUACION_Y_ETICA.md`, sección «Prueba con usuarios». 
 
 «Gracias por ayudarnos. Estamos probando una herramienta de un curso de la universidad, no a ti: si algo es confuso, es un problema de la herramienta.
 
-- Vas a subir la foto de un producto. La foto se usa solo para esta prueba y se borra al terminar el proyecto, salvo que nos autorices a guardarla.
+- Vas a subir la foto de un producto. La foto se usa solo para esta prueba. Al terminar la borramos del servidor, salvo que nos autorices a guardarla, y de todos modos el sistema la borra solo a las 24 horas.
 - Tus decisiones y los motivos que escribas, nunca la foto, se envían al servicio Gemini de Google para escribir un resumen. En su plan gratuito, Google puede usar ese texto para mejorar sus productos.
 - Anotamos tiempos, errores y tus respuestas con un código, sin tu nombre. No grabamos tu cara.
 - Puedes parar cuando quieras, sin dar explicaciones.
@@ -77,7 +77,7 @@ Anotar también:
 
 ## Al terminar
 
-- [ ] Borrar la sesión desde la API (`DELETE /api/v1/sessions/{id}`), salvo que haya autorizado guardar la foto.
+- [ ] Borrar la sesión desde la API (`DELETE /api/v1/sessions/{id}`), salvo que haya autorizado guardar la foto. En ese caso, descargar la foto y las variaciones antes de 24 horas: después el servidor las borra solo (`SESSION_RETENTION_HOURS`).
 - [ ] Revisar que la fila del registro esté completa.
 
 Cuando estén las diez filas: `uv run python evaluation/prueba_usuarios/analizar.py evaluation/prueba_usuarios/registro.csv`.

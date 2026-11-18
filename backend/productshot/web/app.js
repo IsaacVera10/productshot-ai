@@ -397,3 +397,12 @@ $("btn-new").addEventListener("click", reset);
 $("btn-delete").addEventListener("click", removeAll);
 show("foto");
 updateCreate();
+
+// Plazo del borrado automático (G11), tomado de la configuración del servidor.
+fetch(`${API}/healthz`)
+  .then((r) => (r.ok ? r.json() : null))
+  .then((h) => {
+    const hours = h && h.retention_hours;
+    if (hours > 0) $("retention").textContent = ` y se borran solas a las ${hours} h`;
+  })
+  .catch(() => {});

@@ -33,6 +33,18 @@ dist/
 *.bin
 *.sqlite3
 
+# Reportes y salidas locales
+/tmp/
+/.pytest_report_tmp/
+*.log
+# Auxiliares de LaTeX (se versionan el .tex, el PDF y las figuras)
+*.aux
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
 # OS/IDE
 .DS_Store
 .idea/

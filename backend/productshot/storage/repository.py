@@ -356,6 +356,15 @@ class SqliteRepository:
                 conn.execute("DELETE FROM sessions WHERE id = ?", (sid,))
         return chain
 
+    def chain_roots_created_before(self, cutoff: datetime) -> list[str]:
+        """IDs de las primeras rondas creadas antes de `cutoff`, de la más antigua a la más nueva."""
+        with self._connect() as conn:
+            rows = conn.execute("SELECT id, created_at FROM sessions WHERE parent_session_id IS NULL").fetchall()
+        # Se compara en Python: `iso` omite los microsegundos cuando valen 0, así que el texto
+        # no siempre ordena igual que el instante.
+        expired = [(_dt(row["created_at"]), row["id"]) for row in rows]
+        return [sid for created, sid in sorted(expired) if created < cutoff]
+
     def child_session_id(self, session_id: str) -> str | None:
         with self._connect() as conn:
             row = conn.execute("SELECT id FROM sessions WHERE parent_session_id = ?", (session_id,)).fetchone()

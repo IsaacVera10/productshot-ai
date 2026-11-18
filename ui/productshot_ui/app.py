@@ -162,7 +162,15 @@ def _empty_cards() -> list:
     return out
 
 
-def build_ui(api_base: str) -> gr.Blocks:
+def retention_notice(hours: float) -> str:
+    """Aviso del borrado automático (G11); vacío si está desactivado."""
+    if hours <= 0:
+        return ""
+    amount = f"{hours:g} hora" + ("" if hours == 1 else "s")
+    return f" Aunque no la borres, todo se borra automáticamente {amount} después de subir la foto."
+
+
+def build_ui(api_base: str, retention_hours: float = 0.0) -> gr.Blocks:
     api = Api(api_base)
 
     with gr.Blocks(title="ProductShot AI") as demo:
@@ -222,7 +230,7 @@ def build_ui(api_base: str) -> gr.Blocks:
         plan_out = gr.Textbox(label="Plan de la siguiente ronda", lines=8, interactive=False)
 
         gr.Markdown("## Privacidad\nBorra la foto, la máscara, las imágenes y las decisiones de esta sesión "
-                    "y de todas sus rondas. No se puede deshacer.")
+                    "y de todas sus rondas. No se puede deshacer." + retention_notice(retention_hours))
         delete_btn = gr.Button("Borrar esta sesión y sus fotos", variant="stop")
 
         # --- manejadores ---
