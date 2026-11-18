@@ -1,0 +1,49 @@
+# Secretos: las variables se configuran en el host (Railway → Variables), nunca en la imagen.
+.env
+.env.*
+*service-account*.json
+credentials.json
+*.pem
+*.key
+
+# Datos locales y artefactos
+data/
+artifacts/
+models/
+checkpoints/
+datasets/
+*.sqlite3
+*.ckpt
+*.safetensors
+*.pt
+*.pth
+*.bin
+
+# Entornos y cachés de Python
+.venv/
+venv/
+**/__pycache__/
+**/*.py[cod]
+*.egg-info/
+.pytest_cache/
+.pytest_tmp/
+.ruff_cache/
+.mypy_cache/
+build/
+dist/
+
+# No hacen falta para servir la app
+.git/
+.gitignore
+.gitattributes
+docs/
+deploy/
+training/
+evaluation/
+tests/
+
+# OS/IDE
+.DS_Store
+.idea/
+.vscode/
+.claude/
