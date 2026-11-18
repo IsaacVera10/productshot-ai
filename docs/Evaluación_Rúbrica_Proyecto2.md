@@ -24,3 +24,17 @@
 | Documentación | **1 punto.** Presentación de todos los entregables. De forma clara y ordenada. Denota profesionalismo. Redacción propia. **0.5 puntos.** Documentos innecesariamente cargados. Denota uso de IA excesiva. Dificulta la lectura de los archivos principales para replicar el proyecto. 0 puntos. No presenta documento o es ilegible. | 1 |
 | Avance del proyecto | **2 puntos.** Presenta un avance del proyecto. El equipo demuestra que lleva tiempo trabajando en el proyecto. Tiene claro hacia dónde llevar el proyecto. Presenta un avance del problema, diseño, arquitectura y/o primeras iteraciones. **1 punto.** Presenta un avance parcial. Demuestra claridad parcial hacia dónde dirigir el proyecto. **0 puntos.** No presenta avance. | 2 |
 
+
+**Rúbrica de evaluación del jurado (20 puntos; se escala a 17.5 para los que entregaron tarde).**
+
+Rúbrica de evaluación del proyecto 2. Equipo: ______ Jurado: ______
+
+| Criterio | Descripción | Pts |
+| :---- | :---- | :---: |
+| Problemática | El equipo identifica y explica claramente una problemática relevante. Se evidencia que existe una necesidad real y que el problema puede abordarse mediante una solución de IA que considere limitaciones técnicas y algún grado de personalización. | 0 a 5 |
+| Solución técnica | El equipo presenta una solución técnica coherente y adecuadamente dimensionada. La propuesta responde al enunciado del Proyecto 2 y demuestra una implementación funcional de los componentes principales del sistema. | 0 a 6 |
+| Demostración en vivo | La demostración se desarrolla de manera fluida y sin inconvenientes importantes. El equipo logra mostrar las principales funcionalidades del sistema y evidenciar su funcionamiento. | 0 a 2 |
+| Aspecto éticos | El equipo identifica los posibles riesgos asociados al uso de su sistema e implementa medidas para prevenir usos inadecuados, maliciosos o perjudiciales. | 0 a 2 |
+| Presentación | El equipo realiza una exposición ordenada y clara, demuestra dominio del proyecto y comunica adecuadamente las decisiones tomadas, los resultados obtenidos y los aspectos más importantes de la solución. | 0 a 3 |
+| Preguntas del jurado | El equipo responde con claridad y argumentos técnicos a las preguntas del jurado, demostrando comprensión de las decisiones, limitaciones y alcances del proyecto. | 0 a 2 |
+| **Calificación** | | **20** |
