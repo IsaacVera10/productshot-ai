@@ -31,8 +31,12 @@ dataset = [
     "pyarrow>=17",
     "scipy>=1.13",
 ]
-# `uv sync` instala este grupo por defecto.
 dev = ["pytest>=8.0,<10.0"]
+
+[tool.uv]
+# `uv sync` instala ambos grupos: las pruebas de `training/` importan numpy, pyarrow y scipy.
+# La imagen Docker los excluye con `--no-default-groups`.
+default-groups = ["dev", "dataset"]
 
 [project.scripts]
 productshot = "productshot.main:run"

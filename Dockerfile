@@ -18,12 +18,12 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 # Dependencias primero: esta capa solo se rehace si cambian pyproject.toml o uv.lock.
 COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --locked --no-dev --no-install-project
+RUN uv sync --locked --no-default-groups --no-install-project
 
 # Código del servidor (backend con la web app estática, y la UI de Gradio).
 COPY backend ./backend
 COPY ui ./ui
-RUN uv sync --locked --no-dev
+RUN uv sync --locked --no-default-groups
 
 ENV PATH="/app/.venv/bin:$PATH" \
     APP_HOST=0.0.0.0 \

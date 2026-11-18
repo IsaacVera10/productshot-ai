@@ -91,10 +91,16 @@ def load_driver():
 
 REAL_UNASSIGN = load_driver().Colab.unassign
 
+# El CLI de Colab y el driver solo corren en Linux o macOS (training/README.md): el CLI falso es
+# un script con shebang y el plazo mata el grupo de procesos con os.killpg.
+posix_only = pytest.mark.skipif(os.name != "posix", reason="el driver de Colab solo corre en Linux o macOS")
+
 
 @pytest.fixture
 def fake(tmp_path, monkeypatch):
     """Driver con CLI falso. Devuelve (driver, ejecutar, comandos registrados, asignaciones)."""
+    if os.name != "posix":
+        pytest.skip("el driver de Colab solo corre en Linux o macOS")
     drv = load_driver()
     bin_path = tmp_path / "colab"
     bin_path.write_text(FAKE_COLAB.format(python=sys.executable))
@@ -270,6 +276,7 @@ def test_unassign_timeout_reports_and_exits_3(fake, monkeypatch):
 
 
 
+@posix_only
 def test_deadline_kills_the_whole_process_group(tmp_path):
     """El plazo mata también al hijo que crea el lanzador (como `accelerate launch`)."""
     spec = importlib.util.spec_from_file_location("colab_job", ROOT / "training" / "colab_job.py")
