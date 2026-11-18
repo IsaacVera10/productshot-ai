@@ -42,7 +42,7 @@
 \textbf{Docente:} Robert Junior Buleje Del Carpio\par
 
 \subsection*{Resumen}
-ProductShot AI recibe la foto de un producto y genera cinco ambientaciones para que una persona elija cuáles usaría. El sistema une segmentación, generación de imágenes, controles de fidelidad, registro de decisiones y un resumen escrito por un modelo de lenguaje. Tiene dos modos: el intermedio edita la foto con Qwen-Image-2.1-Turbo y el avanzado rellena el fondo con SDXL y un adaptador LoRA propio. Este informe describe el diseño, la implementación y los resultados obtenidos hasta el 18 de noviembre de 2026. En una prueba local con una taza de cerámica mate, el sistema produjo cinco imágenes reales; se aceptaron cuatro y el resumen pasó la verificación de estructura. También contamos con los registros de curación de datos y con la comparación de configuraciones del modo avanzado. Estos resultados muestran que el sistema funciona de principio a fin, pero todavía no permiten afirmar que sea útil en general, que satisfaga a sus usuarios ni que un modo supere al otro.
+ProductShot AI recibe la foto de un producto y genera cinco ambientaciones para que una persona elija cuáles usaría. El sistema une segmentación, generación de imágenes, controles de fidelidad, registro de decisiones y un resumen escrito por un modelo de lenguaje. Tiene dos modos: el intermedio edita la foto con Qwen-Image-2.1-Turbo y el avanzado rellena el fondo con SDXL y un adaptador LoRA propio. Este informe describe el diseño, la implementación y los resultados obtenidos. En una prueba local con una taza de cerámica mate, el sistema produjo cinco imágenes reales; se aceptaron cuatro y el resumen pasó la verificación de estructura. También contamos con los registros de curación de datos y con la comparación de configuraciones del modo avanzado. Estos resultados muestran que el sistema funciona de principio a fin, pero todavía no permiten afirmar que sea útil en general, que satisfaga a sus usuarios ni que un modo supere al otro.
 
 \section{Problema, objetivos y alcance}
 Muchas personas venden productos con fotos tomadas en casa, sin estudio fotográfico ni experiencia en edición. El reto no es solo producir fondos atractivos: una foto de venta debe mostrar el producto tal como es, con su forma, su etiqueta y su logotipo. Que esta herramienta resuelva una necesidad real, y que la gente la acepte, son hipótesis que todavía hay que contrastar con usuarios.
@@ -207,7 +207,7 @@ La web está hecha con HTML, CSS y JavaScript, y tiene cuatro pantallas: Foto, C
 \clearpage
 % ---------------- Página 6 ----------------
 \section{Ejemplos de imágenes y decisiones}
-Hicimos una prueba local el 18/11/2026 con una taza de cerámica mate, en la sesión \texttt{8e6cd6d9}, con el modo intermedio y la categoría cocina. La taza es rígida y opaca, como los productos del alcance. Las cinco imágenes son salidas reales de Qwen. Las guardamos aparte junto con sus hashes y parámetros, para que la retención no las borre.
+Hicimos una prueba local con una taza de cerámica mate, con el modo intermedio y la categoría cocina. La taza es rígida y opaca, como los productos del alcance. Las cinco imágenes son salidas reales de Qwen. Las guardamos aparte junto con sus hashes y parámetros, para que la retención no las borre.
 
 \begin{figure}[h]\centering
 \foto{input.png}{(a) Fotografía de entrada}\hfill
@@ -228,7 +228,7 @@ En todas se reconocen la silueta, el borde claro y el cuerpo oscuro de la taza; 
 % ---------------- Página 7 ----------------
 \section{Análisis de resultados técnicos}
 \subsection{Sesión de prueba}
-El trabajo de generación empezó a las 12:55:06 y terminó a las 13:00:05 del 18/11/2026, hora de Lima: \textbf{298.722 segundos}, sin contar la carga, la segmentación, las decisiones ni el resumen. Se generaron \textbf{86 candidatas, con 71 reintentos}: 70 en el estilo cálido y uno en lifestyle. Las cinco imágenes elegidas superaron los umbrales; en cálido solo una de 73 candidatas fue válida.
+La generación de las cinco imágenes duró \textbf{298.7 segundos}, casi cinco minutos, sin contar la carga, la segmentación, las decisiones ni el resumen. Se generaron \textbf{86 candidatas, con 71 reintentos}: 70 en el estilo cálido y uno en lifestyle. Las cinco imágenes elegidas superaron los umbrales; en cálido solo una de 73 candidatas fue válida.
 
 \begin{table}[h]\centering\small
 \caption{Métricas de las candidatas elegidas en la sesión de prueba.}
@@ -246,7 +246,8 @@ Minimalista & 0.624 & 0.8824 & 74.5 & 3/0 & Rechazada \\\bottomrule
 El resumen quedó registrado como \texttt{llm\_validated} y \texttt{structure\_verified}. El modelo principal no respondió en dos intentos y contestó el de respaldo, \texttt{gemini-3.5-flash-lite}. La lista coincide con cuatro aceptaciones y un rechazo. Como no hubo motivos escritos, el resumen no puede explicar las preferencias. Esta sesión muestra que el respaldo funciona y que los conteos son correctos, pero no mide la exactitud del contenido del resumen en general.
 
 \subsection{Pruebas automáticas}
-\input{test_result.tex}
+La batería completa, ejecutada en Windows con Python 3.12, dio \textbf{371 pruebas aprobadas y 16 omitidas, sin fallos}, en 110 segundos. Las omitidas son catorce pruebas del entrenamiento en Colab, que solo corren en Linux o macOS, una llamada real a Gemini que es opcional y una prueba que necesita OpenCV. Estas omisiones dejan sin comprobar en Windows el control de procesos del entrenamiento; en Linux esas pruebas sí se ejecutan.
+
 Las pruebas cubren estados, contratos, lotes, rondas, máscaras, guardrails y resúmenes. Doce de ellas revisan la retención: que el plazo cuente desde la primera ronda, que se borren los archivos y todas las rondas, que se respeten las sesiones vigentes, que se reintente si hay una generación activa, la limpieza al arrancar, la opción para desactivarla y los avisos. Usan datos temporales y modelos simulados, así que no reemplazan la revisión visual, la ejecución en GPU ni las pruebas de uso con personas.
 
 \subsection{Qué muestran los resultados y qué falta medir}
