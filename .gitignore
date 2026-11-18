@@ -33,6 +33,14 @@ dist/
 *.bin
 *.sqlite3
 
+# Informe: solo se versionan la fuente LaTeX, sus figuras y el PDF
+/output/**
+!/output/**/
+!/output/**/*.tex
+!/output/**/*.pdf
+!/output/**/evidence.json
+!/output/**/figures/**
+
 # Reportes y salidas locales
 /tmp/
 /.pytest_report_tmp/

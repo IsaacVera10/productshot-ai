@@ -1,0 +1,363 @@
+{
+  "cutoff": "2026-11-18",
+  "case": "taza de cerámica mate",
+  "session": {
+    "id": "8e6cd6d9-083d-4c40-b7ae-14b615c82504",
+    "mode": "intermediate",
+    "category": "cocina",
+    "created_at": "2026-11-18T17:55:01.538239Z",
+    "round_index": 1,
+    "status": "SUMMARIZED",
+    "variations": [
+      {
+        "id": "afecf26b-6b78-4fa0-9307-e1f93b720252",
+        "position": 1,
+        "style": "studio",
+        "label": "Estudio",
+        "image_url": "/output/pdf/productshot/figures/variation_1.png",
+        "decision": {
+          "decision": "accepted",
+          "reason": null
+        },
+        "seed": 1543036593,
+        "model_revision": "Qwen/Qwen-Image-2.1-Turbo@fc13ba1986fcb905854dc8de2f52eee395f49b5b",
+        "prompt_version": "edit-v1",
+        "params": {
+          "backend": "qwen-edit",
+          "simulated": false,
+          "mode": "intermediate",
+          "category": "cocina",
+          "prompt": "Turn this into a professional e-commerce photo to sell this exact kitchenware product. Studio shot on a seamless light grey paper backdrop, soft diffused softbox light from the left, gentle contact shadow, nothing else in the frame. Replace the entire original background and surface; nothing from the original surroundings remains. Keep the product identical to the original photo: same shape, proportions, colors, logo and every printed word and number exactly as shown. Keep the same orientation and viewing angle of the product; do not rotate or mirror it and do not add or remove parts. The product is the only hero object; no people, no hands. Photorealistic, sharp focus on the product, high-end commercial product photography.",
+          "adjustments": [],
+          "steps": 8,
+          "seconds": 2.08,
+          "candidate_seed": 1543136596,
+          "fidelity": {
+            "method": "verificado",
+            "matches": 81,
+            "inlier_ratio": 0.664,
+            "structure": 0.7602,
+            "edges": 0.8987,
+            "scene_change": 71.8,
+            "aligned": true,
+            "candidates": 3,
+            "retries": 0,
+            "passed_candidates": 3,
+            "thresholds": {
+              "inlier_ratio": 0.45,
+              "edges": 0.4,
+              "scene_change": 25.0
+            }
+          },
+          "g7": {
+            "nsfw_score": 0.0015,
+            "retries": 0,
+            "threshold": 0.85
+          },
+          "worker_backend": "qwen-edit"
+        }
+      },
+      {
+        "id": "6dca145e-6182-4c0b-bac3-2e1b70f02c13",
+        "position": 2,
+        "style": "natural",
+        "label": "Natural",
+        "image_url": "/output/pdf/productshot/figures/variation_2.png",
+        "decision": {
+          "decision": "accepted",
+          "reason": null
+        },
+        "seed": 802307476,
+        "model_revision": "Qwen/Qwen-Image-2.1-Turbo@fc13ba1986fcb905854dc8de2f52eee395f49b5b",
+        "prompt_version": "edit-v1",
+        "params": {
+          "backend": "qwen-edit",
+          "simulated": false,
+          "mode": "intermediate",
+          "category": "cocina",
+          "prompt": "Turn this into a professional e-commerce photo to sell this exact kitchenware product. On a wooden breakfast table by a sunny window, a small plate with a croissant and a few coffee beans softly out of focus behind. Replace the entire original background and surface; nothing from the original surroundings remains. Keep the product identical to the original photo: same shape, proportions, colors, logo and every printed word and number exactly as shown. Keep the same orientation and viewing angle of the product; do not rotate or mirror it and do not add or remove parts. The product is the only hero object; no people, no hands. Photorealistic, sharp focus on the product, high-end commercial product photography.",
+          "adjustments": [],
+          "steps": 8,
+          "seconds": 2.1,
+          "candidate_seed": 802507482,
+          "fidelity": {
+            "method": "verificado",
+            "matches": 35,
+            "inlier_ratio": 0.515,
+            "structure": 0.8781,
+            "edges": 0.7525,
+            "scene_change": 86.2,
+            "aligned": true,
+            "candidates": 3,
+            "retries": 0,
+            "passed_candidates": 2,
+            "thresholds": {
+              "inlier_ratio": 0.45,
+              "edges": 0.4,
+              "scene_change": 25.0
+            }
+          },
+          "g7": {
+            "nsfw_score": 0.0002,
+            "retries": 0,
+            "threshold": 0.85
+          },
+          "worker_backend": "qwen-edit"
+        }
+      },
+      {
+        "id": "8996f028-36e8-4507-bedf-5948b22db2f2",
+        "position": 3,
+        "style": "warm",
+        "label": "Cálido",
+        "image_url": "/output/pdf/productshot/figures/variation_3.png",
+        "decision": {
+          "decision": "accepted",
+          "reason": null
+        },
+        "seed": 2056150750,
+        "model_revision": "Qwen/Qwen-Image-2.1-Turbo@fc13ba1986fcb905854dc8de2f52eee395f49b5b",
+        "prompt_version": "edit-v1",
+        "params": {
+          "backend": "qwen-edit",
+          "simulated": false,
+          "mode": "intermediate",
+          "category": "cocina",
+          "prompt": "Turn this into a professional e-commerce photo to sell this exact kitchenware product. On a rustic wooden kitchen counter in warm early-morning sunlight, a folded linen napkin and coffee beans nearby, amber tones. Replace the entire original background and surface; nothing from the original surroundings remains. Keep the product identical to the original photo: same shape, proportions, colors, logo and every printed word and number exactly as shown. Keep the same orientation and viewing angle of the product; do not rotate or mirror it and do not add or remove parts. The product is the only hero object; no people, no hands. Photorealistic, sharp focus on the product, high-end commercial product photography.",
+          "adjustments": [],
+          "steps": 8,
+          "seconds": 2.11,
+          "candidate_seed": 2063350966,
+          "fidelity": {
+            "method": "verificado",
+            "matches": 24,
+            "inlier_ratio": 0.48,
+            "structure": 0.9148,
+            "edges": 0.9126,
+            "scene_change": 85.0,
+            "aligned": true,
+            "candidates": 73,
+            "retries": 70,
+            "passed_candidates": 1,
+            "thresholds": {
+              "inlier_ratio": 0.45,
+              "edges": 0.4,
+              "scene_change": 25.0
+            }
+          },
+          "g7": {
+            "nsfw_score": 0.0001,
+            "retries": 0,
+            "threshold": 0.85
+          },
+          "worker_backend": "qwen-edit"
+        }
+      },
+      {
+        "id": "6acd1afe-f6ea-4a3f-9b36-4b7f14932755",
+        "position": 4,
+        "style": "lifestyle",
+        "label": "Lifestyle",
+        "image_url": "/output/pdf/productshot/figures/variation_4.png",
+        "decision": {
+          "decision": "accepted",
+          "reason": null
+        },
+        "seed": 88771832,
+        "model_revision": "Qwen/Qwen-Image-2.1-Turbo@fc13ba1986fcb905854dc8de2f52eee395f49b5b",
+        "prompt_version": "edit-v1",
+        "params": {
+          "backend": "qwen-edit",
+          "simulated": false,
+          "mode": "intermediate",
+          "category": "cocina",
+          "prompt": "Turn this into a professional e-commerce photo to sell this exact kitchenware product. On a bright Scandinavian kitchen table, a French press and a small plant softly out of focus in the background. Replace the entire original background and surface; nothing from the original surroundings remains. Keep the product identical to the original photo: same shape, proportions, colors, logo and every printed word and number exactly as shown. Keep the same orientation and viewing angle of the product; do not rotate or mirror it and do not add or remove parts. The product is the only hero object; no people, no hands. Photorealistic, sharp focus on the product, high-end commercial product photography.",
+          "adjustments": [],
+          "steps": 8,
+          "seconds": 2.11,
+          "candidate_seed": 89071841,
+          "fidelity": {
+            "method": "verificado",
+            "matches": 48,
+            "inlier_ratio": 0.585,
+            "structure": 0.7857,
+            "edges": 0.8617,
+            "scene_change": 84.3,
+            "aligned": true,
+            "candidates": 4,
+            "retries": 1,
+            "passed_candidates": 1,
+            "thresholds": {
+              "inlier_ratio": 0.45,
+              "edges": 0.4,
+              "scene_change": 25.0
+            }
+          },
+          "g7": {
+            "nsfw_score": 0.0003,
+            "retries": 0,
+            "threshold": 0.85
+          },
+          "worker_backend": "qwen-edit"
+        }
+      },
+      {
+        "id": "8f7b3bd1-2256-4ef7-80da-312bc255543f",
+        "position": 5,
+        "style": "minimal",
+        "label": "Minimalista",
+        "image_url": "/output/pdf/productshot/figures/variation_5.png",
+        "decision": {
+          "decision": "rejected",
+          "reason": null
+        },
+        "seed": 1857944821,
+        "model_revision": "Qwen/Qwen-Image-2.1-Turbo@fc13ba1986fcb905854dc8de2f52eee395f49b5b",
+        "prompt_version": "edit-v1",
+        "params": {
+          "backend": "qwen-edit",
+          "simulated": false,
+          "mode": "intermediate",
+          "category": "cocina",
+          "prompt": "Turn this into a professional e-commerce photo to sell this exact kitchenware product. Minimalist shot on a plain matte off-white surface against a plain off-white wall, generous empty space around the product, one soft natural shadow. Replace the entire original background and surface; nothing from the original surroundings remains. Keep the product identical to the original photo: same shape, proportions, colors, logo and every printed word and number exactly as shown. Keep the same orientation and viewing angle of the product; do not rotate or mirror it and do not add or remove parts. The product is the only hero object; no people, no hands. Photorealistic, sharp focus on the product, high-end commercial product photography.",
+          "adjustments": [],
+          "steps": 8,
+          "seconds": 2.08,
+          "candidate_seed": 1858044824,
+          "fidelity": {
+            "method": "verificado",
+            "matches": 73,
+            "inlier_ratio": 0.624,
+            "structure": 0.8042,
+            "edges": 0.8824,
+            "scene_change": 74.5,
+            "aligned": true,
+            "candidates": 3,
+            "retries": 0,
+            "passed_candidates": 3,
+            "thresholds": {
+              "inlier_ratio": 0.45,
+              "edges": 0.4,
+              "scene_change": 25.0
+            }
+          },
+          "g7": {
+            "nsfw_score": 0.0021,
+            "retries": 0,
+            "threshold": 0.85
+          },
+          "worker_backend": "qwen-edit"
+        }
+      }
+    ]
+  },
+  "summary": {
+    "session_id": "8e6cd6d9-083d-4c40-b7ae-14b615c82504",
+    "accepted_ids": [
+      "afecf26b-6b78-4fa0-9307-e1f93b720252",
+      "6dca145e-6182-4c0b-bac3-2e1b70f02c13",
+      "8996f028-36e8-4507-bedf-5948b22db2f2",
+      "6acd1afe-f6ea-4a3f-9b36-4b7f14932755"
+    ],
+    "rejected_ids": [
+      "8f7b3bd1-2256-4ef7-80da-312bc255543f"
+    ],
+    "summary": "Se aceptaron 4 de 5 variaciones: 1 (estudio), 2 (natural), 3 (cálido) y 4 (lifestyle).\nSe rechazaron 1 de 5: 5 (minimalista).\n\nObservación: Los estilos Estudio, Natural, Cálido y Lifestyle fueron aceptados.\nObservación: El estilo Minimalista fue rechazado.\n\nSe aceptaron las variaciones con los estilos Estudio, Natural, Cálido y Lifestyle. Se rechazó la variación con el estilo Minimalista. No se incluyeron motivos escritos para ninguna de las decisiones.",
+    "preferences_supported_by_user_reasons": [],
+    "limitations": [
+      "Narrativa y observaciones escritas por gemini-3.5-flash-lite; su revisión automática es parcial (longitud, enlaces y citas). La enumeración y los motivos salen del registro.",
+      "5 de 5 decisiones no tienen motivo escrito; no se infieren preferencias para ellas."
+    ],
+    "generated_by": "llm_validated",
+    "validation_status": "structure_verified",
+    "agent": {
+      "model": "gemini-3.5-flash-lite",
+      "attempts": [
+        {
+          "model": "gemini-3.5-flash",
+          "outcome": "unavailable"
+        },
+        {
+          "model": "gemini-3.5-flash",
+          "outcome": "unavailable"
+        },
+        {
+          "model": "gemini-3.5-flash-lite",
+          "outcome": "ok"
+        }
+      ]
+    }
+  },
+  "job_seconds": 298.722414,
+  "image_sha256": {
+    "input.png": "aea86b2b44ce406e90bf5c30470148c3c7f4a8dc83fafc9966731a5209baa74b",
+    "variation_1.png": "be1795f90d6734ae009c035f6712e4d1b0b4ee08122bb2e50b8b7561ea0e249a",
+    "variation_2.png": "96f66529e2c856e404d2f1d1e35decb39dcf44da8956904bc9624399fc8fddad",
+    "variation_3.png": "696d524f21f1d22e98309d706daf209a76ebfb67a11891d6fa60bf517ed98323",
+    "variation_4.png": "dc9059dd729bb8c6420704e74c8d92953e803eccf3d6c6bd33015d04a672f7b1",
+    "variation_5.png": "b9c9dad63c08f077c6db45333769bd0b409eae14f27df3cb933491a2edad5e33"
+  },
+  "job_created_at": "2026-11-18T17:55:06.369633Z",
+  "job_finished_at": "2026-11-18T18:00:05.092047Z",
+  "total_candidates": 86,
+  "total_retries": 71,
+  "blind_preferences": {
+    "v5_ckpt1000_v2": 8,
+    "sin_eleccion": 5,
+    "v4_ckpt400_v1": 2
+  },
+  "equipment": {
+    "v4_ckpt400_v1": {
+      "1": 13,
+      "0": 2
+    },
+    "v5_ckpt1000_v2": {
+      "0": 15
+    }
+  },
+  "dataset_split": {
+    "studio": {
+      "train": 36,
+      "val": 4,
+      "test": 4
+    },
+    "warm": {
+      "train": 36,
+      "val": 3,
+      "test": 4
+    },
+    "lifestyle": {
+      "train": 48,
+      "val": 6,
+      "test": 6
+    },
+    "natural": {
+      "train": 42,
+      "val": 5,
+      "test": 5
+    },
+    "minimal": {
+      "train": 47,
+      "val": 5,
+      "test": 6
+    }
+  },
+  "retention_configuration": {
+    "source": "Valores predeterminados del c?digo local; no medici?n de un despliegue remoto",
+    "session_retention_hours": 24.0,
+    "retention_sweep_interval_s": 600.0,
+    "age_reference": "created_at de la primera ronda",
+    "disabled_when": "session_retention_hours <= 0",
+    "runs_at_startup": true,
+    "active_generation": "se pospone hasta una siguiente pasada; G14 gestiona generaciones vencidas",
+    "document_copies": "Las copias del informe quedan fuera del directorio operativo data/assets"
+  },
+  "tests": {
+    "passed": 371,
+    "skipped": 16,
+    "failed": 0,
+    "seconds": 110.07,
+    "platform": "Windows / Python 3.12",
+    "retention_tests_passed": 12
+  }
+}
