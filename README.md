@@ -45,24 +45,7 @@ Ambos modos deben poder elegirse y utilizarse por separado. Corresponden a los n
 | Agente de explicación | Determinista (Hito 1) | Gemini por AI Studio y un segundo LLM | Gemini en Vertex AI |
 | Entrenamiento LoRA | Scripts reproducibles | Colab Pro (principal) o Kaggle | Igual |
 
-Modal es el despliegue principal, GCP una alternativa compatible y la laptop el entorno de desarrollo (ADR-009). El rompecabezas de piezas intercambiables está en [01 — Arquitectura, sección F](docs/01_ARQUITECTURA.md#f-mapeo-de-arquitecturas-modal-gcp-y-local). El checkpoint exacto de difusión sigue pendiente de pruebas de memoria, compatibilidad con inpainting y entrenamiento LoRA.
-
-## Documentación
-
-- [00 — Alcance y requisitos](docs/00_ALCANCE_Y_REQUISITOS.md)
-- [01 — Arquitectura](docs/01_ARQUITECTURA.md)
-- [02 — API y modelo de datos](docs/02_API_Y_MODELO_DE_DATOS.md)
-- [03 — Decisiones y riesgos](docs/03_DECISIONES_Y_RIESGOS.md)
-- [04 — Roadmap y pruebas](docs/04_ROADMAP_Y_TESTS.md)
-- [05 — Entrenamiento y despliegue (Colab, Kaggle, Modal y GCP)](docs/05_COLAB_Y_GCP.md)
-- [06 — Evaluación y ética](docs/06_EVALUACION_Y_ETICA.md)
-- [07 — Enunciado Proyecto 2](docs/07_ENUNCIADO_PROYECTO_2.md)
-- [08 — Propuesta: iteraciones y guardrails](docs/08_ITERACIONES_Y_GUARDRAILS.md) (aceptado: iteraciones por rondas y guardrails G1 a G14)
-- [09: Plan de Aaron para el despliegue en Modal](docs/09_PLAN_AARON_MODAL.md) (Hito 6, en paralelo con el dataset y el LoRA)
-- [10: Curación de BG60k para el LoRA](docs/10_DATASET_BG60K.md) (Hito 4: manifiesto, filtros, identidad de producto, estilos y particiones)
-- [Rúbrica de evaluación](docs/Evaluación_Rúbrica_Proyecto2.md)
-
-**Fuente primaria:** `Evaluación_Enunciado Proyecto2.pdf`. El archivo `docs/07_ENUNCIADO_PROYECTO_2.md` reproduce el contenido textual del documento original en Markdown para consulta. Ante discrepancias prevalece el PDF oficial.
+Modal es el despliegue principal, GCP una alternativa compatible y la laptop el entorno de desarrollo (ADR-009). El checkpoint exacto de difusión sigue pendiente de pruebas de memoria, compatibilidad con inpainting y entrenamiento LoRA.
 
 ## Ejecución local (Hito 1)
 
@@ -87,7 +70,7 @@ uv run productshot-worker                                   # worker en http://1
 GENERATION_BACKEND=remote GENERATION_WORKER_URL=http://127.0.0.1:8001 uv run productshot
 ```
 
-El worker real (SDXL en una GPU L4 de Modal) está en `deploy/modal/worker.py`; los comandos y la prueba de humo están en [05, despliegue principal](docs/05_COLAB_Y_GCP.md#despliegue-principal-modal).
+El worker real (SDXL en una GPU L4 de Modal) está en `deploy/modal/worker.py`; los comandos y la prueba de humo están en su encabezado.
 
 Estructura:
 
@@ -111,7 +94,7 @@ Estructura:
 - Sin autenticación: cualquiera con el ID de sesión puede ver sus imágenes. Solo para uso local.
 - El ejecutor de trabajos es un hilo del mismo proceso; un reinicio marca como `FAILED` las generaciones en curso.
 
-Consultar [roadmap y casos de prueba](docs/04_ROADMAP_Y_TESTS.md) antes de desarrollar. La ejecución de pruebas y la disponibilidad de GPU deben verificarse antes de declarar una función como operativa.
+La ejecución de pruebas y la disponibilidad de GPU deben verificarse antes de declarar una función como operativa.
 
 ## Entregables académicos
 
