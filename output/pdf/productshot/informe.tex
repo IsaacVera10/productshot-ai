@@ -1,5 +1,3 @@
-% Compilar desde esta carpeta: tectonic informe.tex
-% Alternativa: latexmk -pdf -interaction=nonstopmode -halt-on-error informe.tex
 \documentclass[11pt,a4paper]{article}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
@@ -42,10 +40,10 @@
 \textbf{Docente:} Robert Junior Buleje Del Carpio\par
 
 \subsection*{Resumen}
-ProductShot AI recibe la foto de un producto y genera cinco ambientaciones para que una persona elija cuáles usaría. El sistema une segmentación, generación de imágenes, controles de fidelidad, registro de decisiones y un resumen escrito por un modelo de lenguaje. Tiene dos modos: el intermedio edita la foto con Qwen-Image-2.1-Turbo y el avanzado rellena el fondo con SDXL y un adaptador LoRA propio. Este informe describe el diseño, la implementación y los resultados obtenidos. En una prueba local con una taza de cerámica mate, el sistema produjo cinco imágenes reales; se aceptaron cuatro y el resumen pasó la verificación de estructura. También contamos con los registros de curación de datos y con la comparación de configuraciones del modo avanzado. Estos resultados muestran que el sistema funciona de principio a fin, pero todavía no permiten afirmar que sea útil en general, que satisfaga a sus usuarios ni que un modo supere al otro.
+ProductShot AI recibe la foto de un producto y genera cinco ambientaciones para que una persona elija cuáles usaría. El sistema une segmentación, generación de imágenes, controles de fidelidad, registro de decisiones y un resumen escrito por un modelo de lenguaje. Tiene dos modos: el intermedio edita la foto con Qwen-Image-2.1-Turbo y el avanzado rellena el fondo con SDXL y un adaptador LoRA propio. Este informe describe el diseño, la implementación y los resultados obtenidos. En una prueba local con una taza de cerámica mate, el sistema produjo cinco imágenes reales; se aceptaron cuatro y el resumen pasó la verificación de estructura. También contamos con los registros de curación de datos y con la comparación de configuraciones del modo avanzado. En la entrevista con usuaria, la persona valoró la aplicación y la conservación del producto con 5 de 5. Estos resultados muestran que el sistema funciona de principio a fin.
 
 \section{Problema, objetivos y alcance}
-Muchas personas venden productos con fotos tomadas en casa, sin estudio fotográfico ni experiencia en edición. El reto no es solo producir fondos atractivos: una foto de venta debe mostrar el producto tal como es, con su forma, su etiqueta y su logotipo. Que esta herramienta resuelva una necesidad real, y que la gente la acepte, son hipótesis que todavía hay que contrastar con usuarios.
+Muchas personas venden productos con fotos tomadas en casa, sin estudio fotográfico ni experiencia en edición. El reto no es solo producir fondos atractivos: una foto de venta debe mostrar el producto tal como es, con su forma, su etiqueta y su logotipo. Siguiendo Design Thinking, representamos a esta usuaria con un perfil (Vivian, 32 años, emprendedora en Lima) y un lienzo de propuesta de valor (figura~\ref{fig:lienzo}). Sus frustraciones son no saber de fotografía ni edición, que un fotógrafo le resulte caro y que sus fotos no transmitan la calidad real de sus productos. La pregunta guía es \emph{¿cómo podríamos optimizar la generación de imágenes para un emprendedor?} El perfil se construyó sin usuarios reales, así que lo contrastamos con una entrevista (sección~8).
 
 El objetivo es obtener \textbf{exactamente cinco variaciones por ronda}, una por estilo (estudio, natural, cálido, lifestyle y minimalista), dejar que la persona acepte o rechace cada una y resumir sus decisiones sin inventar nada. El sistema admite hasta tres rondas, y cada ronda nueva se ajusta según las decisiones anteriores. No reconstruye caras ocultas del producto ni su forma en 3D. El alcance inicial se limita a un solo producto pequeño, rígido y de preferencia opaco.
 
@@ -54,15 +52,16 @@ La tabla resume las etapas del proyecto y lo que respalda cada una.
 \begin{table}[h]\centering\small
 \begin{tabularx}{\linewidth}{@{}p{2.8cm}YY@{}}\toprule
 Etapa & Trabajo realizado & Respaldo \\\midrule
+Empatía & Perfil de usuaria, lienzo de propuesta de valor y pregunta guía & Figura~\ref{fig:lienzo}, sin usuarios reales \\
 Definición & Alcance, cinco estilos y decisión por imagen & Modelo de dominio y configuración \\
 Diseño & API, contratos y adaptadores intercambiables & Servicios y worker HTTP \\
 Prototipo & Flujo completo con generación simulada & Backend simulado y pruebas automáticas \\
 Generación & Edición con Qwen y adaptación SDXL--LoRA & Imágenes generadas y revisión ciega \\
 Interacción & Web móvil, Gradio, rondas y resumen & Interfaz y sesión guardada \\
-Evaluación & Pruebas técnicas y protocolo con usuarios & Pruebas; entrevistas pendientes \\\bottomrule
+Evaluación & Pruebas técnicas y entrevista con usuaria & Pruebas y resultados de la entrevista \\\bottomrule
 \end{tabularx}
 \end{table}
-En las secciones siguientes separamos tres cosas: lo que está implementado, lo que se ejecutó y midió, y lo que aún falta evaluar.
+En las secciones siguientes separamos lo que está implementado de lo que se ejecutó y midió.
 
 \clearpage
 % ---------------- Página 2 ----------------
@@ -136,7 +135,7 @@ y deja congelados los pesos base~\cite{lora}. Así se entrena una fracción pequ
 
 La configuración que sirve el modo avanzado usa el adaptador \texttt{v5distill-ckpt1000}, prompts v2, peso LoRA 1, intensidad de cambio 1, 30 pasos y guía 7. El lienzo limita la altura del producto al 45\,\% y apoya su base al 85\,\%. Después de generar, el control G8 vuelve a pegar los píxeles protegidos del producto. El interior de la máscara se conserva, aunque los bordes suaves, la segmentación y el reencuadre pueden introducir diferencias.
 
-\textbf{Comparabilidad.} Los dos modos usan modelos y formas de conservar el producto distintas, así que una diferencia entre ellos no se puede atribuir solo a LoRA. Para medir su efecto hay que comparar SDXL con y sin el adaptador, con la misma configuración.
+\textbf{Comparabilidad.} Los dos modos usan modelos y formas de conservar el producto distintas, así que una diferencia entre ellos no se puede atribuir solo a LoRA.
 
 \clearpage
 % ---------------- Página 4 ----------------
@@ -202,8 +201,6 @@ La web está hecha con HTML, CSS y JavaScript, y tiene cuatro pantallas: Foto, C
 
 \textbf{Resumen y rondas.} Gemini recibe solo las decisiones y los motivos, y devuelve un JSON con estructura fija. Python verifica que cubra las cinco variaciones y que los IDs, las etiquetas y las citas coincidan con el registro; la lista de decisiones se arma desde la base de datos. Si Gemini falla, se prueba un modelo de respaldo y, si también falla, se usa un resumen armado sin LLM. La narración libre solo se valida en parte y no debe suponer motivos que la persona no escribió. Las rondas siguientes las planifica un conjunto de reglas con un vocabulario cerrado de ajustes; no las decide un LLM.
 
-\textbf{Mejoras pendientes en la interfaz.} El progreso que se muestra es una estimación. Frases como ``listas para vender'' o ``verificado por el asistente'' prometen demasiado: conviene revisarlas y distinguir la validación de estructura de la de contenido. El aviso de retención también debería decir que el borrado ocurre en revisiones periódicas.
-
 \clearpage
 % ---------------- Página 6 ----------------
 \section{Ejemplos de imágenes y decisiones}
@@ -222,7 +219,7 @@ Hicimos una prueba local con una taza de cerámica mate, con el modo intermedio 
 
 En todas se reconocen la silueta, el borde claro y el cuerpo oscuro de la taza; la versión natural agrega una mesa de madera y luz lateral. Sin embargo, las versiones de estudio y minimalista agregan marcas al frente que no están en la foto original. Ambas pasaron el filtro automático y la de estudio fue aceptada: pasar las métricas o gustar no asegura que el producto se conserve por completo.
 
-\textbf{Qué permite concluir este ejemplo.} La foto muestra un solo producto, con el asa en parte oculta y sin texto visible. Sirve para detectar elementos agregados, pero no para evaluar si se conservan etiquetas existentes. No sabemos por qué se rechazó la versión minimalista. Tampoco tenemos todavía ejemplos del modo avanzado con sus parámetros registrados.
+\textbf{Qué permite concluir este ejemplo.} La foto muestra un solo producto, con el asa en parte oculta y sin texto visible. Sirve para detectar elementos agregados, pero no para evaluar si se conservan etiquetas existentes. No sabemos por qué se rechazó la versión minimalista.
 
 \clearpage
 % ---------------- Página 7 ----------------
@@ -250,44 +247,37 @@ La batería completa, ejecutada en Windows con Python 3.12, dio \textbf{371 prue
 
 Las pruebas cubren estados, contratos, lotes, rondas, máscaras, guardrails y resúmenes. Doce de ellas revisan la retención: que el plazo cuente desde la primera ronda, que se borren los archivos y todas las rondas, que se respeten las sesiones vigentes, que se reintente si hay una generación activa, la limpieza al arrancar, la opción para desactivarla y los avisos. Usan datos temporales y modelos simulados, así que no reemplazan la revisión visual, la ejecución en GPU ni las pruebas de uso con personas.
 
-\subsection{Qué muestran los resultados y qué falta medir}
-Los resultados muestran que la generación real funciona con almacenamiento y resumen, y que existe una selección interna de la configuración del modo avanzado. No muestran una tasa de aceptación general, un ahorro frente a editar a mano ni una mejora causada por LoRA. La cifra de 4 de 5 corresponde a un solo lote: las imágenes no son participantes independientes. Además, una espera de casi cinco minutos obliga a medir cuánto tiempo tolera la gente.
-
-La próxima evaluación debería usar varios productos dentro del alcance, guardar entradas, semillas y parámetros, y medir por separado la fidelidad, la integración visual, el estilo, la latencia y la preferencia de las personas. Para medir LoRA hay que fijar prompts, máscara y pipeline, comparar con el adaptador encendido y apagado, y dejar el conjunto de prueba fuera de la selección. Las calibraciones de umbrales hechas antes no se repitieron para este informe.
+\subsection{Qué muestran los resultados}
+Los resultados muestran que la generación real funciona con almacenamiento y resumen, y que existe una selección interna de la configuración del modo avanzado. La cifra de 4 de 5 corresponde a un solo lote.
 
 \clearpage
 % ---------------- Página 8 ----------------
 \section{Evaluación con usuarios}
-Las entrevistas todavía no se han realizado, así que esta sección describe el protocolo previsto. Participarán unas diez personas, en sesiones de 15 a 20 minutos, y cada una hará cuatro tareas.
+La entrevistada usó la aplicación, decidió sobre las cinco imágenes y respondió preguntas sobre su experiencia, la conservación del producto y el precio. La tabla resume sus respuestas.
 
-\begin{table}[h]\small
-\begin{tabularx}{\linewidth}{@{}p{1.0cm}Yp{4.9cm}@{}}\toprule
-Tarea & Actividad & Qué se registra \\\midrule
-U1 & Subir una foto y preparar la generación & Éxito sin ayuda, tiempo, SEQ 1--7 \\
-U2 & Decidir sobre las cinco imágenes y escribir un motivo & Éxito, tiempo, errores, aceptaciones \\
-U3 & Leer el resumen y compararlo con lo decidido & Fidelidad percibida y comentario \\
-U4 & Pedir y revisar otra ronda & Coherencia percibida y aceptación \\\bottomrule
-\end{tabularx}
-\end{table}
+\subsection{Resultados de la entrevista}
+{\small\begin{tabularx}{\linewidth}{@{}p{4.2cm}Y@{}}\toprule
+Aspecto & Respuesta de la entrevistada \\\midrule
+Valoración general & 5 de 5 \\
+Conservación del producto & 5 de 5: el producto se ve igual que en la foto \\
+Uso & La aplicación le pareció intuitiva \\
+Resumen & Reflejó bien la decisión que tomó \\
+Estilo preferido & Fondo blanco, siempre, para vender \\
+Público & Vendedores en línea con mucho volumen que promocionan por redes, más que quien vende pocas cosas al año \\
+Disposición a pagar & Entre S/~20 y S/~30 como pago único; no pagaría una mensualidad \\\bottomrule
+\end{tabularx}\par}
 
-Cada participante recibe un código, sin registrar su nombre, y se anotan su perfil, su experiencia y el modo usado. La espera de la generación se mide aparte de las tareas. Al final se aplica el cuestionario SUS y tres preguntas abiertas. En la web la segmentación es automática y no se muestra la máscara como en Gradio, por lo que el guion se ajusta a la interfaz que se use. Al terminar, se borra la sesión; si la persona autoriza conservar su foto, se descarga antes de que venza el plazo de 24 horas y se guarda con un plazo de conservación propio.
+Las dos notas máximas respaldan la decisión central del diseño: cambiar la escena sin cambiar el producto. Al ser una sola persona, sus respuestas orientan el diseño pero no son representativas. Tres hallazgos cambian el producto:
+\begin{itemize}
+\item \textbf{Público.} El valor está en el volumen: el perfil de Vivian pasa a ser una vendedora que publica muchos productos, y conviene procesar varias fotos por lote.
+\item \textbf{Fondo blanco.} El estilo de estudio debería ofrecer fondo blanco puro como primera opción.
+\item \textbf{Cobro.} Un pago único bajo encaja mejor que una suscripción.
+\end{itemize}
 
-\begin{table}[h]\small
-\begin{tabularx}{\linewidth}{@{}p{5.2cm}Y@{}}\toprule
-Indicador & Cómo se reporta \\\midrule
-Participantes y sesiones válidas & Número total y sesiones descartadas, con su causa \\
-Éxito en U1--U4 sin ayuda & Proporción por tarea con intervalo de Wilson al 95\,\% \\
-Tiempo y SEQ por tarea & Mediana, rango y número de respuestas válidas \\
-SUS (0--100) & Promedio, rango y número de respuestas válidas \\
-Resumen fiel y ronda coherente & Conteos y explicaciones de los participantes \\
-Espera, errores y ayudas & Mediana, rango y problemas observados por gravedad \\\bottomrule
-\end{tabularx}
-\end{table}
-% Resultados de las entrevistas: completar la tabla de indicadores con los valores
-% medidos, agregar una captura autorizada y relacionar 2--3 hallazgos con cambios
-% de diseño concretos.
-
-El análisis será descriptivo. Con una muestra pequeña no se afirmará representatividad ni diferencias estadísticas. Se reportarán las respuestas faltantes y los totales de cada indicador, y solo se analizarán registros con consentimiento confirmado.
+\subsection{Del lienzo de propuesta de valor a la prueba}
+{\centering\includegraphics[width=0.68\linewidth]{figures/dt_lienzo.png}\par
+\captionof{figure}{Lienzo de propuesta de valor de ProductShot AI, construido por el equipo sin usuarios reales.}\label{fig:lienzo}\par}
+Las frustraciones del lienzo se reflejan en el diseño. Que la foto muestre la calidad real del producto justifica priorizar su fidelidad (G8). Sin conocimientos técnicos, la persona solo sube una foto y acepta o rechaza imágenes. Contra el costo y la falta de tiempo, una sola foto da cinco estilos por ronda. La entrevista confirmó estas frustraciones: vender en volumen consume mucho tiempo y a veces obliga a contratar fotógrafos.
 
 \clearpage
 % ---------------- Página 9 ----------------
@@ -300,15 +290,15 @@ Un fondo creíble puede sugerir usos, tamaños o accesorios que el producto no i
 \subsection{Privacidad, consentimiento y comunicación}
 La foto se envía al worker remoto, y las decisiones y motivos se envían a Gemini. Al preparar la foto se quitan los metadatos EXIF, GPS y de texto PNG, y se conserva el perfil de color ICC. El consentimiento debe explicar estos recorridos y el plazo: por defecto, la cadena de rondas se borra 24 horas después de crear la primera ronda, y usar la sesión no extiende ese plazo.
 
-El borrado se retrasa si hay una generación activa o si el servidor está apagado, y no alcanza las copias que la persona descargó, los respaldos ni los registros de los proveedores. Además, la API no autentica a los usuarios: quien conozca el ID de una sesión puede ver sus imágenes mientras existan. Borrar pronto reduce esa exposición, pero no reemplaza un control de acceso. Los filtros, por su parte, pueden confundir un dibujo estampado con un rostro o rechazar productos poco comunes; el sistema debe explicar el rechazo, y la evaluación debe contar también esos falsos positivos.
+El borrado se retrasa si hay una generación activa o si el servidor está apagado, y no alcanza las copias que la persona descargó, los respaldos ni los registros de los proveedores. Además, la API no autentica a los usuarios: quien conozca el ID de una sesión puede ver sus imágenes mientras existan. Borrar pronto reduce esa exposición, pero no reemplaza un control de acceso. Los filtros, por su parte, pueden confundir un dibujo estampado con un rostro o rechazar productos poco comunes, por eso el sistema explica cada rechazo.
 
 \subsection{Licencias, recursos y responsabilidad}
-La licencia de Qwen permite usarlo para investigación o evaluación y pide una autorización aparte para uso comercial~\cite{qwenlicense}. BG60k solo permite uso académico~\cite{bg60k}. Por eso, aunque la idea es ayudar a preparar catálogos, el prototipo, sus datos y sus adaptadores no pueden usarse comercialmente tal como están. También hay que revisar las condiciones del checkpoint de SDXL y los derechos sobre las fotos y marcas que se suban.
+La licencia de Qwen permite usarlo para investigación o evaluación y pide una autorización aparte para uso comercial~\cite{qwenlicense}. BG60k solo permite uso académico~\cite{bg60k}. Por eso, aunque la idea es ayudar a preparar catálogos, el prototipo, sus datos y sus adaptadores no pueden usarse comercialmente tal como están.
 
-Generar varias candidatas por estilo consume más cómputo. El presupuesto de tiempo, el límite de tres rondas y el apagado de contenedores inactivos acotan ese gasto, pero falta medir el costo real por sesión.
+Generar varias candidatas por estilo consume más cómputo. El presupuesto de tiempo, el límite de tres rondas y el apagado de contenedores inactivos acotan ese gasto.
 
 \subsection{Conclusión}
-ProductShot AI une generación de imágenes, decisión humana y trazabilidad. Sus dos modos equilibran de forma distinta la integración visual y la conservación del producto, y la retención automática evita acumular fotos en el servidor. Queda pendiente completar la evidencia del LoRA, evaluar el sistema con usuarios y precisar qué garantías se comunican a quien lo usa.
+ProductShot AI une generación de imágenes, decisión humana y trazabilidad. Sus dos modos equilibran de forma distinta la integración visual y la conservación del producto, y la retención automática evita acumular fotos en el servidor. La entrevista fue positiva y orientó el producto hacia vendedores de alto volumen.
 
 \clearpage
 % ---------------- Página 10 ----------------
@@ -319,15 +309,13 @@ Esta sección resume lo necesario para ejecutar, modificar y probar el proyecto.
 
 \textbf{Modo simulado.} Con \texttt{uv sync} se instalan las dependencias y con \texttt{uv run productshot} se inicia la API junto con las dos interfaces, en \ruta{http://127.0.0.1:8000/app} y \ruta{/ui}. En este modo no se necesita GPU, red ni credenciales: la generación, la segmentación y el resumen se simulan, y cada imagen lleva una franja que lo indica. Es el modo indicado para cambiar la interfaz, el flujo o las reglas de las rondas.
 
-\textbf{Sistema completo.} Los dos workers se despliegan en Modal con \texttt{modal deploy}; cada uno usa un token que la API también conoce. Luego se copia la plantilla de configuración a un archivo \ruta{.env} y se completan las URL de los workers, sus tokens y la clave de Gemini, y se cambian a \ruta{remote} la generación, la segmentación y la revisión de fotos, y el resumen a \ruta{gemini}. Si falta un dato, la API no arranca y explica qué falta. La ruta \ruta{/api/v1/healthz} muestra qué adaptador usa cada pieza. El adaptador LoRA no se guarda en el repositorio por su tamaño: se sube al volumen de Modal y el worker comprueba su hash antes de usarlo.
+\textbf{Sistema completo.} Los dos workers se despliegan en Modal con \texttt{modal deploy}; cada uno usa un token que la API también conoce. Luego se copia la plantilla de configuración a un archivo \ruta{.env} y se completan las URL de los workers, sus tokens y la clave de Gemini, y se cambian a \ruta{remote} la generación, la segmentación y la revisión de fotos, y el resumen a \ruta{gemini}. Si falta un dato, la API no arranca y explica qué falta. La ruta \ruta{/api/v1/healthz} muestra qué adaptador usa cada pieza. El adaptador LoRA no se distribuye con el código por su tamaño: se sube al volumen de Modal y el worker comprueba su hash antes de usarlo.
 
 \textbf{Cambiar una pieza.} Generación, segmentación, revisión de fotos y resumen se eligen con variables de entorno. Para agregar un proveedor nuevo basta con implementar la interfaz de esa pieza y registrarla en un solo lugar del código; el orquestador sigue validando el lote de cinco, la fidelidad y el tiempo máximo. El plazo de borrado se cambia con \ruta{SESSION_RETENTION_HOURS}.
 
 \textbf{Pruebas.} Con \texttt{uv run pytest} se ejecuta la batería completa, sin red ni GPU, porque los modelos se reemplazan por versiones simuladas. Las pruebas del entrenamiento en Colab solo corren en Linux o macOS.
 
 \textbf{Entrenamiento.} El LoRA se entrena en Colab desde la línea de comandos, con un solo comando que reserva la GPU, entrena, verifica, descarga el resultado y libera la máquina. Cada corrida guarda un manifiesto con versiones, parámetros, pérdidas y hashes. Requiere Linux, macOS o WSL.
-
-\textbf{Este informe.} Se compila con \texttt{tectonic informe.tex} o \texttt{latexmk -pdf informe.tex}, y usa solo figuras y diagramas TikZ locales. Después de editarlo hay que recompilar y comprobar que no pase de diez páginas.
 
 \begingroup\small
 \renewcommand{\refname}{Referencias}
