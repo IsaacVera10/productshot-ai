@@ -1,0 +1,129 @@
+% Bloque E: Juan Diego, 3:00. S14--S17. Resultados de la sesión de prueba,
+% pruebas automáticas, resultados de la entrevista, limitaciones y
+% conclusión. Total previsto: 15:00.
+\section{Resultados}
+\newcommand{\miniatura}[2]{\begin{minipage}[t]{0.155\textwidth}\centering\includegraphics[width=\linewidth]{fig/#1}\\[1pt]{\scriptsize #2}\end{minipage}}
+\begin{frame}{Sesión de prueba: una taza de cerámica mate}
+  \centering
+  \miniatura{input.png}{Foto de entrada}\hfill
+  \miniatura{variation_1.png}{Estudio \textcolor{colReq}{aceptada}}\hfill
+  \miniatura{variation_2.png}{Natural \textcolor{colReq}{aceptada}}\hfill
+  \miniatura{variation_3.png}{Cálido \textcolor{colReq}{aceptada}}\hfill
+  \miniatura{variation_4.png}{Lifestyle \textcolor{colReq}{aceptada}}\hfill
+  \miniatura{variation_5.png}{Minimalista \textcolor{colWake}{rechazada}}\par
+  \medskip
+  \takeaway{4 aceptadas y 1 rechazada. Pero estudio y minimalista agregan marcas que la taza no tiene.}
+  \source{Modo intermedio, salidas reales de Qwen. Prueba interna, no una entrevista: no hubo motivos escritos.}
+  \note{Juan Diego. 12:00--12:50 (50 s). Probamos el sistema completo con una
+  taza de cerámica mate, en el modo intermedio. A la izquierda la foto
+  casera; luego las cinco ambientaciones reales. Se aceptaron cuatro y se
+  rechazó la minimalista. En todas se reconoce la silueta, el borde claro
+  y el cuerpo oscuro de la taza. Pero miren la de estudio y la minimalista:
+  aparecen marcas al frente que la taza no tiene. Las dos pasaron el
+  filtro automático, y la de estudio incluso fue aceptada. Es decir: pasar
+  las métricas o gustar no asegura que el producto se conserve. Y es una
+  prueba interna, no una entrevista.}
+\end{frame}
+
+\begin{frame}{Qué medimos}
+  \centering
+  \stat{298.7\,s}{generar las 5 imágenes}\hfill
+  \stat{86}{candidatas, 71 reintentos}\hfill
+  \stat{1 de 73}{válida en estilo cálido}\hfill
+  \stat{371}{pruebas aprobadas, 0 fallos}\par
+  \bigskip
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}\small
+      \textbf{\color{colReq}Lo que muestra}
+      \begin{itemize}\setlength{\itemsep}{3pt}
+        \item El flujo real funciona de principio a fin.
+        \item El respaldo del resumen funciona: respondió el modelo de respaldo y los conteos fueron correctos.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.48\textwidth}\small
+      \textbf{\color{colWake}Alcance de la prueba}
+      \begin{itemize}\setlength{\itemsep}{3pt}
+        \item Es un solo lote: el 4 de 5 no es una tasa general.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \source{16 pruebas omitidas en Windows: 14 de entrenamiento en Colab, 1 llamada real a Gemini y 1 que requiere OpenCV.}
+  \note{Juan Diego. 12:50--13:35 (45 s). Los números de esa sesión. Generar
+  las cinco imágenes tomó casi cinco minutos. Hubo 86 candidatas y 71
+  reintentos, casi todos en el estilo cálido, donde solo una de 73 fue
+  válida: exigir cinco imágenes verificadas multiplica el trabajo. El
+  modelo principal de Gemini no respondió y contestó el de respaldo, con
+  los conteos correctos. Además, 371 pruebas automáticas pasan sin fallos.
+  Es un solo lote, así que el 4 de 5 no es una tasa de aceptación
+  general.}
+\end{frame}
+
+\begin{frame}{Resultados de la entrevista}
+  \begin{columns}[T]
+    \begin{column}{0.50\textwidth}\small
+      \begin{tabular}{@{}lp{3.6cm}@{}}
+        \toprule
+        Aspecto & Respuesta \\
+        \midrule
+        Valoración general & \textbf{5 de 5} \\
+        Conservación del producto & \textbf{5 de 5} \\
+        Uso & Intuitiva \\
+        Resumen & Reflejó bien su decisión \\
+        Estilo preferido & Fondo blanco \\
+        Disposición a pagar & S/~20--30, pago único; sin mensualidad \\
+        \bottomrule
+      \end{tabular}
+    \end{column}
+    \begin{column}{0.46\textwidth}\small
+      \textbf{\color{colAcento}Hallazgo $\rightarrow$ cambio}
+      \begin{itemize}\setlength{\itemsep}{3pt}
+        \item El valor está en vender \textbf{en volumen} $\rightarrow$ procesar varias fotos por lote.
+        \item Para vender, \textbf{fondo blanco} $\rightarrow$ primera opción del estilo estudio.
+        \item No pagaría mensual $\rightarrow$ \textbf{pago único} bajo.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \takeaway{Fase de prueba del Design Thinking: confirma la fidelidad y reorienta el público.}
+  \note{Juan Diego. 13:35--14:15 (40 s). Entrevistamos a una usuaria que
+  usó la aplicación. Le dio 5 de 5 a la aplicación y 5 de 5 a que el
+  producto no cambie, que es justo lo que más nos preocupaba. Le pareció
+  intuitiva y el resumen reflejó bien lo que decidió. Lo más útil fueron
+  tres hallazgos. Uno: el valor está en quien vende en volumen por redes,
+  no en quien vende pocas cosas al año, así que conviene procesar varias
+  fotos por lote. Dos: para vender, ella siempre usaría fondo blanco.
+  Tres: pagaría entre 20 y 30 soles como pago único, pero no una
+  mensualidad. Es la fase de prueba del Design Thinking.}
+\end{frame}
+
+\begin{frame}{Limitaciones y conclusión}
+  \begin{columns}[T]
+    \begin{column}{0.50\textwidth}\small
+      \textbf{\color{colWake}Limitaciones}
+      \begin{itemize}\setlength{\itemsep}{3pt}
+        \item Qwen puede cambiar letras o agregar detalles; las métricas no lo detectan siempre.
+        \item Brillos, transparencias y oclusiones siguen siendo difíciles.
+        \item Licencias: Qwen pide permiso para uso comercial y BG60k es solo académico.
+        \item Una persona debe revisar cada imagen antes de publicarla.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.46\textwidth}\small
+      \textbf{\color{colAcento}Conclusión}
+      \begin{itemize}\setlength{\itemsep}{3pt}
+        \item Une generación de imágenes, \textbf{decisión humana} y \textbf{trazabilidad}.
+        \item Dos modos: integración visual o fidelidad.
+        \item La entrevista orientó el producto a vendedores de alto volumen.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \vspace{4mm}\hfill{\large\color{colAcento}¿Preguntas?}
+  \note{Juan Diego. 14:15--15:00 (45 s). Para cerrar, las limitaciones. Qwen
+  puede cambiar una letra o agregar un detalle, como vimos en la taza, y
+  las métricas no siempre lo detectan. Los brillos, las transparencias y
+  las oclusiones siguen siendo difíciles. Por licencias, el prototipo no
+  puede usarse comercialmente tal como está. Y antes de publicar una
+  imagen, una persona debe revisarla. En conclusión: ProductShot AI une
+  generación de imágenes, decisión humana y trazabilidad, con dos modos
+  que eligen entre integración visual y fidelidad. La entrevista fue
+  positiva y orientó el producto hacia vendedores de alto volumen. Gracias,
+  ¿preguntas?}
+\end{frame}

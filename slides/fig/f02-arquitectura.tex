@@ -1,0 +1,17 @@
+% S7. Arquitectura: API sin GPU, workers en Modal y Gemini para el resumen.
+\begin{tikzpicture}[x=1cm,y=1cm]
+  \path[use as bounding box] (0,-0.35) rectangle (13.5,4.6);
+  \tikzset{dflow/.style={flow,{Stealth[length=2mm]}-{Stealth[length=2mm]}}}
+  \tikzset{pieza/.style={box,font=\scriptsize,text width=3.3cm,minimum height=11mm}}
+  \node[pieza] (ui) at (6.75,4.0) {\textbf{Persona usuaria}\\web \texttt{/app} o Gradio \texttt{/ui}};
+  \node[acento,font=\scriptsize,text width=3.6cm,minimum height=11mm] (api) at (6.75,2.25) {\textbf{FastAPI + sesiones}\\estados, validación, trabajos};
+  \node[pieza] (db) at (1.95,2.25) {\textbf{SQLite + archivos}\\borrado a las 24\,h};
+  \node[pieza] (llm) at (11.55,2.25) {\textbf{Gemini}\\solo decisiones y motivos};
+  \node[box,font=\scriptsize,text width=4.2cm,minimum height=11mm,draw=colVenta,text=colVenta,fill=colVenta!8] (q) at (3.9,0.35) {\textbf{Worker intermedio} (Modal, H100)\\BiRefNet + Qwen-Image + controles};
+  \node[box,font=\scriptsize,text width=4.2cm,minimum height=11mm,draw=colCompra,text=colCompra,fill=colCompra!8] (s) at (9.6,0.35) {\textbf{Worker avanzado} (Modal, L4)\\SDXL inpainting + LoRA};
+  \draw[dflow] (ui) -- node[right,font=\scriptsize]{HTTP} (api);
+  \draw[dflow] (api) -- (db);
+  \draw[dflow] (api) -- (llm);
+  \draw[dflow] (api) -- (q);
+  \draw[dflow] (api) -- (s);
+\end{tikzpicture}

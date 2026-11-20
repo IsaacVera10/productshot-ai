@@ -1,0 +1,13 @@
+% S5. Flujo de una sesión: de la foto al resumen, con rondas opcionales.
+\begin{tikzpicture}[x=1cm,y=1cm]
+  \path[use as bounding box] (0,-1.05) rectangle (13.5,0.75);
+  \tikzset{paso/.style={box,font=\scriptsize,text width=2.1cm,minimum height=12mm}}
+  \node[paso] (a) at (1.2,0) {\textbf{1. Foto}\\categoría y modo};
+  \node[paso] (b) at (3.95,0) {\textbf{2. Controles}\\y segmentación};
+  \node[acento,font=\scriptsize,text width=2.1cm,minimum height=12mm] (c) at (6.7,0) {\textbf{3. Generar}\\5 variaciones válidas};
+  \node[bueno,font=\scriptsize,text width=2.1cm,minimum height=12mm] (d) at (9.45,0) {\textbf{4. Decidir}\\aceptar o rechazar\\cada una};
+  \node[paso] (e) at (12.2,0) {\textbf{5. Resumen}\\verificado};
+  \foreach \x/\y in {a/b,b/c,c/d,d/e} \draw[flow] (\x) -- (\y);
+  \draw[flow,colAcento,dashed] (e.south) -- ++(0,-0.45) -| (c.south);
+  \node[font=\scriptsize,text=colAcento,fill=white,inner sep=1pt] at (9.45,-0.82) {otra ronda que parte de las decisiones (máximo 3)};
+\end{tikzpicture}

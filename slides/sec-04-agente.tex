@@ -1,0 +1,87 @@
+% Bloque D: Nicolás, 3:00. S11--S13. Agente LLM de resumen, rondas por reglas,
+% guardrails y privacidad.
+\section{Agente, rondas y guardrails}
+\begin{frame}{El agente LLM: resume las decisiones sin inventar}
+  \centering\input{fig/f03-agente}
+  \takeaway{El LLM redacta; Python verifica contra el registro antes de mostrar.}
+  \note{Nicolás. 9:00--10:00 (60 s). Cuando la persona termina de decidir,
+  un agente basado en Gemini redacta un resumen. Gemini recibe solo las
+  decisiones y los motivos, nunca las fotos, y tiene que devolver un JSON
+  con estructura fija. Antes de mostrarlo, Python lo compara con la base
+  de datos: que cubra las cinco variaciones y que los IDs, las decisiones
+  y las citas coincidan con lo que la persona hizo. La lista de decisiones
+  no la escribe el modelo: sale de la base de datos. Si Gemini falla,
+  probamos un modelo de respaldo y, si ese también falla, mostramos un
+  resumen armado sin LLM, rotulado como tal. La narración libre solo se
+  verifica en parte, y eso lo decimos.}
+\end{frame}
+
+\begin{frame}{Rondas 2 y 3, y guardrails en cada paso}
+  \begin{columns}[T]
+    \begin{column}{0.44\textwidth}\small
+      \textbf{\color{colAcento}Rondas por reglas, no por LLM}
+      \begin{itemize}\setlength{\itemsep}{4pt}
+        \item Un planificador traduce las decisiones y una nota de ajuste a un
+          \textbf{vocabulario cerrado} de modificadores.
+        \item Cada variación nueva dice \textbf{qué decisión la originó}.
+        \item Máximo \textbf{3 rondas}, para acotar el cómputo.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.52\textwidth}\small
+      \textbf{\color{colAcento}Guardrails}\par\smallskip
+      \begin{tabular}{@{}ll@{}}
+        \toprule
+        Calidad de la foto & G12 \\
+        Máscara del producto & G13 \\
+        Contenido y rostros & G2, G3, G7 \\
+        Categoría permitida & G15 \\
+        Fidelidad del producto & G8 \\
+        Tiempo máximo del lote & G14 \\
+        \bottomrule
+      \end{tabular}
+    \end{column}
+  \end{columns}
+  \takeaway{Lo que cambia entre rondas es explicable y trazable.}
+  \note{Nicolás. 10:00--11:00 (60 s). Si la persona quiere otra ronda, no le
+  pedimos al LLM que invente qué hacer. Un planificador determinista
+  traduce sus decisiones y una nota de ajuste a un vocabulario cerrado de
+  modificadores, y cada variación nueva explica qué decisión la originó.
+  Hay un máximo de tres rondas. A la derecha, los guardrails: la calidad de
+  la foto, la máscara, el contenido y los rostros, la categoría permitida,
+  la fidelidad del producto que vio Isaac, y un tiempo máximo para que un
+  lote no quede colgado. Un riesgo: los filtros pueden rechazar por error,
+  por ejemplo confundir un dibujo estampado con un rostro; por eso el
+  sistema explica cada rechazo.}
+\end{frame}
+
+\begin{frame}{Privacidad: la foto no se queda en el servidor}
+  \begin{columns}[c]
+    \begin{column}{0.48\textwidth}\small
+      \begin{itemize}\setlength{\itemsep}{5pt}
+        \item Se quitan los metadatos \textbf{EXIF y GPS} de la foto.
+        \item La sesión se puede \textbf{borrar a pedido}.
+        \item Si no, se borra con todas sus rondas \textbf{24\,h} después de la
+          primera ronda; usarla no extiende el plazo.
+        \item Gemini recibe decisiones y motivos, \textbf{nunca las fotos}.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \centering\includegraphics[width=\linewidth]{fig/ui_retention_detail.png}\par
+      \medskip
+      \begin{block}{Límites}
+        \scriptsize La API no autentica: quien conozca el ID de una sesión puede
+        verla mientras exista. El borrado no alcanza las descargas ni los
+        registros de los proveedores.
+      \end{block}
+    \end{column}
+  \end{columns}
+  \note{Nicolás. 11:00--12:00 (60 s). Las fotos son de la persona, así que
+  cuidamos qué pasa con ellas. Al subirla se quitan los metadatos, como la
+  ubicación GPS. La sesión se puede borrar en cualquier momento y, si no,
+  se borra sola con todas sus rondas a las 24 horas; crear rondas nuevas no
+  reinicia el plazo. La interfaz avisa cuándo ocurre, es el aviso de la
+  derecha. Gemini nunca ve las fotos. Un límite, y lo decimos: la API
+  no tiene login, así que quien conozca el ID de una sesión puede verla
+  mientras exista, y el borrado no alcanza lo que la persona descargó ni
+  los registros de los proveedores. Juan Diego presenta los resultados.}
+\end{frame}

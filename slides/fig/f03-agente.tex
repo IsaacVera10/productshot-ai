@@ -1,0 +1,14 @@
+% S11. Agente de resumen: entrada mínima, salida estructurada, verificación y respaldo.
+\begin{tikzpicture}[x=1cm,y=1cm]
+  \path[use as bounding box] (0,-2.0) rectangle (13.5,1.0);
+  \tikzset{paso/.style={box,font=\scriptsize,text width=2.5cm,minimum height=13mm}}
+  \node[paso] (a) at (1.4,0) {\textbf{Registro}\\5 decisiones\\y motivos\\(sin fotos)};
+  \node[acento,font=\scriptsize,text width=2.5cm,minimum height=13mm] (b) at (4.3,0) {\textbf{Gemini}\\JSON con\\estructura fija};
+  \node[decision,minimum width=2.6cm] (c) at (8.0,0) {¿cubre las 5\\y coincide?};
+  \node[bueno,font=\scriptsize,text width=2.5cm,minimum height=13mm] (d) at (12.05,0) {\textbf{Resumen}\\verificado\\se muestra};
+  \draw[flow] (a) -- (b);
+  \draw[flow] (b) -- (c);
+  \draw[flow,colReq] (c) -- node[above,font=\scriptsize,text=colReq]{sí} (d);
+  \node[malo,font=\scriptsize,text width=6.2cm] (e) at (8.0,-1.55) {\textbf{No o error:} modelo de respaldo; si también falla,\\resumen determinista rotulado como tal};
+  \draw[flow,colWake] (c) -- node[right,font=\scriptsize,text=colWake]{no} (e);
+\end{tikzpicture}

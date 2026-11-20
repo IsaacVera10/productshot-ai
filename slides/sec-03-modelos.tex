@@ -1,0 +1,99 @@
+% Bloque C: Isaac, 3:00. S8--S10. Modelos generativos: dos modos, control de
+% fidelidad G8 del modo intermedio, SDXL con LoRA y datos BG60k.
+\section{Modelos generativos}
+\begin{frame}{Dos modos, dos formas de conservar el producto}
+  \centering\small
+  \begin{tabular}{@{}p{2.6cm}p{5.2cm}p{5.2cm}@{}}
+    \toprule
+    & {\color{colVenta}\textbf{Intermedio}} & {\color{colCompra}\textbf{Avanzado}} \\
+    \midrule
+    Modelo & Qwen-Image-2.1-Turbo, edita con instrucciones & SDXL inpainting de 9 canales + LoRA propio \\
+    Qué cambia & Toda la imagen, incluida la luz del producto & Solo el fondo; el producto se vuelve a pegar \\
+    Ventaja & Mejor integración visual & Píxeles del producto protegidos \\
+    Riesgo & Puede redibujar letras o detalles & La unión con el fondo puede verse artificial \\
+    GPU (Modal) & H100 / A100 de 80\,GB & L4 / A10G \\
+    \bottomrule
+  \end{tabular}
+  \takeaway{Integración visual o fidelidad: cada modo elige un lado distinto.}
+  \note{Isaac. 6:00--7:00 (60 s). Tenemos dos modos. El intermedio usa
+  Qwen-Image, un modelo que edita una imagen a partir de un texto. Cambia
+  toda la imagen, así que adapta la luz del producto a la escena y se ve
+  más integrado, pero puede redibujar una letra o un detalle. El avanzado
+  usa SDXL con inpainting: solo rellena el fondo y después vuelve a pegar
+  los píxeles originales del producto. El producto queda intacto, pero la
+  unión con el fondo puede verse menos natural. Ojo: como cambian a la vez
+  el modelo y la forma de conservar el producto, no podemos atribuir una
+  diferencia entre modos solo al LoRA.}
+\end{frame}
+
+\begin{frame}{Modo intermedio: generar varias candidatas y verificar (G8)}
+  \begin{columns}[c]
+    \begin{column}{0.5\textwidth}\small
+      \textbf{Por cada estilo, hasta 3 candidatas.}\par\medskip
+      Se alinea el producto con puntos \textbf{ORB} y \textbf{RANSAC}, y se miden
+      las correspondencias, los bordes y el cambio de fondo.\par\medskip
+      Se elige la válida que maximiza $r_{\mathrm{inliers}}\cdot\max(0,\rho_{\mathrm{bordes}})$.\par\medskip
+      Si falta un estilo, se reintenta dentro de un presupuesto de
+      \textbf{420\,s}; si aún falta, falla el lote completo.
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \begin{block}{Una candidata es válida si}
+        \small
+        está alineada\\
+        $r_{\mathrm{inliers}} \geq 0.45$ \quad (correspondencias)\\
+        $\rho_{\mathrm{bordes}} \geq 0.40$ \quad (bordes de Sobel)\\
+        $\Delta_{\mathrm{fondo}} \geq 25$ \quad (de 0 a 255)
+      \end{block}
+    \end{column}
+  \end{columns}
+  \takeaway{Siempre cinco imágenes verificadas, o un error claro.}
+  \source{Pasar los umbrales no asegura que el texto, la marca o las propiedades físicas sean exactos.}
+  \note{Isaac. 7:00--8:00 (60 s). Como Qwen puede cambiar el producto, no
+  confiamos en una sola salida. Por cada estilo generamos hasta tres
+  candidatas y las verificamos: alineamos el producto de la foto original
+  con el de la candidata usando puntos ORB y RANSAC, y medimos cuántas
+  correspondencias son consistentes, cuánto se parecen los bordes y si el
+  fondo realmente cambió. Entre las válidas elegimos la mejor. Si un
+  estilo no tiene ninguna válida, reintentamos mientras quepa en 420
+  segundos; si igual falta, el lote falla entero, porque prometemos cinco.
+  Un límite: estas métricas no garantizan que una etiqueta o un texto
+  queden exactos.}
+\end{frame}
+
+\begin{frame}{Modo avanzado: SDXL con un LoRA propio entrenado en BG60k}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}\small
+      \textbf{\color{colAcento}LoRA}: adapta el modelo con una actualización de bajo rango
+      \[ W' = W_0 + sBA,\qquad r \ll \min(k,d) \]
+      Los pesos base quedan congelados.\par\medskip
+      \textbf{\color{colAcento}Datos}: piloto curado de BG60k, sin repetir un producto entre particiones.\par\smallskip
+      \centering
+      \stat{209}{entrenamiento}\hfill\stat{23}{validación}\hfill\stat{25}{prueba}
+    \end{column}
+    \begin{column}{0.48\textwidth}\small
+      \textbf{\color{colAcento}Selección}: revisión ciega, 15 pares\par\smallskip
+      \begin{tabular}{@{}lcc@{}}
+        \toprule
+        & v4 & \textbf{v5 (elegido)} \\
+        \midrule
+        Preferido & 2 & \textbf{8} \\
+        Sin preferencia & \multicolumn{2}{c}{5} \\
+        Con equipo de estudio visible & 13/15 & \textbf{0/15} \\
+        \bottomrule
+      \end{tabular}\par\medskip
+      {\scriptsize Cambian a la vez checkpoint y prompts, y los evaluadores no fueron una muestra independiente: no es una prueba con usuarios.}
+    \end{column}
+  \end{columns}
+  \source{BG60k solo permite uso académico.}
+  \note{Isaac. 8:00--9:00 (60 s). El modo avanzado usa SDXL de nueve canales,
+  que recibe la imagen, la máscara y el ruido, y le agregamos un LoRA
+  propio. LoRA entrena solo una actualización pequeña, de bajo rango,
+  sobre los pesos del modelo, que quedan congelados. Lo entrenamos en Colab
+  con un piloto curado de BG60k: 257 registros, 209 de entrenamiento, 23
+  de validación y 25 de prueba, cuidando que un mismo producto no aparezca
+  en dos particiones. Para elegir el adaptador hicimos una revisión ciega
+  de 15 pares: la versión 5 ganó 8 veces, la 4 dos, y en cinco no hubo
+  preferencia. Además, la 4 dejaba ver equipo de estudio en 13 de 15
+  imágenes y la 5 en ninguna. Es una evidencia interna, no una prueba con
+  usuarios. Nicolás sigue con el agente.}
+\end{frame}
